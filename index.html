@@ -185,6 +185,62 @@
   .sev-MEDIUM{background:rgba(245,158,11,.15);color:#f59e0b}
   .sev-LOW{background:rgba(59,130,246,.15);color:#3b82f6}
   .resource-icon{font-family:'IBM Plex Mono',monospace;font-size:calc(9px * var(--txt-scale));pointer-events:none}
+
+  /* ============================================================
+     MOBILE-FRIENDLY OVERRIDES
+     ============================================================ */
+  @media (max-width:768px) {
+    /* --- Fix 1: Mobile viewport — use svh so content ends above Safari toolbar --- */
+    body{height:100svh;height:-webkit-fill-available}
+    .sidebar{height:100svh;height:-webkit-fill-available}
+
+    /* --- Fix 2: Sidebar on mobile — compact & pinned actions --- */
+    .sidebar{width:100vw;min-width:100vw}
+    .sidebar.collapsed{width:0;min-width:0}
+    .sidebar-toggle{left:calc(100vw - 36px);top:8px}
+    .sidebar.collapsed~.sidebar-toggle{left:4px}
+    .sidebar-header{padding:10px 14px}
+    .sidebar-header h1{font-size:12px;letter-spacing:1px}
+    .sidebar-header p{font-size:10px}
+    .sec-hdr{padding:6px 12px}
+    .sec-hdr span{font-size:9px}
+    .sec-body{padding:4px 8px}
+    .ig{margin-bottom:4px}
+    .ji{height:40px;font-size:9px;padding:4px 6px}
+    .btn{padding:7px 10px;font-size:10px}
+    .sidebar-actions{
+      position:sticky;bottom:0;
+      padding:8px 10px calc(12px + env(safe-area-inset-bottom, 0px));
+      background:var(--bg-secondary);
+      border-top:1px solid var(--border);
+      z-index:12;
+    }
+
+    /* --- Fix 3: Pinch/zoom prevention scoped to map only (via CSS touch-action) --- */
+    .main svg{touch-action:none}
+
+    /* --- Fix 4: Zoom controls & legend — raise z-index and bottom offsets --- */
+    .zoom-controls{z-index:15;bottom:calc(52px + env(safe-area-inset-bottom, 0px));right:12px}
+    .legend{z-index:15;bottom:calc(52px + env(safe-area-inset-bottom, 0px));left:12px}
+    .hl-locked-indicator{bottom:calc(52px + env(safe-area-inset-bottom, 0px))}
+
+    /* --- Fix 5: Detail panel header — left padding to clear sidebar toggle --- */
+    .dp-header{padding-left:56px}
+    .detail-panel{width:100vw}
+
+    /* Bottom toolbar adjustments for mobile */
+    .stats-bar{padding:0 12px}
+    .export-bar{right:8px;top:8px}
+  }
+
+  /* Safe-area-aware devices (notched iPhones etc.) */
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    @media (max-width:768px) {
+      .sidebar-actions{padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+      .zoom-controls{bottom:calc(52px + env(safe-area-inset-bottom))}
+      .legend{bottom:calc(52px + env(safe-area-inset-bottom))}
+    }
+  }
 </style>
 </head>
 <body>
@@ -317,6 +373,9 @@
 // ============================================================
 
 const _isElectron = !!(typeof window !== 'undefined' && window.electronAPI);
+
+// ---- Mobile detection ----
+function _isMobile() { return window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024); }
 
 // ---- Preferences ----
 const PREFS_KEY = 'azureNetMapPrefs';
@@ -525,9 +584,11 @@ const INPUT_SECTIONS = [
 (function buildSidebar() {
   const body = document.getElementById('sidebarBody');
   let html = '';
+  const mobile = _isMobile();
   INPUT_SECTIONS.forEach((sec, si) => {
-    html += `<div class="sec-hdr${si > 3 ? ' collapsed' : ''}" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')"><span>${esc(sec.title)}</span><span class="arr">&#9660;</span></div>`;
-    html += `<div class="sec-body${si > 3 ? ' hidden' : ''}">`;
+    const startCollapsed = mobile || si > 3;
+    html += `<div class="sec-hdr${startCollapsed ? ' collapsed' : ''}" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')"><span>${esc(sec.title)}</span><span class="arr">&#9660;</span></div>`;
+    html += `<div class="sec-body${startCollapsed ? ' hidden' : ''}">`;
     sec.inputs.forEach(inp => {
       html += `<div class="ig"><div class="ig-lbl"><span>${esc(inp.l)}</span><code>${esc(inp.c)}</code></div><textarea id="${inp.id}" class="ji" placeholder="Paste ${esc(inp.c)} JSON..."></textarea></div>`;
     });
@@ -1043,6 +1104,10 @@ function _renderMapInner() {
   // Show legend and export bar
   document.getElementById('legend').style.display = 'flex';
   document.getElementById('exportBar').style.display = 'flex';
+
+  // Hide Flow button in Executive mode (reporting only — no network tracing)
+  const flowBtn = document.getElementById('flowBtn');
+  if (flowBtn) flowBtn.style.display = layoutMode === 'executive' ? 'none' : 'flex';
 
   // Fit to view after render
   setTimeout(() => zoomFit(), 100);
@@ -4163,7 +4228,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === '+' || e.key === '=') { document.getElementById('zoomIn').click() }
   else if (e.key === '-') { document.getElementById('zoomOut').click() }
   else if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); document.getElementById('saveProjectBtn').click() }
-  else if (e.key === 'T' && e.shiftKey) { e.preventDefault(); openFlowForm() }
+  else if (e.key === 'T' && e.shiftKey) { e.preventDefault(); if (document.getElementById('layoutMode').value !== 'executive') openFlowForm() }
   else if (e.key === 'C' && e.shiftKey) { e.preventDefault(); openComplianceDashboard() }
 });
 
@@ -4230,11 +4295,25 @@ if (_isElectron && window.electronAPI) {
 
 // ---- Layout mode change triggers re-render ----
 document.getElementById('layoutMode').addEventListener('change', () => {
+  // Toggle Flow button visibility — executive mode is for reporting, no tracing
+  const mode = document.getElementById('layoutMode').value;
+  const flowBtn = document.getElementById('flowBtn');
+  if (flowBtn) flowBtn.style.display = mode === 'executive' ? 'none' : 'flex';
   if (_lk.vnets && _lk.vnets.length > 0) renderMap();
 });
 
 // ---- Apply initial text scale ----
 applyGlobalTxtScale();
+
+// ---- iOS gesture conflict fix: prevent pinch-zoom on map container only ----
+(function() {
+  const mapSvg = document.getElementById('mapSvg');
+  if (mapSvg) {
+    mapSvg.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
+    mapSvg.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+    mapSvg.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
+  }
+})();
 
 // ============================================================
 // SELF-TEST SUITE
