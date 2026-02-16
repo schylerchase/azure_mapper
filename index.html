@@ -177,6 +177,12 @@
   .copyable:hover{color:var(--accent-cyan);border-bottom-color:var(--accent-cyan)}
   .copy-toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);background:rgba(16,185,129,.9);color:#fff;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:6px 16px;border-radius:5px;z-index:200;pointer-events:none;opacity:0;transition:opacity .2s}
   .copy-toast.show{opacity:1}
+  .update-banner{position:fixed;top:0;left:0;right:0;z-index:300;display:none;align-items:center;justify-content:center;gap:12px;padding:8px 16px;background:linear-gradient(135deg,rgba(59,130,246,.95),rgba(139,92,246,.95));color:#fff;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:500;backdrop-filter:blur(8px);box-shadow:0 2px 12px rgba(0,0,0,.3)}
+  .update-banner.visible{display:flex}
+  .update-banner a{color:#fff;text-decoration:underline;font-weight:600;cursor:pointer}
+  .update-banner a:hover{opacity:.85}
+  .update-banner .ub-close{background:none;border:1px solid rgba(255,255,255,.3);border-radius:4px;color:#fff;font-size:12px;cursor:pointer;padding:2px 8px;font-family:inherit;transition:background .15s}
+  .update-banner .ub-close:hover{background:rgba(255,255,255,.15)}
   @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
   .loading-overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(10,14,23,.85);z-index:60;flex-direction:column;gap:12px}
   .region-label{font-family:'IBM Plex Mono',monospace;font-size:calc(10px * var(--txt-scale));font-weight:600;fill:var(--text-muted);letter-spacing:1px;text-transform:uppercase;opacity:.6}
@@ -373,6 +379,11 @@
 </style>
 </head>
 <body>
+<div class="update-banner" id="updateBanner">
+  <span id="updateMsg">A new version is available</span>
+  <a id="updateLink" href="#" target="_blank">Download</a>
+  <button class="ub-close" onclick="document.getElementById('updateBanner').classList.remove('visible')">Dismiss</button>
+</div>
 <div class="sidebar">
   <div class="sidebar-header">
     <h1>Azure Network Map <span style="font-size:8px;color:var(--text-muted);font-weight:400">v1</span></h1>
@@ -4569,13 +4580,13 @@ if (_isElectron && window.electronAPI) {
     loadProjectData(data);
   });
 
-  // Update notification
+  // Update notification — shows a persistent banner with download link
   if (window.electronAPI.onUpdateAvailable) {
     window.electronAPI.onUpdateAvailable(({ version }) => {
-      const toast = document.getElementById('copyToast');
-      toast.textContent = 'Update available: v' + version;
-      toast.classList.add('show');
-      setTimeout(() => { toast.classList.remove('show'); toast.textContent = 'Copied!' }, 4000);
+      const banner = document.getElementById('updateBanner');
+      document.getElementById('updateMsg').textContent = 'Azure Network Mapper v' + version + ' is available';
+      document.getElementById('updateLink').href = 'https://github.com/schylerchase/Azure-Mapper/releases/tag/v' + version;
+      banner.classList.add('visible');
     });
   }
 
