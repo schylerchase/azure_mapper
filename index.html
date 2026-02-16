@@ -2126,7 +2126,10 @@ function renderPeeringLines(g, lk) {
     const pk = vnetId + '|' + side;
     if (gwIcons[pk]) return;
     gwIcons[pk] = true;
-    const pt = connPt(boxes[vnetId], side);
+    // Place GW icon inside the VNet, offset inward from the edge
+    const edge = connPt(boxes[vnetId], side);
+    const inset = 18;  // px inward from VNet boundary
+    const pt = stepIn(edge, side, inset);
     const bw = 28, bh = 14;
     const gwG = peerG.append('g').attr('class', 'peering-gw')
       .attr('transform', `translate(${pt.x},${pt.y})`)
@@ -2183,11 +2186,14 @@ function renderPeeringLines(g, lk) {
     renderGw(sourceId, ss);
     renderGw(remoteId, ds);
 
-    // PEERING label on external segment
+    // PEERING label on external segment, offset perpendicular to the route direction
     const extMid = pathMid(extPts);
+    const isVertical = hSide(ss) === false && hSide(ds) === false;
+    const lblOffX = isVertical ? 12 : 0;
+    const lblOffY = isVertical ? 3 : -8;
     peerG.append('text')
-      .attr('x', extMid.x).attr('y', extMid.y - 8)
-      .attr('text-anchor', 'middle')
+      .attr('x', extMid.x + lblOffX).attr('y', extMid.y + lblOffY)
+      .attr('text-anchor', isVertical ? 'start' : 'middle')
       .attr('fill', 'var(--peer-color)')
       .attr('font-family', "'IBM Plex Mono',monospace")
       .attr('font-size', 'calc(8px * var(--txt-scale))')
