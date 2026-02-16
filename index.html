@@ -528,26 +528,30 @@ document.getElementById('sidebarToggle').addEventListener('click', () => {
   const btn = document.getElementById('sidebarToggle');
   sb.classList.toggle('collapsed');
   btn.innerHTML = sb.classList.contains('collapsed') ? '&#x25B6;' : '&#x25C0;';
-  // Show/hide mobile backdrop
-  const bd = document.getElementById('mobileBackdrop');
-  if (bd) { bd.style.display = (!sb.classList.contains('collapsed') && _isMobile()) ? 'block' : 'none' }
+  if (!_isElectron) {
+    // Show/hide mobile backdrop (browser only)
+    const bd = document.getElementById('mobileBackdrop');
+    if (bd) { bd.style.display = (!sb.classList.contains('collapsed') && _isMobile()) ? 'block' : 'none' }
+  }
   if (!_isMobile()) savePrefs({ sidebarCollapsed: sb.classList.contains('collapsed') });
 });
-// Mobile backdrop: tap to close sidebar
-(function() {
-  const bd = document.createElement('div');
-  bd.id = 'mobileBackdrop';
-  bd.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99;backdrop-filter:blur(2px)';
-  document.body.appendChild(bd);
-  bd.addEventListener('click', () => {
-    const sb = document.querySelector('.sidebar');
-    sb.classList.add('collapsed');
-    document.getElementById('sidebarToggle').innerHTML = '&#x25B6;';
-    bd.style.display = 'none';
-  });
-})();
-// Restore sidebar state (collapse on mobile by default)
-if (_prefs.sidebarCollapsed || _isMobile()) {
+// Mobile backdrop: browser only (not needed in Electron desktop app)
+if (!_isElectron) {
+  (function() {
+    const bd = document.createElement('div');
+    bd.id = 'mobileBackdrop';
+    bd.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:99;backdrop-filter:blur(2px)';
+    document.body.appendChild(bd);
+    bd.addEventListener('click', () => {
+      const sb = document.querySelector('.sidebar');
+      sb.classList.add('collapsed');
+      document.getElementById('sidebarToggle').innerHTML = '&#x25B6;';
+      bd.style.display = 'none';
+    });
+  })();
+}
+// Restore sidebar state (collapse on mobile by default, not in Electron)
+if (_prefs.sidebarCollapsed || (!_isElectron && _isMobile())) {
   document.querySelector('.sidebar').classList.add('collapsed');
   document.getElementById('sidebarToggle').innerHTML = '&#x25B6;';
 }
@@ -736,7 +740,7 @@ const INPUT_SECTIONS = [
 (function buildSidebar() {
   const body = document.getElementById('sidebarBody');
   let html = '';
-  const mobile = _isMobile();
+  const mobile = !_isElectron && _isMobile();
   INPUT_SECTIONS.forEach((sec, si) => {
     const startCollapsed = mobile || si > 3;
     html += `<div class="sec-hdr${startCollapsed ? ' collapsed' : ''}" onclick="this.classList.toggle('collapsed');this.nextElementSibling.classList.toggle('hidden')"><span>${esc(sec.title)}</span><span class="arr">&#9660;</span></div>`;
@@ -1255,7 +1259,7 @@ function _renderMapInner() {
 
   // Show legend and export bar
   document.getElementById('legend').style.display = 'flex';
-  if (_isMobile()) document.getElementById('legend').classList.add('collapsed');
+  if (!_isElectron && _isMobile()) document.getElementById('legend').classList.add('collapsed');
   document.getElementById('exportBar').style.display = 'flex';
 
   // Hide Flow button in Executive mode (reporting only — no network tracing)
@@ -3037,6 +3041,8 @@ function openFlowPanel(srcIp, dstIp, dstPort, protocol) {
 // Flow form (Shift+T shortcut)
 function openFlowForm() {
   if (!_lk || !_lk.vnets) return;
+  // Flow tracing is not available in Executive Overview mode
+  if (document.getElementById('layoutMode').value === 'executive') return;
   // Collect known IPs for suggestions
   const knownIps = [];
   _lk.nics.forEach(nic => {
@@ -4604,15 +4610,17 @@ document.getElementById('layoutMode').addEventListener('change', () => {
 // ---- Apply initial text scale ----
 applyGlobalTxtScale();
 
-// ---- iOS gesture conflict fix: prevent pinch-zoom on map container only ----
-(function() {
-  const mapSvg = document.getElementById('mapSvg');
-  if (mapSvg) {
-    mapSvg.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
-    mapSvg.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
-    mapSvg.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
-  }
-})();
+// ---- iOS gesture conflict fix: prevent pinch-zoom on map container (browser only) ----
+if (!_isElectron) {
+  (function() {
+    const mapSvg = document.getElementById('mapSvg');
+    if (mapSvg) {
+      mapSvg.addEventListener('gesturestart', function(e) { e.preventDefault(); }, { passive: false });
+      mapSvg.addEventListener('gesturechange', function(e) { e.preventDefault(); }, { passive: false });
+      mapSvg.addEventListener('gestureend', function(e) { e.preventDefault(); }, { passive: false });
+    }
+  })();
+}
 
 // ============================================================
 // SELF-TEST SUITE
