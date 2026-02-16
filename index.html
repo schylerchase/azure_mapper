@@ -2014,7 +2014,7 @@ function renderPeeringLines(g, lk) {
 
   // Trunk: gateway → hub (inside VNet, around subnets)
   function trunkRoute(gwPt, gwSide, hub, obs) {
-    const inDist = 12;
+    const inDist = 24;  // offset from VNet edge to avoid visual overlap with border
     const inPt = stepIn(gwPt, gwSide, inDist);
     let pts;
     if (hSide(gwSide)) {
@@ -2126,10 +2126,7 @@ function renderPeeringLines(g, lk) {
     const pk = vnetId + '|' + side;
     if (gwIcons[pk]) return;
     gwIcons[pk] = true;
-    // Place GW icon inside the VNet, offset inward from the edge
-    const edge = connPt(boxes[vnetId], side);
-    const inset = 18;  // px inward from VNet boundary
-    const pt = stepIn(edge, side, inset);
+    const pt = connPt(boxes[vnetId], side);
     const bw = 28, bh = 14;
     const gwG = peerG.append('g').attr('class', 'peering-gw')
       .attr('transform', `translate(${pt.x},${pt.y})`)
@@ -2186,14 +2183,16 @@ function renderPeeringLines(g, lk) {
     renderGw(sourceId, ss);
     renderGw(remoteId, ds);
 
-    // PEERING label on external segment, offset perpendicular to the route direction
+    // PEERING label on external segment, offset perpendicular to avoid overlapping GW icons
     const extMid = pathMid(extPts);
-    const isVertical = hSide(ss) === false && hSide(ds) === false;
-    const lblOffX = isVertical ? 12 : 0;
-    const lblOffY = isVertical ? 3 : -8;
+    const isVert = !hSide(ss) && !hSide(ds);
+    const isHoriz = hSide(ss) && hSide(ds);
+    // Offset label away from the line so it doesn't overlap with GW icons or the line itself
+    const lblX = extMid.x + (isVert ? 14 : 0);
+    const lblY = extMid.y + (isHoriz ? -12 : (isVert ? 4 : -10));
     peerG.append('text')
-      .attr('x', extMid.x + lblOffX).attr('y', extMid.y + lblOffY)
-      .attr('text-anchor', isVertical ? 'start' : 'middle')
+      .attr('x', lblX).attr('y', lblY)
+      .attr('text-anchor', isVert ? 'start' : 'middle')
       .attr('fill', 'var(--peer-color)')
       .attr('font-family', "'IBM Plex Mono',monospace")
       .attr('font-size', 'calc(8px * var(--txt-scale))')
