@@ -1844,7 +1844,7 @@ function renderVnetBox(g, vnet, vx, vy, vnetW, vnetH, lk) {
   });
 }
 
-// ---- Peering Lines (orthogonal routing with obstacle avoidance) ----
+// ---- Peering Lines (orthogonal routing with single connection ports) ----
 function renderPeeringLines(g, lk) {
   const peerG = g.append('g').attr('class', 'peering-layer');
   const boxes = {};
@@ -1863,64 +1863,125 @@ function renderPeeringLines(g, lk) {
   const M = 20;   // gutter margin from VNet edge
   const R = 8;    // corner radius
 
-  // Inflate box on all sides
+  // ── Helpers ──
+
   function pad(b, m) { return { x: b.x - m, y: b.y - m, w: b.w + 2 * m, h: b.h + 2 * m }; }
 
-  // Does an axis-aligned segment overlap a box?
   function segHitsBox(x1, y1, x2, y2, b) {
-    const lx = Math.min(x1, x2), rx = Math.max(x1, x2);
-    const ly = Math.min(y1, y2), ry = Math.max(y1, y2);
-    return !(rx < b.x || lx > b.x + b.w || ry < b.y || ly > b.y + b.h);
+    return !(Math.max(x1, x2) < b.x || Math.min(x1, x2) > b.x + b.w ||
+             Math.max(y1, y2) < b.y || Math.min(y1, y2) > b.y + b.h);
   }
 
-  // Get padded obstacle boxes excluding src/dst
+  // Fixed connection-point at the centre of a given side
+  function connPoint(box, side) {
+    if (side === 'right') return { x: box.x + box.w, y: box.cy };
+    if (side === 'left')  return { x: box.x, y: box.cy };
+    if (side === 'bottom') return { x: box.cx, y: box.y + box.h };
+    return { x: box.cx, y: box.y }; // top
+  }
+
+  // Which side of `src` faces `dst`?
+  function facingSide(src, dst) {
+    const dx = dst.cx - src.cx, dy = dst.cy - src.cy;
+    if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+    return dy >= 0 ? 'bottom' : 'top';
+  }
+
+  // Step outward from a connection point by margin M
+  function stepOut(pt, side) {
+    if (side === 'right') return { x: pt.x + M, y: pt.y };
+    if (side === 'left')  return { x: pt.x - M, y: pt.y };
+    if (side === 'bottom') return { x: pt.x, y: pt.y + M };
+    return { x: pt.x, y: pt.y - M };
+  }
+
+  function isHoriz(side) { return side === 'left' || side === 'right'; }
+
+  // ── Phase 1: Deduplicate peering pairs ──
+
+  const pairs = [];
+  const drawn = new Set();
+  lk.peerings.forEach(peer => {
+    if (!peer.remoteVirtualNetwork || !peer.remoteVirtualNetwork.id) return;
+    const remoteId = peer.remoteVirtualNetwork.id;
+    let sourceId = null;
+    if (peer.id) {
+      const parts = peer.id.split('/');
+      const idx = parts.indexOf('virtualNetworks');
+      if (idx >= 0) sourceId = parts.slice(0, idx + 2).join('/');
+    }
+    if (!sourceId) return;
+    const key = [sourceId, remoteId].sort().join('|');
+    if (drawn.has(key)) return;
+    drawn.add(key);
+    if (!boxes[sourceId] || !boxes[remoteId]) return;
+    pairs.push({ sourceId, remoteId });
+  });
+
+  // ── Phase 2: Assign sides & collect used ports ──
+
+  const usedPorts = {}; // { vnetId|side : true }
+  pairs.forEach(p => {
+    p.srcSide = facingSide(boxes[p.sourceId], boxes[p.remoteId]);
+    p.dstSide = facingSide(boxes[p.remoteId], boxes[p.sourceId]);
+    usedPorts[p.sourceId + '|' + p.srcSide] = true;
+    usedPorts[p.remoteId + '|' + p.dstSide] = true;
+  });
+
+  // ── Phase 3: Render connection-port icons (one per used side per VNet) ──
+
+  const portIcons = {}; // track rendered ports so we don't duplicate
+  function renderPort(vnetId, side) {
+    const pk = vnetId + '|' + side;
+    if (portIcons[pk]) return;
+    portIcons[pk] = true;
+    const pt = connPoint(boxes[vnetId], side);
+    const portG = peerG.append('g').attr('class', 'peering-port')
+      .attr('transform', `translate(${pt.x},${pt.y})`)
+      .on('click', () => {
+        const p = lk.peeringsByVnet[vnetId]?.[0];
+        if (p) openPeeringPanel(p.id);
+      })
+      .on('mouseenter', function(event) {
+        const vnet = lk.vnetById[vnetId?.toLowerCase()];
+        const vName = vnet ? shortName(vnet) : '?';
+        const peerList = (lk.peeringsByVnet[vnetId] || []).map(p => {
+          const remote = lk.vnetById[(p.remoteVirtualNetwork?.id || '').toLowerCase()];
+          return `${esc(p.name || '')} → ${esc(remote ? shortName(remote) : '?')} (${esc(p.peeringState || '?')})`;
+        }).join('<br>');
+        showTooltip(event, `<div class="tt-title">Peering Gateway</div><div class="tt-sub">${esc(vName)}</div><div class="tt-sec"><div class="tt-sh">Connections</div><div class="tt-r">${peerList}</div></div>`);
+      })
+      .on('mouseleave', hideTooltip)
+      .on('mousemove', moveTooltip);
+    portG.append('circle').attr('r', 6)
+      .attr('fill', 'var(--peer-color)').attr('fill-opacity', .15)
+      .attr('stroke', 'var(--peer-color)').attr('stroke-width', 1.5);
+    portG.append('circle').attr('r', 2.5)
+      .attr('fill', 'var(--peer-color)');
+  }
+
+  // ── Phase 4: Routing helpers ──
+
   function getObstacles(srcId, dstId) {
     return Object.entries(boxes)
       .filter(([id]) => id !== srcId && id !== dstId)
       .map(([, b]) => pad(b, M));
   }
 
-  // Choose exit point on the VNet boundary facing the target, centered on the edge
-  function exitPoint(src, dst) {
-    const dx = dst.cx - src.cx, dy = dst.cy - src.cy;
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      return dx >= 0
-        ? { x: src.x + src.w, y: src.cy, dir: 'right' }
-        : { x: src.x, y: src.cy, dir: 'left' };
-    }
-    return dy >= 0
-      ? { x: src.cx, y: src.y + src.h, dir: 'down' }
-      : { x: src.cx, y: src.y, dir: 'up' };
-  }
-
-  // Step outward from a boundary point by margin
-  function stepOut(pt) {
-    const { x, y, dir } = pt;
-    if (dir === 'right') return { x: x + M, y };
-    if (dir === 'left')  return { x: x - M, y };
-    if (dir === 'down')  return { x, y: y + M };
-    return { x, y: y - M };
-  }
-
-  // Build initial orthogonal waypoints: boundary → outset → [Z-bend] → outset → boundary
-  function initialRoute(sp, so, dp, dout) {
-    const horiz = (sp.dir === 'left' || sp.dir === 'right');
-    const dstHoriz = (dp.dir === 'left' || dp.dir === 'right');
-
-    if (horiz && dstHoriz) {
-      // Both exit horizontally — Z-shape with vertical connector
+  // Build initial orthogonal waypoints: port → outset → [bend] → outset → port
+  function initialRoute(sp, so, sSide, dp, dout, dSide) {
+    const sH = isHoriz(sSide), dH = isHoriz(dSide);
+    if (sH && dH) {
       if (Math.abs(so.y - dout.y) < 1) return [sp, so, dout, dp];
       const mx = (so.x + dout.x) / 2;
       return [sp, so, { x: mx, y: so.y }, { x: mx, y: dout.y }, dout, dp];
     }
-    if (!horiz && !dstHoriz) {
-      // Both exit vertically — Z-shape with horizontal connector
+    if (!sH && !dH) {
       if (Math.abs(so.x - dout.x) < 1) return [sp, so, dout, dp];
       const my = (so.y + dout.y) / 2;
       return [sp, so, { x: so.x, y: my }, { x: dout.x, y: my }, dout, dp];
     }
-    // Perpendicular exits — L-shape
-    if (horiz) return [sp, so, { x: dout.x, y: so.y }, dout, dp];
+    if (sH) return [sp, so, { x: dout.x, y: so.y }, dout, dp];
     return [sp, so, { x: so.x, y: dout.y }, dout, dp];
   }
 
@@ -1932,54 +1993,42 @@ function renderPeeringLines(g, lk) {
         const a = pts[i], b = pts[i + 1];
         for (const o of obs) {
           if (!segHitsBox(a.x, a.y, b.x, b.y, o)) continue;
-
           const isH = Math.abs(a.y - b.y) < 1;
           const isV = Math.abs(a.x - b.x) < 1;
-
           if (isH) {
-            // Horizontal segment blocked — detour above or below obstacle
             const above = o.y - 1, below = o.y + o.h + 1;
             const newY = Math.abs(a.y - above) <= Math.abs(a.y - below) ? above : below;
-            pts = [...pts.slice(0, i + 1),
-              { x: a.x, y: newY }, { x: b.x, y: newY },
-              ...pts.slice(i + 1)];
+            pts = [...pts.slice(0, i + 1), { x: a.x, y: newY }, { x: b.x, y: newY }, ...pts.slice(i + 1)];
           } else if (isV) {
-            // Vertical segment blocked — detour left or right
             const left = o.x - 1, right = o.x + o.w + 1;
             const newX = Math.abs(a.x - left) <= Math.abs(a.x - right) ? left : right;
-            pts = [...pts.slice(0, i + 1),
-              { x: newX, y: a.y }, { x: newX, y: b.y },
-              ...pts.slice(i + 1)];
+            pts = [...pts.slice(0, i + 1), { x: newX, y: a.y }, { x: newX, y: b.y }, ...pts.slice(i + 1)];
           } else {
-            // Diagonal (shouldn't happen) — break into H + V
             pts = [...pts.slice(0, i + 1), { x: b.x, y: a.y }, ...pts.slice(i + 1)];
           }
-          changed = true;
-          break;
+          changed = true; break;
         }
         if (changed) break;
       }
       if (!changed) break;
     }
-
-    // Remove duplicate / collinear points
+    // Collapse duplicate & collinear points
     const clean = [pts[0]];
     for (let i = 1; i < pts.length; i++) {
       const p = pts[i], prev = clean[clean.length - 1];
       if (Math.abs(p.x - prev.x) > 0.5 || Math.abs(p.y - prev.y) > 0.5) clean.push(p);
     }
-    const final = [clean[0]];
+    const out = [clean[0]];
     for (let i = 1; i < clean.length - 1; i++) {
-      const prev = final[final.length - 1], c = clean[i], next = clean[i + 1];
-      const colX = Math.abs(prev.x - c.x) < 0.5 && Math.abs(c.x - next.x) < 0.5;
-      const colY = Math.abs(prev.y - c.y) < 0.5 && Math.abs(c.y - next.y) < 0.5;
-      if (!colX && !colY) final.push(c);
+      const prev = out[out.length - 1], c = clean[i], next = clean[i + 1];
+      if (!(Math.abs(prev.x - c.x) < 0.5 && Math.abs(c.x - next.x) < 0.5) &&
+          !(Math.abs(prev.y - c.y) < 0.5 && Math.abs(c.y - next.y) < 0.5)) out.push(c);
     }
-    final.push(clean[clean.length - 1]);
-    return final;
+    out.push(clean[clean.length - 1]);
+    return out;
   }
 
-  // Convert waypoints to SVG path with rounded corners
+  // SVG path with rounded corners at each waypoint turn
   function toPath(pts) {
     if (pts.length < 2) return '';
     let d = `M${pts[0].x},${pts[0].y}`;
@@ -1989,102 +2038,54 @@ function renderPeeringLines(g, lk) {
       const d2 = Math.hypot(next.x - c.x, next.y - c.y);
       if (d1 === 0 || d2 === 0) { d += ` L${c.x},${c.y}`; continue; }
       const r = Math.min(R, d1 / 2, d2 / 2);
-      const bx = c.x - (c.x - prev.x) / d1 * r;
-      const by = c.y - (c.y - prev.y) / d1 * r;
-      const ax = c.x + (next.x - c.x) / d2 * r;
-      const ay = c.y + (next.y - c.y) / d2 * r;
-      d += ` L${bx},${by} Q${c.x},${c.y} ${ax},${ay}`;
+      d += ` L${c.x - (c.x - prev.x) / d1 * r},${c.y - (c.y - prev.y) / d1 * r}`;
+      d += ` Q${c.x},${c.y} ${c.x + (next.x - c.x) / d2 * r},${c.y + (next.y - c.y) / d2 * r}`;
     }
     d += ` L${pts[pts.length - 1].x},${pts[pts.length - 1].y}`;
     return d;
   }
 
-  // Find the midpoint along the path for label placement
+  // Walk half the total path length for label placement
   function pathMidpoint(pts) {
-    let totalLen = 0;
+    let total = 0;
     const segs = [];
     for (let i = 0; i < pts.length - 1; i++) {
       const len = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y);
-      segs.push({ i, len });
-      totalLen += len;
+      segs.push({ i, len }); total += len;
     }
-    let walk = totalLen / 2;
+    let walk = total / 2;
     for (const s of segs) {
       if (walk <= s.len) {
         const t = s.len > 0 ? walk / s.len : 0;
-        return {
-          x: pts[s.i].x + (pts[s.i + 1].x - pts[s.i].x) * t,
-          y: pts[s.i].y + (pts[s.i + 1].y - pts[s.i].y) * t
-        };
+        return { x: pts[s.i].x + (pts[s.i + 1].x - pts[s.i].x) * t,
+                 y: pts[s.i].y + (pts[s.i + 1].y - pts[s.i].y) * t };
       }
       walk -= s.len;
     }
-    const last = pts[pts.length - 1];
-    return { x: last.x, y: last.y };
+    return { x: pts[pts.length - 1].x, y: pts[pts.length - 1].y };
   }
 
-  const drawn = new Set();
-  lk.peerings.forEach(peer => {
-    if (!peer.remoteVirtualNetwork || !peer.remoteVirtualNetwork.id) return;
-    const remoteId = peer.remoteVirtualNetwork.id;
+  // ── Phase 5: Route & render each peering ──
 
-    let sourceId = null;
-    if (peer.id) {
-      const parts = peer.id.split('/');
-      const idx = parts.indexOf('virtualNetworks');
-      if (idx >= 0) sourceId = parts.slice(0, idx + 2).join('/');
-    }
-    if (!sourceId) return;
-
-    const key = [sourceId, remoteId].sort().join('|');
-    if (drawn.has(key)) return;
-    drawn.add(key);
-
+  pairs.forEach(({ sourceId, remoteId, srcSide, dstSide }) => {
     const src = boxes[sourceId], dst = boxes[remoteId];
-    if (!src || !dst) return;
-
-    // Build routed path
-    const sp = exitPoint(src, dst);
-    const dp = exitPoint(dst, src);
-    const so = stepOut(sp);
-    const dout = stepOut(dp);
-    const raw = initialRoute(sp, so, dp, dout);
-    const obs = getObstacles(sourceId, remoteId);
-    const pts = avoidObstacles(raw, obs);
+    const sp = connPoint(src, srcSide);
+    const dp = connPoint(dst, dstSide);
+    const so = stepOut(sp, srcSide);
+    const dout = stepOut(dp, dstSide);
+    const raw = initialRoute(sp, so, srcSide, dp, dout, dstSide);
+    const pts = avoidObstacles(raw, getObstacles(sourceId, remoteId));
 
     peerG.append('path')
       .attr('class', 'peering-line')
       .attr('d', toPath(pts))
       .attr('stroke', 'var(--peer-color)');
 
-    // Port icons on the VNet boundaries
-    const portR = 6;
-    [{ pt: pts[0], vnetId: sourceId }, { pt: pts[pts.length - 1], vnetId: remoteId }].forEach(({ pt, vnetId }) => {
-      const portG = peerG.append('g').attr('class', 'peering-port')
-        .attr('transform', `translate(${pt.x},${pt.y})`)
-        .on('click', () => {
-          const p = lk.peeringsByVnet[vnetId]?.[0];
-          if (p) openPeeringPanel(p.id);
-        })
-        .on('mouseenter', function(event) {
-          const vnet = lk.vnetById[vnetId?.toLowerCase()];
-          const vName = vnet ? shortName(vnet) : '?';
-          const peerList = (lk.peeringsByVnet[vnetId] || []).map(p => {
-            const remote = lk.vnetById[(p.remoteVirtualNetwork?.id || '').toLowerCase()];
-            return `${esc(p.name || '')} → ${esc(remote ? shortName(remote) : '?')} (${esc(p.peeringState || '?')})`;
-          }).join('<br>');
-          showTooltip(event, `<div class="tt-title">Peering Gateway</div><div class="tt-sub">${esc(vName)}</div><div class="tt-sec"><div class="tt-sh">Connections</div><div class="tt-r">${peerList}</div></div>`);
-        })
-        .on('mouseleave', hideTooltip)
-        .on('mousemove', moveTooltip);
-      portG.append('circle').attr('r', portR)
-        .attr('fill', 'var(--peer-color)').attr('fill-opacity', .15)
-        .attr('stroke', 'var(--peer-color)').attr('stroke-width', 1.5);
-      portG.append('circle').attr('r', 2.5)
-        .attr('fill', 'var(--peer-color)');
-    });
+    // Render port icons (once per side per VNet)
+    renderPort(sourceId, srcSide);
+    renderPort(remoteId, dstSide);
 
-    // Label at the midpoint of the routed path
+    // Label at path midpoint
     const mid = pathMidpoint(pts);
     peerG.append('text')
       .attr('x', mid.x).attr('y', mid.y - 8)
