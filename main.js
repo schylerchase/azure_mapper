@@ -218,12 +218,35 @@ ipcMain.handle('dialog:saveAs', async () => {
     return { canceled, filePath };
 });
 
-app.whenReady().then(createWindow);
+// ── Auto-Update ───────────────────────────────────────────────────
+
+function checkForUpdates() {
+    try {
+        const { autoUpdater } = require('electron-updater');
+        autoUpdater.autoDownload = false;
+        autoUpdater.on('update-available', (info) => {
+            mainWindow?.webContents.send('update:available', {
+                version: info.version,
+                releaseNotes: info.releaseNotes
+            });
+        });
+        autoUpdater.checkForUpdates().catch(() => {});
+    } catch {}
+}
+
+// ── App Lifecycle ─────────────────────────────────────────────────
+
+app.whenReady().then(() => {
+    createWindow();
+
+    // Check for updates after a short delay
+    setTimeout(checkForUpdates, 5000);
+
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+});
 
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();
-});
-
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });

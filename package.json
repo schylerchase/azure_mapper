@@ -1,6 +1,6 @@
 {
   "name": "azure-network-mapper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Azure Network Topology Mapper - Desktop Application",
   "author": "schylerchase",
   "main": "main.js",
@@ -8,8 +8,11 @@
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "jest",
-    "build": "electron-builder --win",
-    "build:all": "electron-builder --win --linux"
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux",
+    "build:all": "electron-builder --win --mac --linux"
   },
   "build": {
     "appId": "com.schylerchase.azure-network-mapper",
@@ -21,6 +24,14 @@
       "preload.js",
       "export-azure-data.sh"
     ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "identity": null
+    },
     "win": {
       "target": [
         {
@@ -39,9 +50,20 @@
       "createDesktopShortcut": true
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Utility"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "schylerchase",
+      "repo": "Azure-Mapper"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.7.3"
   },
   "devDependencies": {
     "electron": "^33.0.0",
