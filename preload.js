@@ -13,9 +13,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onImportFolder: (cb) => { ipcRenderer.removeAllListeners('import:folder'); ipcRenderer.on('import:folder', (_, data) => cb(data)); },
     onScanProgress: (cb) => { ipcRenderer.removeAllListeners('scan:progress'); ipcRenderer.on('scan:progress', (_, msg) => cb(msg)); },
 
-    onUpdateAvailable: (cb) => {
-        const handler = (_, data) => cb(data);
-        ipcRenderer.on('update:available', handler);
-        return () => ipcRenderer.removeListener('update:available', handler);
-    }
+    onUpdateAvailable: (cb) => { ipcRenderer.removeAllListeners('update:available'); ipcRenderer.on('update:available', (_, data) => cb(data)); }
 });
