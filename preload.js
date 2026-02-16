@@ -11,5 +11,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onMenuScanAzure: (cb) => { ipcRenderer.removeAllListeners('menu:scanAzure'); ipcRenderer.on('menu:scanAzure', cb); },
     onProjectLoad: (cb) => { ipcRenderer.removeAllListeners('project:load'); ipcRenderer.on('project:load', (_, payload) => cb(payload)); },
     onImportFolder: (cb) => { ipcRenderer.removeAllListeners('import:folder'); ipcRenderer.on('import:folder', (_, data) => cb(data)); },
-    onScanProgress: (cb) => { ipcRenderer.removeAllListeners('scan:progress'); ipcRenderer.on('scan:progress', (_, msg) => cb(msg)); }
+    onScanProgress: (cb) => { ipcRenderer.removeAllListeners('scan:progress'); ipcRenderer.on('scan:progress', (_, msg) => cb(msg)); },
+
+    onUpdateAvailable: (cb) => {
+        const handler = (_, data) => cb(data);
+        ipcRenderer.on('update:available', handler);
+        return () => ipcRenderer.removeListener('update:available', handler);
+    }
 });

@@ -4569,6 +4569,16 @@ if (_isElectron && window.electronAPI) {
     loadProjectData(data);
   });
 
+  // Update notification
+  if (window.electronAPI.onUpdateAvailable) {
+    window.electronAPI.onUpdateAvailable(({ version }) => {
+      const toast = document.getElementById('copyToast');
+      toast.textContent = 'Update available: v' + version;
+      toast.classList.add('show');
+      setTimeout(() => { toast.classList.remove('show'); toast.textContent = 'Copied!' }, 4000);
+    });
+  }
+
   // Scan modal
   document.getElementById('scanAzureBtn').addEventListener('click', () => {
     document.getElementById('scanModal').style.display = 'flex';
