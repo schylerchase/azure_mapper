@@ -121,10 +121,10 @@ function simplify(pts) {
 
 // Build channel grid for a VNet from its bounding box and subnets
 function buildChannels(vb, subs) {
-  const IM = 10;
+  const CM = 20;
   const h0 = Math.round(vb.y + 38);
-  const vl = Math.round(vb.x + IM);
-  const vr = Math.round(vb.x + vb.w - IM);
+  const vl = Math.round(vb.x + CM);
+  const vr = Math.round(vb.x + vb.w - CM);
   const vc = Math.round(vb.x + vb.w / 2);
 
   const hChannels = [h0];

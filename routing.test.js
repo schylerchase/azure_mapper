@@ -173,8 +173,8 @@ describe('buildChannels', () => {
     const ch = buildChannels(vb, subs);
 
     expect(ch.h0).toBe(Math.round(vb.y + 38));
-    expect(ch.vl).toBe(Math.round(vb.x + 10));
-    expect(ch.vr).toBe(Math.round(vb.x + vb.w - 10));
+    expect(ch.vl).toBe(Math.round(vb.x + 20));
+    expect(ch.vr).toBe(Math.round(vb.x + vb.w - 20));
     expect(ch.vc).toBe(Math.round(vb.x + vb.w / 2));
     expect(ch.v).toEqual([ch.vl, ch.vc, ch.vr]);
     expect(ch.h).toContain(ch.h0);

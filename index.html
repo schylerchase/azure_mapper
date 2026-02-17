@@ -78,7 +78,7 @@
   #mapRoot.filtered .vnet-group.chip-match{opacity:1}
   #mapRoot.filtered .subnet-node{opacity:.15;transition:opacity .2s}
   #mapRoot.filtered .subnet-node.chip-match{opacity:1}
-  #mapRoot.filtered .peering-line,#mapRoot.filtered .peering-branch,#mapRoot.filtered .peering-gw,#mapRoot.filtered .peering-ep{opacity:.08;transition:opacity .2s}
+  #mapRoot.filtered .peering-group,#mapRoot.filtered .peering-gw,#mapRoot.filtered .peering-ep{opacity:.08;transition:opacity .2s}
   #mapRoot.flow-hl .vnet-group{opacity:.18;transition:opacity .25s}
   #mapRoot.flow-hl .vnet-group.flow-src,#mapRoot.flow-hl .vnet-group.flow-dst{opacity:1}
   #mapRoot.flow-hl .subnet-node{opacity:.18;transition:opacity .25s}
@@ -88,7 +88,7 @@
   #mapRoot.flow-hl .subnet-node.flow-dst rect{stroke:var(--accent-cyan);stroke-width:2.5}
   #mapRoot.flow-hl .subnet-node.flow-deny{opacity:1}
   #mapRoot.flow-hl .subnet-node.flow-deny rect{stroke:var(--accent-red);stroke-width:2.5}
-  #mapRoot.flow-hl .peering-line,#mapRoot.flow-hl .peering-branch{opacity:.08}
+  #mapRoot.flow-hl .peering-group{opacity:.08}
   .flow-path-hl{fill:none;stroke:var(--accent-green);stroke-width:2.5;opacity:.8;stroke-dasharray:8 4;animation:dashFlow 1.2s linear infinite;pointer-events:none}
   .flow-path-hl.denied{stroke:var(--accent-red)}
   @keyframes dashFlow{to{stroke-dashoffset:-24}}
@@ -123,13 +123,13 @@
   .gw-id{font-family:'IBM Plex Mono',monospace;font-size:calc(8px * var(--txt-scale));fill:var(--text-muted);pointer-events:none;opacity:.6}
   .gw-name{font-family:'IBM Plex Mono',monospace;font-size:calc(8px * var(--txt-scale));fill:var(--text-secondary);pointer-events:none}
   .route-line{fill:none;stroke-width:1.5;opacity:.35;pointer-events:none}
-  .peering-line{fill:none;stroke-width:2;opacity:.6;stroke-dasharray:none}
+  .peering-group{opacity:.35}
+  .peering-line{fill:none;stroke-width:2;opacity:1;stroke-dasharray:9 9;animation:dashFlow 1.2s linear infinite}
   .peering-gw{cursor:pointer}
   .peering-gw rect{transition:fill-opacity .15s}
   .peering-gw:hover rect{fill-opacity:.35}
   .peering-gw text{pointer-events:none}
-  .peering-branch{fill:none;stroke-width:0.8;opacity:.35;stroke-dasharray:4 4;animation:branchFlow 2s linear infinite}
-  @keyframes branchFlow{to{stroke-dashoffset:-16}}
+  .peering-branch{fill:none;stroke-width:1.5;opacity:1;stroke-dasharray:6 3;animation:dashFlow 1s linear infinite}
   .peering-ep{cursor:pointer;transition:opacity .15s}
   .peering-ep:hover{opacity:1}
   .animated{animation:dashFlow 1s linear infinite}
@@ -424,6 +424,823 @@
       .hl-locked-indicator{bottom:calc(52px + env(safe-area-inset-bottom))}
     }
   }
+
+  /* === NEW FEATURES CSS === */
+/* ============================================================
+   BLAST RADIUS OVERLAY STYLES
+   ============================================================ */
+
+/* Dim all elements when blast radius is active */
+.blast-active .vnet-group {
+  opacity: 0.15;
+  transition: opacity 0.3s ease;
+}
+
+.blast-active .subnet-node {
+  opacity: 0.15;
+  transition: opacity 0.3s ease;
+}
+
+/* Source resource - cyan glow */
+.blast-source {
+  opacity: 1 !important;
+}
+
+.blast-source rect {
+  stroke: var(--accent-cyan);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px var(--accent-cyan));
+}
+
+/* Hard dependencies - red glow */
+.blast-hard {
+  opacity: 1 !important;
+}
+
+.blast-hard rect {
+  stroke: var(--accent-red);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 6px var(--accent-red));
+}
+
+/* Soft dependencies - orange glow */
+.blast-soft {
+  opacity: 1 !important;
+}
+
+.blast-soft rect {
+  stroke: var(--accent-orange);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px var(--accent-orange));
+}
+
+/* Blast radius legend overlay */
+#blastLegend {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+#blastLegend .legend-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+#blastLegend .legend-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  color: var(--text-secondary);
+}
+
+#blastLegend .legend-item:last-child {
+  margin-bottom: 0;
+}
+
+#blastLegend .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  box-shadow: 0 0 4px currentColor;
+}
+
+#blastLegend .legend-dot.source {
+  background: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+#blastLegend .legend-dot.hard {
+  background: var(--accent-red);
+  color: var(--accent-red);
+}
+
+#blastLegend .legend-dot.soft {
+  background: var(--accent-orange);
+  color: var(--accent-orange);
+}
+
+#blastLegend .legend-hint {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: italic;
+}
+
+/* Notes/Annotations Feature CSS */
+
+/* Note Form Overlay */
+.note-form-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 600;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.note-form-overlay.open {
+  display: flex;
+}
+
+.note-form {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+.note-form-header {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.note-form-title {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-cyan);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.note-form-close {
+  width: 24px;
+  height: 24px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.note-form-close:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.note-form-body {
+  padding: 18px;
+  overflow-y: auto;
+  max-height: calc(90vh - 140px);
+}
+
+.note-form-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.note-form-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.note-form-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.note-form-group {
+  margin-bottom: 16px;
+}
+
+.note-form-label {
+  display: block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.note-form-textarea {
+  width: 100%;
+  min-height: 120px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 10px;
+  resize: vertical;
+  transition: border-color 0.2s;
+  line-height: 1.5;
+}
+
+.note-form-textarea:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.note-form-select {
+  width: 100%;
+  height: 38px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-primary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  padding: 0 10px;
+  transition: border-color 0.2s;
+  cursor: pointer;
+}
+
+.note-form-select:focus {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.note-form-actions {
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.note-form-btn {
+  padding: 9px 16px;
+  border: none;
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.note-form-btn-primary {
+  background: var(--accent-blue);
+  color: #fff;
+}
+
+.note-form-btn-primary:hover {
+  background: #2563eb;
+}
+
+.note-form-btn-secondary {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.note-form-btn-secondary:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+/* Notes Panel Styles */
+.notes-panel-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.notes-add-btn {
+  padding: 8px 14px;
+  background: var(--accent-blue);
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.notes-add-btn:hover {
+  background: #2563eb;
+}
+
+.notes-filter-select {
+  flex: 1;
+  min-width: 140px;
+  height: 32px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  padding: 0 8px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.notes-filter-select:focus {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+.notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0;
+}
+
+.note-card {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  transition: border-color 0.15s;
+}
+
+.note-card:hover {
+  border-color: var(--accent-blue);
+}
+
+.note-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.note-badge {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 8px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.note-badge.info {
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.note-badge.warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.note-badge.todo {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+  border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.note-badge.critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.note-resource-link {
+  flex: 1;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent-cyan);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  word-break: break-word;
+}
+
+.note-resource-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.note-card-text {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.note-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.note-timestamp {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.note-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.note-action-btn {
+  padding: 4px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.note-action-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.note-action-btn.delete:hover {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+}
+
+.notes-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+/* Note Badge on Map */
+.note-count-badge {
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.note-count-badge:hover {
+  opacity: 0.8;
+}
+
+.note-count-badge circle {
+  fill: var(--accent-orange);
+  stroke: var(--bg-primary);
+  stroke-width: 1.5;
+}
+
+.note-count-badge text {
+  fill: #fff;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .note-form {
+    max-width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .note-form-body {
+    max-height: calc(100vh - 140px);
+  }
+
+  .notes-panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .notes-filter-select {
+    width: 100%;
+  }
+}
+
+/* ============================================================
+   HISTORY TIMELINE
+   ============================================================ */
+
+/* Timeline bar container */
+.timeline-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 8;
+  transition: left 0.2s;
+  padding: 0 16px;
+}
+
+/* Shift timeline when sidebar is open */
+.timeline-bar.sidebar-open {
+  left: 360px;
+}
+
+/* Timeline visible state */
+.timeline-bar.visible {
+  display: flex;
+}
+
+/* Snap button (left side) */
+.timeline-snap-btn {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 6px 12px;
+  background: var(--accent-green);
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.timeline-snap-btn:hover {
+  background: #059669;
+}
+
+/* Close button (right side) */
+.timeline-close-btn {
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+
+.timeline-close-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+/* Timeline track (center area) */
+.timeline-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  margin: 0 60px;
+  cursor: pointer;
+}
+
+/* Timeline dots */
+.timeline-dot {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid var(--bg-secondary);
+}
+
+/* Auto snapshot dot (smaller, muted) */
+.timeline-dot.auto {
+  width: 6px;
+  height: 6px;
+  background: var(--text-muted);
+  opacity: 0.5;
+}
+
+/* Manual snapshot dot (larger, accent green) */
+.timeline-dot.manual {
+  width: 10px;
+  height: 10px;
+  background: var(--accent-green);
+}
+
+/* Active/viewing snapshot dot (orange, larger) */
+.timeline-dot.active {
+  width: 12px;
+  height: 12px;
+  background: var(--accent-orange);
+  border-color: var(--accent-orange);
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+}
+
+/* Dot hover state */
+.timeline-dot:hover {
+  transform: translate(-50%, -50%) scale(1.3);
+}
+
+/* Timeline tooltip */
+.timeline-tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: rgba(10, 14, 23, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+}
+
+.timeline-dot:hover .timeline-tooltip {
+  opacity: 1;
+}
+
+.timeline-tooltip-label {
+  font-weight: 600;
+  color: var(--accent-cyan);
+  display: block;
+  margin-bottom: 2px;
+}
+
+.timeline-tooltip-time {
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+/* History banner (top of screen when viewing past snapshot) */
+.history-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(251, 146, 60, 0.95));
+  border-bottom: 1px solid rgba(245, 158, 11, 0.3);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  padding: 0 20px;
+  gap: 16px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+}
+
+.history-banner.visible {
+  display: flex;
+}
+
+/* Banner text */
+.history-banner-text {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: 0.3px;
+}
+
+.history-banner-label {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.history-banner-time {
+  opacity: 0.9;
+  font-weight: 400;
+  margin-left: 8px;
+}
+
+/* Banner buttons */
+.history-banner-btn {
+  padding: 6px 14px;
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.history-banner-btn:hover {
+  background: rgba(255, 255, 255, 0.35);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+.history-banner-btn.primary {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--accent-orange);
+  border-color: transparent;
+}
+
+.history-banner-btn.primary:hover {
+  background: #fff;
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .timeline-bar {
+    height: 50px;
+    padding: 0 12px;
+  }
+
+  .timeline-bar.sidebar-open {
+    left: 0;
+  }
+
+  .timeline-track {
+    margin: 0 70px 0 80px;
+  }
+
+  .history-banner {
+    height: auto;
+    min-height: 56px;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .history-banner-text {
+    font-size: 11px;
+    text-align: center;
+  }
+
+  .history-banner-btn {
+    width: 100%;
+    max-width: 200px;
+  }
+}
+
+
 </style>
 </head>
 <body>
@@ -528,6 +1345,8 @@
     <button id="searchBtn" style="height:30px;border-radius:15px;background:var(--bg-card);border:1px solid var(--border);color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;padding:0 14px;transition:all .15s" title="Search resources (/)">Search</button>
     <button id="flowBtn" style="height:30px;border-radius:15px;background:var(--bg-card);border:1px solid var(--accent-purple);color:var(--accent-purple);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;padding:0 14px;transition:all .15s" title="Traffic Flow Tracer (Shift+T)" onclick="openFlowForm()">Flow</button>
     <button id="complianceBtn" style="height:30px;border-radius:15px;background:var(--bg-card);border:1px solid var(--accent-red);color:var(--accent-red);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;padding:0 14px;transition:all .15s" title="Compliance Dashboard (Shift+C)" onclick="openComplianceDashboard()">Compliance</button>
+    <button style="height:30px;border-radius:15px;background:var(--bg-card);border:1px solid var(--accent-cyan);color:var(--accent-cyan);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;padding:0 14px;transition:all .15s" title="Resource List (Shift+R)" onclick="openResourceListIndex()">Resources</button>
+    <button style="height:30px;border-radius:15px;background:var(--bg-card);border:1px solid var(--accent-orange);color:var(--accent-orange);font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:5px;padding:0 14px;transition:all .15s" title="Notes (N)" onclick="openNotesPanel()">Notes</button>
     <button id="scanAzureBtn" style="display:none;height:30px;border-radius:15px;background:var(--bg-card);border:1px solid #f59e0b;color:#f59e0b;font-family:'IBM Plex Mono',monospace;font-size:11px;cursor:pointer;align-items:center;gap:5px;padding:0 14px;transition:all .15s;font-weight:600" title="Scan Azure subscription via CLI">Scan Azure</button>
   </div>
   <input type="file" id="loadProjectInput" accept=".azuremap,.json" style="display:none">
@@ -572,6 +1391,9 @@
       <div class="kb-row"><span class="kb-action">Save project</span><span class="kb-key">&#8984;S</span></div>
       <div class="kb-row"><span class="kb-action">Flow tracer</span><span class="kb-key">&#8679;T</span></div>
       <div class="kb-row"><span class="kb-action">Compliance dashboard</span><span class="kb-key">&#8679;C</span></div>
+      <div class="kb-row"><span class="kb-action">Resource List</span><span class="kb-key">Shift+R</span></div>
+      <div class="kb-row"><span class="kb-action">Notes Panel</span><span class="kb-key">N</span></div>
+      <div class="kb-row"><span class="kb-action">History Timeline</span><span class="kb-key">H</span></div>
       <div class="kb-row"><span class="kb-action">Show this help</span><span class="kb-key">?</span></div>
     </div>
   </div>
@@ -594,6 +1416,62 @@
     <div class="dp-body" id="dpBody"></div>
   </div>
 </div>
+
+<!-- === NEW FEATURES HTML === -->
+<!-- Notes Form Overlay -->
+<div id="noteFormOverlay" class="note-form-overlay">
+  <div class="note-form">
+    <div class="note-form-header">
+      <span class="note-form-title" id="noteFormTitle">Add Note</span>
+      <button class="note-form-close" onclick="closeNoteForm()">&times;</button>
+    </div>
+    <div class="note-form-body">
+      <div class="note-form-group">
+        <label class="note-form-label">Resource</label>
+        <select id="noteFormResource" class="note-form-select">
+          <option value="">Select a resource...</option>
+        </select>
+      </div>
+      <div class="note-form-group">
+        <label class="note-form-label">Category</label>
+        <select id="noteFormCategory" class="note-form-select">
+          <option value="info">Info</option>
+          <option value="warning">Warning</option>
+          <option value="todo">To-Do</option>
+          <option value="critical">Critical</option>
+        </select>
+      </div>
+      <div class="note-form-group">
+        <label class="note-form-label">Note Text</label>
+        <textarea id="noteFormText" class="note-form-textarea" placeholder="Enter your note here..."></textarea>
+      </div>
+    </div>
+    <div class="note-form-actions">
+      <button class="note-form-btn note-form-btn-secondary" onclick="closeNoteForm()">Cancel</button>
+      <button class="note-form-btn note-form-btn-primary" onclick="saveNoteFromForm()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     HISTORY TIMELINE HTML
+     ============================================================ -->
+
+<!-- History Banner (shown when viewing a past snapshot) -->
+<div id="historyBanner" class="history-banner">
+  <div id="historyBannerText" class="history-banner-text"></div>
+  <button class="history-banner-btn primary" onclick="_restoreSnapshot()">Restore this version</button>
+  <button class="history-banner-btn" onclick="_returnToCurrent()">Return to current</button>
+</div>
+
+<!-- Timeline Bar (bottom of screen) -->
+<div id="timelineBar" class="timeline-bar">
+  <button class="timeline-snap-btn" onclick="takeSnapshot(null, false)">Snap</button>
+  <div class="timeline-track"></div>
+  <button class="timeline-close-btn" onclick="toggleTimeline()">&times;</button>
+</div>
+
+
 <script>
 // ============================================================
 // AZURE NETWORK TOPOLOGY MAPPER — Phase 1
@@ -949,6 +1827,367 @@ function clearSection(btn) {
 // FILE UPLOAD
 // ============================================================
 
+// ============================================================
+// FILE IMPORT AUTO-DETECTION
+// ============================================================
+
+// ============================================================
+// Enhanced File Import Auto-Detection for Azure Mapper
+// ============================================================
+
+/**
+ * Inspects JSON content to detect Azure resource type
+ * @param {string} content - Raw JSON string
+ * @returns {string|null} - Input field ID or null if unrecognized
+ */
+function matchFileContent(content) {
+  try {
+    let parsed = JSON.parse(content);
+
+    // Handle Azure API wrapper format {value: [...]}
+    const items = Array.isArray(parsed) ? parsed : (parsed.value || []);
+    if (!items.length) return null;
+
+    const first = items[0];
+    const props = first.properties || first;
+    const type = (first.type || '').toLowerCase();
+    const kind = (first.kind || props.kind || '').toLowerCase();
+
+    // Virtual Networks
+    if (props.subnets && props.addressSpace) return 'in_vnets';
+
+    // Network Security Groups
+    if (props.securityRules || type.includes('networksecuritygroups')) return 'in_nsgs';
+
+    // Route Tables
+    if (props.routes && (props.disableBgpRoutePropagation !== undefined || type.includes('routetables'))) {
+      return 'in_routetables';
+    }
+
+    // Network Interfaces
+    if (props.ipConfigurations && (props.macAddress !== undefined || props.networkSecurityGroup || type.includes('networkinterfaces'))) {
+      return 'in_nics';
+    }
+
+    // Public IPs
+    if (props.ipAddress !== undefined && (props.publicIPAllocationMethod || type.includes('publicipaddresses'))) {
+      return 'in_pubips';
+    }
+
+    // Virtual Machines
+    if (props.hardwareProfile && props.osProfile) return 'in_vms';
+
+    // Function Apps
+    if (kind.includes('functionapp')) return 'in_funcs';
+
+    // Container Instances
+    if (props.containers && (props.osType || type.includes('containergroups'))) {
+      return 'in_containers';
+    }
+
+    // AKS Clusters
+    if (props.agentPoolProfiles || type.includes('managedclusters')) return 'in_aks';
+
+    // Application Gateways
+    if (props.backendAddressPools && props.httpListeners) return 'in_appgws';
+
+    // Load Balancers
+    if (props.backendAddressPools && props.loadBalancingRules) return 'in_lbs';
+
+    // VNet Peerings
+    if (props.virtualNetworkPeerings || props.remoteVirtualNetwork || type.includes('virtualnetworkpeerings')) {
+      return 'in_peerings';
+    }
+
+    // Key Vaults
+    if (props.vaultUri || type.includes('vaults/')) return 'in_keyvaults';
+
+    // Managed Disks
+    if (props.diskSizeGB && props.sku && type.includes('disks')) return 'in_disks';
+
+    // Snapshots
+    if (props.creationData && props.diskSizeGB && type.includes('snapshots')) {
+      return 'in_snapshots';
+    }
+
+    // Storage Accounts
+    if (props.primaryEndpoints && kind.includes('storage')) return 'in_storage';
+
+    // Private Endpoints
+    if (props.privateLinkServiceConnections || type.includes('privateendpoints')) {
+      return 'in_pes';
+    }
+
+    // NAT Gateways
+    if (props.publicIpAddresses && (props.idleTimeoutInMinutes !== undefined || type.includes('natgateways'))) {
+      return 'in_natgws';
+    }
+
+    // Firewalls
+    if ((props.ipConfigurations && props.firewallPolicy) || props.hubIPAddresses || type.includes('azurefirewalls')) {
+      return 'in_firewalls';
+    }
+
+    // Bastions
+    if (props.ipConfigurations && (props.dnsName || type.includes('bastionhosts'))) {
+      return 'in_bastions';
+    }
+
+    // DNS Zones
+    if (props.nameServers && type.includes('dnszones') && !type.includes('privatednszones')) {
+      return 'in_dnszones';
+    }
+
+    // Private DNS Zones
+    if (type.includes('privatednszones')) return 'in_privdns';
+
+    // DNS Record Sets
+    if ((props.aRecords || props.aaaaRecords || props.cnameRecord || props.mxRecords) &&
+        type.includes('dnszones/')) {
+      return 'in_dnsrecords';
+    }
+
+    // Front Doors
+    if (props.frontendEndpoints || props.backendPools || type.includes('frontdoors')) {
+      return 'in_frontdoors';
+    }
+
+    // WAF Policies
+    if (props.managedRules && props.policySettings && type.includes('frontdoorwebapplicationfirewallpolicies')) {
+      return 'in_wafpolicies';
+    }
+
+    // SQL Servers
+    if (props.administratorLogin && (props.version || type.includes('servers')) && type.includes('microsoft.sql')) {
+      return 'in_sqlservers';
+    }
+
+    // SQL Databases
+    if (props.maxSizeBytes && props.collation && type.includes('microsoft.sql/servers/databases')) {
+      return 'in_sqldbs';
+    }
+
+    // Redis Caches
+    if (props.redisVersion || (props.sku && type.includes('redis'))) {
+      return 'in_redis';
+    }
+
+    // Synapse Workspaces
+    if (props.defaultDataLakeStorage || type.includes('synapse/workspaces')) {
+      return 'in_synapse';
+    }
+
+    // Role Assignments
+    if (props.roleDefinitionId && props.principalId && type.includes('roleassignments')) {
+      return 'in_roleassign';
+    }
+
+    // Role Definitions
+    if (props.roleName && props.permissions && type.includes('roledefinitions')) {
+      return 'in_roledefs';
+    }
+
+    // Service Principals
+    if (first.appId && first.servicePrincipalType) return 'in_sps';
+
+    // Resource Groups
+    if (props.provisioningState && type.includes('resourcegroups')) {
+      return 'in_rgs';
+    }
+
+    // Network Watchers
+    if (type.includes('networkwatchers')) return 'in_watchers';
+
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Enhanced file handler with auto-detection
+ * @param {FileList} files - Files to process
+ * @param {Object} fileToInputMap - Filename to input ID mapping
+ */
+function handleFileImport(files, fileToInputMap) {
+  const statusEl = document.getElementById('uploadStatus');
+  let loaded = 0;
+  let autoDetected = 0;
+  let skipped = [];
+  const totalFiles = files.length;
+
+  Array.from(files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const content = e.target.result;
+      let inputId = null;
+      let detectionMethod = '';
+
+      // Try filename match first (existing behavior)
+      const key = file.name.replace(/\.json$/i, '');
+      inputId = fileToInputMap[key];
+      if (inputId) {
+        detectionMethod = 'filename';
+      } else {
+        // Try content-based detection
+        inputId = matchFileContent(content);
+        if (inputId) {
+          detectionMethod = 'content';
+          autoDetected++;
+        }
+      }
+
+      if (inputId) {
+        const el = document.getElementById(inputId);
+        if (el) {
+          el.value = content;
+          el.className = 'ji valid';
+          loaded++;
+        } else {
+          skipped.push({name: file.name, reason: 'input not found'});
+        }
+      } else {
+        skipped.push({name: file.name, reason: 'unrecognized type'});
+      }
+
+      // Update status after all files processed
+      if (loaded + skipped.length === totalFiles) {
+        statusEl.style.display = 'block';
+        let msg = `Loaded ${loaded} file(s)`;
+        if (autoDetected > 0) msg += `, ${autoDetected} auto-detected`;
+        if (skipped.length > 0) {
+          msg += `, ${skipped.length} skipped`;
+          console.log('Skipped files:', skipped);
+        }
+        statusEl.textContent = msg;
+        updateAllBadges();
+      }
+    };
+    reader.readAsText(file);
+  });
+}
+
+// ============================================================
+// Drag-and-Drop Support
+// ============================================================
+
+/**
+ * Initialize drag-and-drop on main canvas
+ * @param {string} canvasSelector - CSS selector for canvas element
+ * @param {Object} fileToInputMap - Filename to input ID mapping
+ */
+function initDragAndDrop(canvasSelector, fileToInputMap) {
+  const canvas = document.querySelector(canvasSelector);
+  if (!canvas) return;
+
+  // Visual feedback during drag
+  canvas.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    canvas.style.outline = '3px dashed var(--accent-cyan)';
+    canvas.style.outlineOffset = '-10px';
+    canvas.style.background = 'rgba(6, 182, 212, 0.05)';
+  });
+
+  canvas.addEventListener('dragleave', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    canvas.style.outline = '';
+    canvas.style.outlineOffset = '';
+    canvas.style.background = '';
+  });
+
+  canvas.addEventListener('drop', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Remove visual feedback
+    canvas.style.outline = '';
+    canvas.style.outlineOffset = '';
+    canvas.style.background = '';
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      // Filter for JSON files only
+      const jsonFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith('.json'));
+      if (jsonFiles.length > 0) {
+        handleFileImport(jsonFiles, fileToInputMap);
+      } else {
+        const statusEl = document.getElementById('uploadStatus');
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'No JSON files found in dropped items';
+      }
+    }
+  });
+}
+
+// ============================================================
+// Integration Code
+// ============================================================
+
+// Replace the existing file input handler (lines 972-990) with:
+/*
+document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('fileInput').click());
+document.getElementById('fileInput').addEventListener('change', function() {
+  handleFileImport(this.files, FILE_TO_INPUT_MAP);
+});
+*/
+
+// Add drag-and-drop initialization after the file input handler:
+/*
+initDragAndDrop('.main', FILE_TO_INPUT_MAP);
+*/
+
+// For Electron folder import, replace the content handler (lines 996-1003) with:
+/*
+if (_isElectron && window.electronAPI.onImportFolder) {
+  document.getElementById('importFolderBtn').style.display = '';
+  window.electronAPI.onImportFolder(data => {
+    const statusEl = document.getElementById('uploadStatus');
+    let loaded = 0;
+    let autoDetected = 0;
+    let skipped = [];
+
+    for (const [key, content] of Object.entries(data)) {
+      let inputId = FILE_TO_INPUT_MAP[key];
+      let detectionMethod = 'filename';
+
+      if (!inputId) {
+        inputId = matchFileContent(content);
+        if (inputId) {
+          detectionMethod = 'content';
+          autoDetected++;
+        }
+      }
+
+      if (inputId) {
+        const el = document.getElementById(inputId);
+        if (el) {
+          el.value = content;
+          el.className = 'ji valid';
+          loaded++;
+        } else {
+          skipped.push({name: key, reason: 'input not found'});
+        }
+      } else {
+        skipped.push({name: key, reason: 'unrecognized type'});
+      }
+    }
+
+    statusEl.style.display = 'block';
+    let msg = `Imported ${loaded} file(s) from folder`;
+    if (autoDetected > 0) msg += `, ${autoDetected} auto-detected`;
+    if (skipped.length > 0) {
+      msg += `, ${skipped.length} skipped`;
+      console.log('Skipped files:', skipped);
+    }
+    statusEl.textContent = msg;
+    updateAllBadges();
+  });
+}
+*/
+
+
 const FILE_TO_INPUT_MAP = {
   'vnets': 'in_vnets', 'nsgs': 'in_nsgs', 'route-tables': 'in_rts',
   'nics': 'in_nics', 'public-ips': 'in_pips', 'nat-gateways': 'in_natgws',
@@ -970,24 +2209,11 @@ const FILE_TO_INPUT_MAP = {
 
 document.getElementById('uploadBtn').addEventListener('click', () => document.getElementById('fileInput').click());
 document.getElementById('fileInput').addEventListener('change', function() {
-  const statusEl = document.getElementById('uploadStatus');
-  let loaded = 0;
-  Array.from(this.files).forEach(file => {
-    const reader = new FileReader();
-    reader.onload = function(e) {
-      const key = file.name.replace(/\.json$/i, '');
-      const inputId = FILE_TO_INPUT_MAP[key];
-      if (inputId) {
-        const el = document.getElementById(inputId);
-        if (el) { el.value = e.target.result; el.className = 'ji valid'; loaded++ }
-      }
-      statusEl.style.display = 'block';
-      statusEl.textContent = `Loaded ${loaded} file(s)`;
-      updateAllBadges();
-    };
-    reader.readAsText(file);
-  });
+  handleFileImport(this.files, FILE_TO_INPUT_MAP);
 });
+
+// Initialize drag-and-drop on main canvas
+initDragAndDrop('.main', FILE_TO_INPUT_MAP);
 
 // Electron folder import
 if (_isElectron && window.electronAPI.onImportFolder) {
@@ -1441,6 +2667,9 @@ function _renderMapInner() {
 
   // Show stats bar
   renderStatsBar(_lk);
+
+  // Render note badges on map
+  if (typeof renderNoteBadges === 'function') renderNoteBadges();
 
   // Show legend and export bar
   document.getElementById('legend').style.display = 'flex';
@@ -2156,7 +3385,7 @@ function renderPeeringLines(g, lk) {
     }
   });
 
-  const M = 20, R = 8, IM = 10;  // IM = internal margin around subnets
+  const M = 20, R = 8, IM = 10, CM = 20;  // IM = obstacle padding, CM = channel margin from VNet edge
 
   // ── Shared geometry helpers ──
 
@@ -2195,8 +3424,8 @@ function renderPeeringLines(g, lk) {
     const h0 = Math.round(vb.y + 38);
 
     // Vertical channels: left margin, right margin, column gutter
-    const vl = Math.round(vb.x + IM);
-    const vr = Math.round(vb.x + vb.w - IM);
+    const vl = Math.round(vb.x + CM);
+    const vr = Math.round(vb.x + vb.w - CM);
 
     // Column gutter: approximate center of VNet (aligns with gap between 2-col subnets)
     const vc = Math.round(vb.cx);
@@ -2381,125 +3610,373 @@ function renderPeeringLines(g, lk) {
     return best;
   }
 
-  // ── Channel-based internal routing ──
+  // ============================================================
+// BLAST RADIUS OVERLAY VISUALIZATION
+// ============================================================
 
-  function hubPt(vnetId) {
-    const ch = channels[vnetId];
-    const vb = boxes[vnetId];
-    return { x: Math.round(vb.cx), y: ch ? ch.h0 : Math.round(vb.y + 38) };
+// ============================================================
+// BLAST RADIUS SVG OVERLAY VISUALIZATION
+// ============================================================
+
+/**
+ * Apply blast radius visual overlay to the SVG map
+ * Highlights the source resource and its dependencies with glowing effects
+ * @param {string} resourceId - Azure resource ID to analyze
+ */
+function applyBlastRadiusOverlay(resourceId) {
+  if (!resourceId) return;
+
+  // Clear any existing overlay first
+  clearBlastRadiusOverlay();
+
+  // Calculate blast radius using existing engine
+  const deps = calculateBlastRadius(resourceId, _lk);
+
+  // Get map root element
+  const mapRoot = document.getElementById('mapRoot');
+  if (!mapRoot) return;
+
+  // Activate blast mode - dims all elements
+  mapRoot.classList.add('blast-active');
+
+  // Highlight source resource
+  const sourceElement = findResourceElement(resourceId);
+  if (sourceElement) {
+    sourceElement.classList.add('blast-source');
   }
 
-  // Simplify a point array: remove duplicates and collinear mid-points
-  function simplify(pts) {
-    const cl = [pts[0]];
-    for (let i = 1; i < pts.length; i++) {
-      const p = pts[i], v = cl[cl.length - 1];
-      if (Math.abs(p.x - v.x) > 0.5 || Math.abs(p.y - v.y) > 0.5) cl.push(p);
+  // Highlight hard dependencies
+  deps.hard.forEach(dep => {
+    const element = findResourceElement(dep.id);
+    if (element) {
+      element.classList.add('blast-hard');
     }
-    if (cl.length <= 2) return cl;
-    const out = [cl[0]];
-    for (let i = 1; i < cl.length - 1; i++) {
-      const p = out[out.length - 1], c = cl[i], n = cl[i + 1];
-      if (!(Math.abs(p.x - c.x) < 0.5 && Math.abs(c.x - n.x) < 0.5) &&
-          !(Math.abs(p.y - c.y) < 0.5 && Math.abs(c.y - n.y) < 0.5)) out.push(c);
+  });
+
+  // Highlight soft dependencies
+  deps.soft.forEach(dep => {
+    const element = findResourceElement(dep.id);
+    if (element) {
+      element.classList.add('blast-soft');
     }
-    out.push(cl[cl.length - 1]);
-    return out;
+  });
+
+  // Show legend
+  showBlastLegend();
+
+  // Setup event listeners for clearing overlay
+  setupBlastRadiusClearHandlers();
+}
+
+/**
+ * Find SVG element for a given resource ID
+ * Tries multiple strategies: data attributes, name matching
+ * @param {string} resourceId - Azure resource ID
+ * @returns {Element|null} - SVG group element or null
+ */
+function findResourceElement(resourceId) {
+  if (!resourceId) return null;
+
+  const rid = resourceId.toLowerCase();
+  const mapRoot = document.getElementById('mapRoot');
+  if (!mapRoot) return null;
+
+  // Strategy 1: Direct data-subnet-id match
+  if (rid.includes('/subnets/')) {
+    try {
+      const el = mapRoot.querySelector(`[data-subnet-id="${CSS.escape(resourceId)}"]`);
+      if (el) return el;
+    } catch (e) {
+      // Fallback without CSS.escape if it fails
+    }
   }
 
-  // Trunk: GW → hub via channels, avoiding subnets
-  function trunkRoute(gwPt, gwSide, hub, obs, vnetId) {
-    const ch = channels[vnetId];
-    const vb = boxes[vnetId];
-    if (!ch || !vb) return [gwPt, hub];
-
-    if (hSide(gwSide)) {
-      // Left/right GW: already at corridor height → horizontal to hub
-      return simplify([gwPt, hub]);
+  // Strategy 2: Direct data-vnet-id match
+  if (rid.includes('/virtualnetworks/') && !rid.includes('/subnets/')) {
+    try {
+      const el = mapRoot.querySelector(`[data-vnet-id="${CSS.escape(resourceId)}"]`);
+      if (el) return el;
+    } catch (e) {
+      // Fallback
     }
-
-    // Top/bottom GW: pick nearest vertical channel that doesn't cross subnets
-    const stepY = gwSide === 'top' ? vb.y + IM : vb.y + vb.h - IM;
-    const yTop = Math.min(stepY, ch.h0), yBot = Math.max(stepY, ch.h0);
-
-    // Sort channels by distance from gwPt.x, prefer ones that avoid obstacles
-    const ranked = [...ch.v].sort((a, b) => Math.abs(a - gwPt.x) - Math.abs(b - gwPt.x));
-    let bestV = ranked[0];
-    for (const vx of ranked) {
-      const hits = obs.some(o => segHits(vx, yTop, vx, yBot, o));
-      if (!hits) { bestV = vx; break; }
-    }
-
-    return simplify([
-      gwPt,
-      { x: gwPt.x, y: stepY },
-      { x: bestV, y: stepY },
-      { x: bestV, y: ch.h0 },
-      hub
-    ]);
   }
 
-  // Branch: hub → subnet endpoint via channels, avoiding other subnets.
-  // Each branch routes directly toward its target for visual clarity.
-  function branchRoute(hub, cp, obs, sub, vnetId) {
-    if (Math.abs(cp.x - hub.x) < 1 && Math.abs(cp.y - hub.y) < 1) return [hub, cp];
-
-    const ch = channels[vnetId];
-    if (!ch) return [{ ...hub }, { x: cp.x, y: hub.y }, { ...cp }];
-
-    // Determine which row the target subnet is in
-    const vb = boxes[vnetId];
-    const subRow = sub ? Math.round((sub.y - vb.y - 70) / (sub.h + 40)) : 0;
-
-    if (subRow === 0) {
-      // First row: direct L-route from corridor — no subnets above to cross
-      return simplify([{ ...hub }, { x: cp.x, y: hub.y }, { ...cp }]);
+  // Strategy 3: Case-insensitive attribute matching
+  // Search all vnet-group and subnet-node elements
+  const allVnets = mapRoot.querySelectorAll('.vnet-group');
+  for (const vnet of allVnets) {
+    const vnetId = vnet.getAttribute('data-vnet-id');
+    if (vnetId && vnetId.toLowerCase() === rid) {
+      return vnet;
     }
+  }
 
-    // Lower rows: find the horizontal channel just above this row (the row gap)
-    const hIdx = Math.min(subRow, ch.h.length - 1);
-    const hChannel = ch.h[hIdx];
+  const allSubnets = mapRoot.querySelectorAll('.subnet-node');
+  for (const subnet of allSubnets) {
+    const subnetId = subnet.getAttribute('data-subnet-id');
+    if (subnetId && subnetId.toLowerCase() === rid) {
+      return subnet;
+    }
+  }
 
-    // Route directly toward cp.x if the vertical path doesn't hit obstacles;
-    // otherwise pick from margin channels that avoid subnets.
-    const yTop = Math.min(hub.y, hChannel), yBot = Math.max(hub.y, hChannel);
-    let vx = cp.x;  // ideal: drop straight above the target
-    if (obs.some(o => segHits(vx, yTop, vx, yBot, o))) {
-      // cp.x blocked — try margin channels, pick closest to cp.x that's clear
-      const candidates = [...ch.v].sort((a, b) => Math.abs(a - cp.x) - Math.abs(b - cp.x));
-      vx = candidates[0];  // fallback
-      for (const cx of candidates) {
-        if (!obs.some(o => segHits(cx, yTop, cx, yBot, o))) { vx = cx; break; }
+  // Strategy 4: Match by resource name within the ID
+  // Extract resource name from ID (last segment)
+  const resourceName = shortName(resourceId).toLowerCase();
+
+  // Check VNets
+  for (const vnet of allVnets) {
+    const vnetId = vnet.getAttribute('data-vnet-id') || '';
+    const vnetName = shortName(vnetId).toLowerCase();
+    if (vnetName === resourceName) {
+      return vnet;
+    }
+  }
+
+  // Check Subnets
+  for (const subnet of allSubnets) {
+    const subnetId = subnet.getAttribute('data-subnet-id') || '';
+    const subnetName = shortName(subnetId).toLowerCase();
+    if (subnetName === resourceName) {
+      return subnet;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Clear blast radius overlay and remove all highlight classes
+ */
+function clearBlastRadiusOverlay() {
+  const mapRoot = document.getElementById('mapRoot');
+  if (!mapRoot) return;
+
+  // Remove blast-active mode
+  mapRoot.classList.remove('blast-active');
+
+  // Remove all blast highlight classes
+  const highlightedElements = mapRoot.querySelectorAll('.blast-source, .blast-hard, .blast-soft');
+  highlightedElements.forEach(el => {
+    el.classList.remove('blast-source', 'blast-hard', 'blast-soft');
+  });
+
+  // Hide legend
+  hideBlastLegend();
+
+  // Remove event listeners
+  removeBlastRadiusClearHandlers();
+}
+
+/**
+ * Show the blast radius legend overlay
+ */
+function showBlastLegend() {
+  // Remove existing legend if present
+  hideBlastLegend();
+
+  // Create legend element using safe DOM methods
+  const legend = document.createElement('div');
+  legend.id = 'blastLegend';
+
+  // Title
+  const title = document.createElement('div');
+  title.className = 'legend-title';
+  title.textContent = 'Blast Radius';
+  legend.appendChild(title);
+
+  // Source item
+  const sourceItem = document.createElement('div');
+  sourceItem.className = 'legend-item';
+  const sourceDot = document.createElement('div');
+  sourceDot.className = 'legend-dot source';
+  const sourceLabel = document.createElement('span');
+  sourceLabel.textContent = 'Source Resource';
+  sourceItem.appendChild(sourceDot);
+  sourceItem.appendChild(sourceLabel);
+  legend.appendChild(sourceItem);
+
+  // Hard dependency item
+  const hardItem = document.createElement('div');
+  hardItem.className = 'legend-item';
+  const hardDot = document.createElement('div');
+  hardDot.className = 'legend-dot hard';
+  const hardLabel = document.createElement('span');
+  hardLabel.textContent = 'Hard Dependency';
+  hardItem.appendChild(hardDot);
+  hardItem.appendChild(hardLabel);
+  legend.appendChild(hardItem);
+
+  // Soft dependency item
+  const softItem = document.createElement('div');
+  softItem.className = 'legend-item';
+  const softDot = document.createElement('div');
+  softDot.className = 'legend-dot soft';
+  const softLabel = document.createElement('span');
+  softLabel.textContent = 'Soft Dependency';
+  softItem.appendChild(softDot);
+  softItem.appendChild(softLabel);
+  legend.appendChild(softItem);
+
+  // Hint
+  const hint = document.createElement('div');
+  hint.className = 'legend-hint';
+  hint.textContent = 'Press ESC or click to clear';
+  legend.appendChild(hint);
+
+  document.body.appendChild(legend);
+}
+
+/**
+ * Hide and remove the blast radius legend
+ */
+function hideBlastLegend() {
+  const legend = document.getElementById('blastLegend');
+  if (legend) {
+    legend.remove();
+  }
+}
+
+/**
+ * Setup event handlers to clear blast radius overlay
+ * - Escape key
+ * - Click on empty map area
+ */
+function setupBlastRadiusClearHandlers() {
+  // Escape key handler
+  document.addEventListener('keydown', handleBlastRadiusEscape);
+
+  // Click on empty map area (mapSvg background)
+  const mapSvg = document.getElementById('mapSvg');
+  if (mapSvg) {
+    mapSvg.addEventListener('click', handleBlastRadiusMapClick);
+  }
+}
+
+/**
+ * Remove blast radius clear event handlers
+ */
+function removeBlastRadiusClearHandlers() {
+  document.removeEventListener('keydown', handleBlastRadiusEscape);
+
+  const mapSvg = document.getElementById('mapSvg');
+  if (mapSvg) {
+    mapSvg.removeEventListener('click', handleBlastRadiusMapClick);
+  }
+}
+
+/**
+ * Handle Escape key to clear blast radius
+ */
+function handleBlastRadiusEscape(event) {
+  if (event.key === 'Escape') {
+    clearBlastRadiusOverlay();
+  }
+}
+
+/**
+ * Handle click on map background to clear blast radius
+ * Only clears if clicking directly on the SVG background, not on elements
+ */
+function handleBlastRadiusMapClick(event) {
+  // Check if click target is the SVG itself or the mapRoot group
+  const target = event.target;
+  if (target.id === 'mapSvg' || target.id === 'mapRoot') {
+    clearBlastRadiusOverlay();
+  }
+}
+
+// ============================================================
+// INTEGRATION WITH EXISTING BLAST RADIUS PANEL
+// ============================================================
+
+/**
+ * Enhanced openBlastRadiusPanel with "Highlight on Map" button
+ * This replaces the existing function at line 4206
+ */
+function openBlastRadiusPanel(resourceId) {
+  const deps = calculateBlastRadius(resourceId, _lk);
+  const total = deps.hard.length + deps.soft.length + deps.config.length;
+  let html = '';
+
+  // Header with total count
+  html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border)">`;
+  html += `<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted)">If this resource is removed:</div>`;
+  html += `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-primary);margin-top:4px">${total} impacted resources</div>`;
+  html += `</div>`;
+
+  // "Highlight on Map" button
+  if (total > 0) {
+    html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border)">`;
+    html += `<button id="blastHighlightBtn" style="width:100%;padding:8px 12px;background:var(--accent-cyan);color:var(--bg-primary);border:none;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;cursor:pointer;transition:background 0.2s">`;
+    html += `Highlight on Map</button>`;
+    html += `</div>`;
+  }
+
+  // Hard dependencies section
+  if (deps.hard.length > 0) {
+    html += `<div class="dp-section"><div class="dp-sec-hdr"><span class="dp-sec-title" style="color:var(--accent-red)">Hard Dependencies</span><span class="dp-sec-count">${deps.hard.length}</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">`;
+    deps.hard.forEach(d => { html += `<div class="dp-row"><span class="lbl">${esc(d.type)}</span><span class="val d">${esc(d.name)}</span></div>` });
+    html += `</div></div>`;
+  }
+
+  // Soft dependencies section
+  if (deps.soft.length > 0) {
+    html += `<div class="dp-section"><div class="dp-sec-hdr"><span class="dp-sec-title" style="color:var(--accent-orange)">Soft Dependencies</span><span class="dp-sec-count">${deps.soft.length}</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">`;
+    deps.soft.forEach(d => { html += `<div class="dp-row"><span class="lbl">${esc(d.type)}</span><span class="val p">${esc(d.name)}</span></div>` });
+    html += `</div></div>`;
+  }
+
+  // No dependencies message
+  if (total === 0) {
+    html += `<div style="padding:16px;text-align:center;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;font-size:11px">No dependencies detected</div>`;
+  }
+
+  openDetailPanel('Blast Radius', `Impact analysis for ${esc(shortName(resourceId))}`, html);
+
+  // Attach click handler to highlight button after panel is opened
+  if (total > 0) {
+    setTimeout(() => {
+      const btn = document.getElementById('blastHighlightBtn');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          applyBlastRadiusOverlay(resourceId);
+          // Visual feedback
+          btn.textContent = 'Highlighted ✓';
+          btn.style.background = 'var(--accent-green)';
+          setTimeout(() => {
+            if (btn) {
+              btn.textContent = 'Highlight on Map';
+              btn.style.background = 'var(--accent-cyan)';
+            }
+          }, 1500);
+        });
       }
-    }
-
-    return simplify([
-      { ...hub },
-      { x: vx, y: hub.y },        // horizontal on corridor to vertical lane
-      { x: vx, y: hChannel },     // drop on vertical lane to row gap
-      { x: cp.x, y: hChannel },   // horizontal on row gap to target column
-      { ...cp }                    // short drop to endpoint
-    ]);
+    }, 0);
   }
+}
 
-  // NSG security state for a subnet
-  function nsgState(subId) {
-    const nsg = lk.nsgBySubnet[(subId || '').toLowerCase()];
-    if (!nsg) return { state: 'open', nsg: null, rules: [] };
-    const rules = (nsg.securityRules || []).filter(r => r.direction === 'Inbound');
-    const allows = rules.filter(r => r.access === 'Allow');
-    const hasPublic = allows.some(r =>
-      r.sourceAddressPrefix === '*' || r.sourceAddressPrefix === 'Internet');
-    return { state: hasPublic ? 'filtered' : 'locked', nsg, rules };
+// ============================================================
+// ENHANCED closeDetailPanel
+// ============================================================
+
+/**
+ * Enhanced closeDetailPanel to also clear blast radius overlay
+ * This enhances the existing function at line 663
+ */
+const originalCloseDetailPanel = closeDetailPanel;
+function closeDetailPanel() {
+  clearBlastRadiusOverlay();
+  window._currentNotesFilter = null;
+  if (typeof originalCloseDetailPanel === 'function') {
+    originalCloseDetailPanel();
+  } else {
+    document.getElementById('detailPanel').classList.remove('open');
+    clearFlowHighlight();
   }
+}
 
-  function epColor(state) {
-    if (state === 'locked')   return 'var(--accent-green)';
-    if (state === 'filtered') return '#f59e0b';
-    return 'var(--accent-red)';
-  }
 
-  // ── SVG path with rounded corners ──
+// ── SVG path with rounded corners ──
 
   function toPath(pts) {
     if (pts.length < 2) return '';
@@ -2618,39 +4095,47 @@ function renderPeeringLines(g, lk) {
       .text('GW');
   }
 
-  // ── Build spine + branch tree & render each peering ──
+  // ── NSG security state for endpoint coloring ──
 
-  const branchesDrawn = new Set();  // draw branches once per VNet
+  function nsgState(subId) {
+    const nsg = lk.nsgBySubnet[(subId || '').toLowerCase()];
+    if (!nsg) return { state: 'open', nsg: null, rules: [] };
+    const rules = (nsg.securityRules || []).filter(r => r.direction === 'Inbound');
+    const allows = rules.filter(r => r.access === 'Allow');
+    const hasPublic = allows.some(r =>
+      r.sourceAddressPrefix === '*' || r.sourceAddressPrefix === 'Internet');
+    return { state: hasPublic ? 'filtered' : 'locked', nsg, rules };
+  }
+
+  function epColor(state) {
+    if (state === 'locked')   return 'var(--accent-green)';
+    if (state === 'filtered') return '#f59e0b';
+    return 'var(--accent-red)';
+  }
+
+  // ── Render peering connections ──
+
+  const branchesDrawn = new Set();
 
   pairs.forEach(({ sourceId, remoteId }) => {
     const ext = bestExtRoute(sourceId, remoteId);
     const { ss, ds, pts: extPts } = ext;
 
-    const hubSrc = hubPt(sourceId), hubDst = hubPt(remoteId);
-    const srcSubObs = (subBoxes[sourceId] || []).map(b => pad(b, IM));
-    const dstSubObs = (subBoxes[remoteId] || []).map(b => pad(b, IM));
+    const lineG = peerG.append('g').attr('class', 'peering-group');
 
-    // Trunks: gateway → hub (inside VNet, around subnets)
-    const trSrc = trunkRoute(extPts[0], ss, hubSrc, srcSubObs, sourceId);
-    const trDst = trunkRoute(extPts[extPts.length - 1], ds, hubDst, dstSubObs, remoteId);
-
-    // Spine: hub_src ← trunk ← gw_src === ext === gw_dst → trunk → hub_dst
-    const srcRev = trSrc.slice().reverse();
-    const spine = [...srcRev, ...extPts.slice(1, -1), ...trDst];
-
-    peerG.append('path')
+    // External spine: GW-to-GW
+    lineG.append('path')
       .attr('class', 'peering-line')
-      .attr('d', toPath(mergeShortSegments(spine, 2 * R)))
+      .attr('d', toPath(mergeShortSegments(extPts, 2 * R)))
       .attr('stroke', 'var(--peer-color)');
 
     renderGw(sourceId, ss);
     renderGw(remoteId, ds);
 
-    // PEERING label on external segment, offset perpendicular to avoid overlapping GW icons
+    // PEERING label on external segment
     const extMid = pathMid(extPts);
     const isVert = !hSide(ss) && !hSide(ds);
     const isHoriz = hSide(ss) && hSide(ds);
-    // Offset label further from line to clear inset GW icons
     const lblX = extMid.x + (isVert ? 16 : 0);
     const lblY = extMid.y + (isHoriz ? -14 : (isVert ? 4 : -12));
     peerG.append('text')
@@ -2661,70 +4146,80 @@ function renderPeeringLines(g, lk) {
       .attr('font-size', 'calc(8px * var(--txt-scale))')
       .text('PEERING');
 
-    // ── Branches + endpoint dots (once per VNet) ──
+    // ── Internal branches: margin trunk → horizontal stubs to subnets ──
+    // Like AWS Mapper: vertical trunk runs along the VNet margin,
+    // short horizontal stubs connect to each subnet.
 
-    [{ vnetId: sourceId, hub: hubSrc, obs: srcSubObs },
-     { vnetId: remoteId, hub: hubDst, obs: dstSubObs }].forEach(({ vnetId, hub, obs }) => {
+    [{ vnetId: sourceId, gwSide: ss },
+     { vnetId: remoteId, gwSide: ds }].forEach(({ vnetId, gwSide }) => {
       if (branchesDrawn.has(vnetId)) return;
       branchesDrawn.add(vnetId);
+
       const subs = subBoxes[vnetId] || [];
-      if (subs.length === 0) {
-        // No subnets — endpoint dot at hub
-        peerG.append('circle').attr('class', 'peering-ep')
-          .attr('cx', hub.x).attr('cy', hub.y).attr('r', 4)
-          .attr('fill', 'var(--peer-color)').attr('fill-opacity', .3)
-          .attr('stroke', 'var(--peer-color)').attr('stroke-width', 1.2);
-        return;
-      }
+      if (subs.length === 0) return;
 
-      // Sort subnets left-to-right, top-to-bottom for consistent branch ordering
-      const sorted = [...subs].sort((a, b) => {
-        const rowA = Math.round(a.y / 50), rowB = Math.round(b.y / 50);
-        if (rowA !== rowB) return rowA - rowB;
-        return a.x - b.x;
-      });
-
-      // Each branch gets its own corridor y-offset so lines don't stack
       const vb = boxes[vnetId];
-      const VSPREAD = sorted.length > 1 ? Math.min(3, 14 / (sorted.length - 1)) : 0;
-      const vSpreadStart = -VSPREAD * (sorted.length - 1) / 2;
+      const ch = channels[vnetId];
+      if (!ch) return;
 
-      sorted.forEach((sub, si) => {
-        const cp = { x: sub.x + sub.w / 2, y: sub.y - 2 };  // endpoint just above subnet top edge
-        const brObs = sorted.filter(s => s !== sub).map(b => pad(b, IM));
-        const branchHub = { x: hub.x, y: hub.y + vSpreadStart + si * VSPREAD };
-        const bPts = branchRoute(branchHub, cp, brObs, sub, vnetId);
+      // Sort subnets top-to-bottom
+      const sorted = [...subs].sort((a, b) => a.y - b.y);
 
-        // NSG security state for coloring
-        const sec = nsgState(sub.subId);
-        const color = epColor(sec.state);
+      // Split subnets into left and right columns based on VNet center
+      const vMid = vb.x + vb.w / 2;
+      const leftCol = sorted.filter(s => s.x + s.w / 2 < vMid);
+      const rightCol = sorted.filter(s => s.x + s.w / 2 >= vMid);
 
-        // Branch line — offset dash phase per branch for visual distinction
-        peerG.append('path')
+      // Draw a trunk + stubs for each column that has subnets
+      const gwY = ch.h0;
+      const columns = [];
+      if (leftCol.length > 0) columns.push({ subs: leftCol, trunkX: ch.vl, edgeSide: 'left' });
+      if (rightCol.length > 0) columns.push({ subs: rightCol, trunkX: ch.vr, edgeSide: 'right' });
+
+      columns.forEach(({ subs: colSubs, trunkX, edgeSide }) => {
+        const firstY = colSubs[0].y + colSubs[0].h / 2;
+        const lastY = colSubs[colSubs.length - 1].y + colSubs[colSubs.length - 1].h / 2;
+        const trunkTopY = Math.min(gwY, firstY);
+        const trunkBotY = lastY;
+
+        // Vertical trunk along this column's margin
+        lineG.append('path')
           .attr('class', 'peering-branch')
-          .attr('d', toPath(mergeShortSegments(bPts, 2 * R)))
-          .attr('stroke', color)
-          .attr('stroke-dashoffset', si * 4);
+          .attr('d', `M${trunkX},${trunkTopY} L${trunkX},${trunkBotY}`)
+          .attr('stroke', 'var(--peer-color)');
 
-        // Endpoint dot
-        const epG = peerG.append('g').attr('class', 'peering-ep')
-          .attr('transform', `translate(${cp.x},${cp.y})`);
-        epG.append('circle').attr('r', 4.5)
+        colSubs.forEach(sub => {
+          const subMidY = sub.y + sub.h / 2;
+          // Connect to the subnet edge facing the trunk
+          const subEdgeX = (edgeSide === 'left') ? sub.x : sub.x + sub.w;
+
+          const sec = nsgState(sub.subId);
+          const color = epColor(sec.state);
+
+          // Horizontal stub from trunk to subnet edge
+          lineG.append('path')
+            .attr('class', 'peering-branch')
+            .attr('d', `M${trunkX},${subMidY} L${subEdgeX},${subMidY}`)
+            .attr('stroke', color);
+
+          // Endpoint dot at subnet edge
+          const epG = peerG.append('g').attr('class', 'peering-ep')
+            .attr('transform', `translate(${subEdgeX},${subMidY})`);
+        epG.append('circle').attr('r', 3.5)
           .attr('fill', color).attr('fill-opacity', .2)
-          .attr('stroke', color).attr('stroke-width', 1.4);
-        epG.append('circle').attr('r', 1.8).attr('fill', color);
+          .attr('stroke', color).attr('stroke-width', 1.2);
+        epG.append('circle').attr('r', 1.5).attr('fill', color);
 
-        // Security state label
-        const labelText = sec.state === 'locked' ? 'NSG' : sec.state === 'filtered' ? 'NSG' : 'OPEN';
+        // Security state label for open subnets
         if (sec.state === 'open') {
           epG.append('text')
-            .attr('x', 8).attr('y', 3)
+            .attr('x', 7).attr('y', 3)
             .attr('fill', color).attr('font-size', '7px').attr('font-weight', '600')
             .attr('font-family', "'IBM Plex Mono',monospace")
             .text('OPEN');
         }
 
-        // Tooltip with NSG rules
+        // Tooltip
         epG.on('mouseenter', function(event) {
           const subName = sub.subId ? sub.subId.split('/').pop() : '?';
           let html = `<div class="tt-title">Peering Endpoint</div>`;
@@ -2756,6 +4251,7 @@ function renderPeeringLines(g, lk) {
         .on('mousemove', moveTooltip);
       });
     });
+  });
   });
 }
 
@@ -4224,7 +5720,7 @@ function openComplianceDashboard() {
   }
 
   // Export button
-  html += `<div style="padding:12px 16px"><button onclick="exportComplianceCsv()" style="width:100%;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-transform:uppercase">Export CSV</button></div>`;
+  html += `<div style="padding:12px 16px;display:flex;gap:8px"><button onclick="exportComplianceCsv()" style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-transform:uppercase">CSV</button><button onclick="exportComplianceExcel()" style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-transform:uppercase">Excel</button><button onclick="exportComplianceHTML()" style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-transform:uppercase">HTML</button></div>`;
 
   openDetailPanel(
     `Compliance: ${findings.length} findings`,
@@ -4247,6 +5743,721 @@ function exportComplianceCsv() {
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+// ============================================================
+// COMPLIANCE EXPORT - EXCEL & HTML
+// ============================================================
+
+// ============================================================
+// COMPLIANCE EXPORT - EXCEL & HTML
+// ============================================================
+
+// Export compliance findings as Excel (SpreadsheetML format)
+function exportComplianceExcel() {
+  if (!_lk) return;
+  const findings = runComplianceChecks(_lk);
+  const now = new Date().toLocaleString();
+
+  // Calculate severity counts
+  const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+  findings.forEach(f => { counts[f.severity] = (counts[f.severity] || 0) + 1; });
+
+  // Calculate framework counts
+  const fwCounts = {};
+  findings.forEach(f => {
+    fwCounts[f.framework] = (fwCounts[f.framework] || 0) + 1;
+  });
+
+  // Severity colors
+  const sevColors = {
+    CRITICAL: { bg: '#fecaca', fg: '#991b1b' },
+    HIGH: { bg: '#fed7aa', fg: '#9a3412' },
+    MEDIUM: { bg: '#fef08a', fg: '#854d0e' },
+    LOW: { bg: '#bbf7d0', fg: '#166534' }
+  };
+
+  // Build SpreadsheetML
+  let xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+`;
+
+  // Styles
+  xml += `<Styles>
+  <Style ss:ID="Header">
+    <Font ss:Bold="1" ss:Size="12"/>
+    <Interior ss:Color="#1e293b" ss:Pattern="Solid"/>
+    <Font ss:Color="#ffffff"/>
+  </Style>
+  <Style ss:ID="Title">
+    <Font ss:Bold="1" ss:Size="14"/>
+  </Style>
+  <Style ss:ID="Critical">
+    <Interior ss:Color="${sevColors.CRITICAL.bg}" ss:Pattern="Solid"/>
+    <Font ss:Color="${sevColors.CRITICAL.fg}" ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="High">
+    <Interior ss:Color="${sevColors.HIGH.bg}" ss:Pattern="Solid"/>
+    <Font ss:Color="${sevColors.HIGH.fg}" ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="Medium">
+    <Interior ss:Color="${sevColors.MEDIUM.bg}" ss:Pattern="Solid"/>
+    <Font ss:Color="${sevColors.MEDIUM.fg}" ss:Bold="1"/>
+  </Style>
+  <Style ss:ID="Low">
+    <Interior ss:Color="${sevColors.LOW.bg}" ss:Pattern="Solid"/>
+    <Font ss:Color="${sevColors.LOW.fg}" ss:Bold="1"/>
+  </Style>
+</Styles>
+`;
+
+  // ===== WORKSHEET 1: Executive Summary =====
+  xml += `<Worksheet ss:Name="Executive Summary">
+  <Table>
+    <Column ss:Width="200"/>
+    <Column ss:Width="100"/>
+    <Row>
+      <Cell ss:StyleID="Title"><Data ss:Type="String">Azure Compliance Report</Data></Cell>
+    </Row>
+    <Row>
+      <Cell><Data ss:Type="String">Generated</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(now)}</Data></Cell>
+    </Row>
+    <Row>
+      <Cell><Data ss:Type="String">Total Findings</Data></Cell>
+      <Cell><Data ss:Type="Number">${findings.length}</Data></Cell>
+    </Row>
+    <Row/>
+    <Row>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Severity Breakdown</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Count</Data></Cell>
+    </Row>`;
+
+  ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].forEach(sev => {
+    xml += `
+    <Row>
+      <Cell ss:StyleID="${sev.charAt(0) + sev.slice(1).toLowerCase()}"><Data ss:Type="String">${sev}</Data></Cell>
+      <Cell><Data ss:Type="Number">${counts[sev] || 0}</Data></Cell>
+    </Row>`;
+  });
+
+  xml += `
+    <Row/>
+    <Row>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Framework Breakdown</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Count</Data></Cell>
+    </Row>`;
+
+  Object.entries(fwCounts).forEach(([fw, count]) => {
+    xml += `
+    <Row>
+      <Cell><Data ss:Type="String">${escapeXml(fw)}</Data></Cell>
+      <Cell><Data ss:Type="Number">${count}</Data></Cell>
+    </Row>`;
+  });
+
+  xml += `
+  </Table>
+</Worksheet>
+`;
+
+  // ===== WORKSHEET 2: Findings Detail =====
+  xml += `<Worksheet ss:Name="Findings Detail">
+  <Table>
+    <Column ss:Width="80"/>
+    <Column ss:Width="100"/>
+    <Column ss:Width="150"/>
+    <Column ss:Width="200"/>
+    <Column ss:Width="300"/>
+    <Column ss:Width="300"/>
+    <Row>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Severity</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Framework</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Check ID</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Resource</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Finding</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Remediation</Data></Cell>
+    </Row>`;
+
+  findings.forEach(f => {
+    const styleId = f.severity.charAt(0) + f.severity.slice(1).toLowerCase();
+    xml += `
+    <Row>
+      <Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeXml(f.severity)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(f.framework)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(f.id)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(f.resource)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(f.message)}</Data></Cell>
+      <Cell><Data ss:Type="String">${escapeXml(f.remediation)}</Data></Cell>
+    </Row>`;
+  });
+
+  xml += `
+  </Table>
+</Worksheet>
+`;
+
+  // ===== WORKSHEET 3: By Framework =====
+  xml += `<Worksheet ss:Name="By Framework">
+  <Table>
+    <Column ss:Width="150"/>
+    <Column ss:Width="80"/>
+    <Column ss:Width="80"/>
+    <Column ss:Width="80"/>
+    <Column ss:Width="80"/>
+    <Column ss:Width="80"/>
+    <Row>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Framework</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">CRITICAL</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">HIGH</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">MEDIUM</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">LOW</Data></Cell>
+      <Cell ss:StyleID="Header"><Data ss:Type="String">Total</Data></Cell>
+    </Row>`;
+
+  // Build matrix
+  const frameworks = {};
+  findings.forEach(f => {
+    if (!frameworks[f.framework]) {
+      frameworks[f.framework] = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    }
+    frameworks[f.framework][f.severity]++;
+  });
+
+  Object.entries(frameworks).forEach(([fw, sevs]) => {
+    const total = sevs.CRITICAL + sevs.HIGH + sevs.MEDIUM + sevs.LOW;
+    xml += `
+    <Row>
+      <Cell><Data ss:Type="String">${escapeXml(fw)}</Data></Cell>
+      <Cell ss:StyleID="Critical"><Data ss:Type="Number">${sevs.CRITICAL}</Data></Cell>
+      <Cell ss:StyleID="High"><Data ss:Type="Number">${sevs.HIGH}</Data></Cell>
+      <Cell ss:StyleID="Medium"><Data ss:Type="Number">${sevs.MEDIUM}</Data></Cell>
+      <Cell ss:StyleID="Low"><Data ss:Type="Number">${sevs.LOW}</Data></Cell>
+      <Cell><Data ss:Type="Number">${total}</Data></Cell>
+    </Row>`;
+  });
+
+  xml += `
+  </Table>
+</Worksheet>
+`;
+
+  xml += `</Workbook>`;
+
+  // Download
+  const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+  const a = document.createElement('a');
+  a.download = 'azure-compliance-report.xls';
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// Helper: escape XML special chars
+function escapeXml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+// Export compliance findings as standalone HTML report
+function exportComplianceHTML() {
+  if (!_lk) return;
+  const findings = runComplianceChecks(_lk);
+  const now = new Date().toLocaleString();
+
+  // Calculate severity counts
+  const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+  findings.forEach(f => { counts[f.severity] = (counts[f.severity] || 0) + 1; });
+
+  // Calculate framework counts
+  const fwCounts = {};
+  findings.forEach(f => {
+    fwCounts[f.framework] = (fwCounts[f.framework] || 0) + 1;
+  });
+
+  // Calculate compliance score
+  // Weight: CRITICAL=10, HIGH=5, MEDIUM=2, LOW=1
+  const maxScore = findings.length * 10; // if all were critical
+  const actualScore = findings.reduce((sum, f) => {
+    const weights = { CRITICAL: 10, HIGH: 5, MEDIUM: 2, LOW: 1 };
+    return sum + weights[f.severity];
+  }, 0);
+  const scorePercent = findings.length > 0 ? Math.max(0, 100 - Math.round((actualScore / maxScore) * 100)) : 100;
+
+  // Letter grade
+  let grade = 'F';
+  if (scorePercent >= 90) grade = 'A';
+  else if (scorePercent >= 80) grade = 'B';
+  else if (scorePercent >= 70) grade = 'C';
+  else if (scorePercent >= 60) grade = 'D';
+
+  // Severity colors
+  const sevColors = {
+    CRITICAL: { bg: '#fecaca', fg: '#991b1b', border: '#991b1b' },
+    HIGH: { bg: '#fed7aa', fg: '#9a3412', border: '#9a3412' },
+    MEDIUM: { bg: '#fef08a', fg: '#854d0e', border: '#854d0e' },
+    LOW: { bg: '#bbf7d0', fg: '#166534', border: '#166534' }
+  };
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Azure Compliance Report</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'IBM Plex Sans', sans-serif;
+      background: #0a0e17;
+      color: #e2e8f0;
+      padding: 24px;
+      line-height: 1.6;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; }
+
+    h1 {
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+
+    .meta {
+      color: #94a3b8;
+      font-size: 14px;
+      margin-bottom: 32px;
+    }
+
+    .section {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #ffffff;
+    }
+
+    /* Score gauge */
+    .score-container {
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      flex-wrap: wrap;
+    }
+
+    .score-gauge {
+      position: relative;
+      width: 160px;
+      height: 160px;
+    }
+
+    .score-circle {
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: conic-gradient(
+        #10b981 0% ${scorePercent}%,
+        #334155 ${scorePercent}% 100%
+      );
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .score-inner {
+      width: 120px;
+      height: 120px;
+      border-radius: 50%;
+      background: #0f172a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .score-percent {
+      font-size: 36px;
+      font-weight: 700;
+      color: #10b981;
+    }
+
+    .score-label {
+      font-size: 12px;
+      color: #94a3b8;
+      text-transform: uppercase;
+    }
+
+    .score-details {
+      flex: 1;
+      min-width: 300px;
+    }
+
+    .score-grade {
+      font-size: 72px;
+      font-weight: 700;
+      color: #10b981;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .score-desc {
+      font-size: 14px;
+      color: #94a3b8;
+    }
+
+    /* Severity bars */
+    .severity-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .sev-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .sev-label {
+      width: 100px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    .sev-bar-bg {
+      flex: 1;
+      height: 24px;
+      background: #0f172a;
+      border-radius: 4px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .sev-bar-fill {
+      height: 100%;
+      transition: width 0.3s ease;
+    }
+
+    .sev-count {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* Framework cards */
+    .fw-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .fw-card {
+      background: #0f172a;
+      border: 2px solid;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .fw-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: #ffffff;
+    }
+
+    .fw-count {
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    /* Table */
+    .table-controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .filter-btn {
+      padding: 6px 12px;
+      background: #334155;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .filter-btn:hover { background: #475569; }
+    .filter-btn.active { background: #0ea5e9; border-color: #0ea5e9; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th {
+      background: #0f172a;
+      padding: 12px;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2px solid #334155;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    th:hover { background: #1e293b; }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid #334155;
+    }
+
+    tr:hover { background: #0f172a; }
+
+    .sev-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .sev-badge.CRITICAL {
+      background: ${sevColors.CRITICAL.bg};
+      color: ${sevColors.CRITICAL.fg};
+    }
+
+    .sev-badge.HIGH {
+      background: ${sevColors.HIGH.bg};
+      color: ${sevColors.HIGH.fg};
+    }
+
+    .sev-badge.MEDIUM {
+      background: ${sevColors.MEDIUM.bg};
+      color: ${sevColors.MEDIUM.fg};
+    }
+
+    .sev-badge.LOW {
+      background: ${sevColors.LOW.bg};
+      color: ${sevColors.LOW.fg};
+    }
+
+    /* Print styles */
+    @media print {
+      body {
+        background: white;
+        color: black;
+        padding: 0;
+      }
+
+      .section {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+
+      .filter-btn { display: none; }
+
+      .score-circle {
+        background: conic-gradient(
+          #22c55e 0% ${scorePercent}%,
+          #e5e7eb ${scorePercent}% 100%
+        ) !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Azure Compliance Report</h1>
+    <div class="meta">Generated ${esc(now)} | ${findings.length} total findings</div>
+
+    <!-- Score Section -->
+    <div class="section">
+      <div class="section-title">Compliance Score</div>
+      <div class="score-container">
+        <div class="score-gauge">
+          <div class="score-circle">
+            <div class="score-inner">
+              <div class="score-percent">${scorePercent}%</div>
+              <div class="score-label">Score</div>
+            </div>
+          </div>
+        </div>
+        <div class="score-details">
+          <div class="score-grade">${grade}</div>
+          <div class="score-desc">
+            ${findings.length} findings across ${Object.keys(fwCounts).length} compliance frameworks.<br>
+            ${counts.CRITICAL + counts.HIGH} critical/high severity issues require immediate attention.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Severity Breakdown -->
+    <div class="section">
+      <div class="section-title">Severity Breakdown</div>
+      <div class="severity-bars">
+        ${['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(sev => {
+          const count = counts[sev] || 0;
+          const maxCount = Math.max(...Object.values(counts));
+          const width = maxCount > 0 ? (count / maxCount * 100) : 0;
+          return `
+            <div class="sev-bar">
+              <div class="sev-label" style="color: ${sevColors[sev].fg}">${sev}</div>
+              <div class="sev-bar-bg">
+                <div class="sev-bar-fill" style="width: ${width}%; background: ${sevColors[sev].bg}"></div>
+                <div class="sev-count" style="color: ${sevColors[sev].fg}">${count}</div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Framework Cards -->
+    <div class="section">
+      <div class="section-title">Frameworks</div>
+      <div class="fw-grid">
+        ${Object.entries(fwCounts).map(([fw, count]) => {
+          const colors = ['#0ea5e9', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+          const color = colors[Object.keys(fwCounts).indexOf(fw) % colors.length];
+          return `
+            <div class="fw-card" style="border-color: ${color}">
+              <div class="fw-name">${esc(fw)}</div>
+              <div class="fw-count" style="color: ${color}">${count}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+
+    <!-- Findings Table -->
+    <div class="section">
+      <div class="section-title">Findings Detail</div>
+      <div class="table-controls">
+        <button class="filter-btn active" onclick="filterFindings('all')">All (${findings.length})</button>
+        ${['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'].map(sev =>
+          `<button class="filter-btn" onclick="filterFindings('${sev}')">${sev} (${counts[sev] || 0})</button>`
+        ).join('')}
+      </div>
+      <table id="findingsTable">
+        <thead>
+          <tr>
+            <th onclick="sortTable(0)">Severity</th>
+            <th onclick="sortTable(1)">Framework</th>
+            <th onclick="sortTable(2)">Check ID</th>
+            <th onclick="sortTable(3)">Resource</th>
+            <th onclick="sortTable(4)">Finding</th>
+            <th onclick="sortTable(5)">Remediation</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${findings.map(f => `
+            <tr data-severity="${f.severity}">
+              <td><span class="sev-badge ${f.severity}">${esc(f.severity)}</span></td>
+              <td>${esc(f.framework)}</td>
+              <td>${esc(f.id)}</td>
+              <td>${esc(f.resource)}</td>
+              <td>${esc(f.message)}</td>
+              <td>${esc(f.remediation)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <scr` + `ipt>
+    // Filter findings by severity
+    function filterFindings(severity) {
+      const rows = document.querySelectorAll('#findingsTable tbody tr');
+      const buttons = document.querySelectorAll('.filter-btn');
+
+      buttons.forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+
+      rows.forEach(row => {
+        if (severity === 'all' || row.dataset.severity === severity) {
+          row.style.display = '';
+        } else {
+          row.style.display = 'none';
+        }
+      });
+    }
+
+    // Sort table by column
+    let sortDirection = {};
+    function sortTable(colIndex) {
+      const table = document.getElementById('findingsTable');
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+
+      sortDirection[colIndex] = !sortDirection[colIndex];
+      const direction = sortDirection[colIndex] ? 1 : -1;
+
+      rows.sort((a, b) => {
+        const aText = a.cells[colIndex].textContent.trim();
+        const bText = b.cells[colIndex].textContent.trim();
+        return direction * aText.localeCompare(bText);
+      });
+
+      rows.forEach(row => tbody.appendChild(row));
+    }
+  </scr` + `ipt>
+</body>
+</html>`;
+
+  // Download
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.download = 'azure-compliance-report.html';
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ============================================================
+// UPDATED COMPLIANCE DASHBOARD BUTTON ROW (line 4128)
+// ============================================================
+// Replace line 4128 with this:
+
+const COMPLIANCE_EXPORT_BUTTONS = `<div style="padding:12px 16px;display:flex;gap:8px">
+  <button onclick="exportComplianceCsv()" style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-transform:uppercase;transition:background 0.2s" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='var(--bg-tertiary)'">Export CSV</button>
+  <button onclick="exportComplianceExcel()" style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-transform:uppercase;transition:background 0.2s" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='var(--bg-tertiary)'">Export Excel</button>
+  <button onclick="exportComplianceHTML()" style="flex:1;padding:8px;background:var(--bg-tertiary);border:1px solid var(--border);border-radius:6px;color:var(--text-secondary);font-family:'IBM Plex Mono',monospace;font-size:10px;cursor:pointer;text-transform:uppercase;transition:background 0.2s" onmouseover="this.style.background='var(--bg-secondary)'" onmouseout="this.style.background='var(--bg-tertiary)'">Export HTML Report</button>
+</div>`;
+
+// ============================================================
+// USAGE:
+// 1. Add exportComplianceExcel() and exportComplianceHTML() functions to index.html
+// 2. Add escapeXml() helper function to index.html
+// 3. Replace line 4128 in openComplianceDashboard() with COMPLIANCE_EXPORT_BUTTONS
+// ============================================================
+
 
 // ============================================================
 // BLAST RADIUS ENGINE
@@ -4302,32 +6513,7 @@ function calculateBlastRadius(resourceId, lk) {
   return deps;
 }
 
-function openBlastRadiusPanel(resourceId) {
-  const deps = calculateBlastRadius(resourceId, _lk);
-  const total = deps.hard.length + deps.soft.length + deps.config.length;
-  let html = '';
-
-  html += `<div style="padding:12px 16px;border-bottom:1px solid var(--border)">`;
-  html += `<div style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted)">If this resource is removed:</div>`;
-  html += `<div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:var(--text-primary);margin-top:4px">${total} impacted resources</div>`;
-  html += `</div>`;
-
-  if (deps.hard.length > 0) {
-    html += `<div class="dp-section"><div class="dp-sec-hdr"><span class="dp-sec-title" style="color:var(--accent-red)">Hard Dependencies</span><span class="dp-sec-count">${deps.hard.length}</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">`;
-    deps.hard.forEach(d => { html += `<div class="dp-row"><span class="lbl">${esc(d.type)}</span><span class="val d">${esc(d.name)}</span></div>` });
-    html += `</div></div>`;
-  }
-  if (deps.soft.length > 0) {
-    html += `<div class="dp-section"><div class="dp-sec-hdr"><span class="dp-sec-title" style="color:var(--accent-orange)">Soft Dependencies</span><span class="dp-sec-count">${deps.soft.length}</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">`;
-    deps.soft.forEach(d => { html += `<div class="dp-row"><span class="lbl">${esc(d.type)}</span><span class="val p">${esc(d.name)}</span></div>` });
-    html += `</div></div>`;
-  }
-  if (total === 0) {
-    html += `<div style="padding:16px;text-align:center;color:var(--text-muted);font-family:'IBM Plex Mono',monospace;font-size:11px">No dependencies detected</div>`;
-  }
-
-  openDetailPanel('Blast Radius', `Impact analysis for ${esc(shortName(resourceId))}`, html);
-}
+// (openBlastRadiusPanel defined earlier with enhanced overlay support)
 
 // ============================================================
 // IAC EXPORT GENERATORS
@@ -4625,6 +6811,809 @@ function downloadIaC(format) {
 }
 
 // ============================================================
+// RESOURCE LIST PANEL
+// ============================================================
+
+// ============================================================
+// RESOURCE LIST PANEL
+// ============================================================
+
+/**
+ * Opens the resource list index showing all resource types with counts
+ */
+function openResourceListIndex() {
+  if (!_lk) {
+    openDetailPanel('Resource List', 'No data loaded', '<div style="padding:16px;text-align:center;color:var(--text-muted)">Load Azure data first</div>');
+    return;
+  }
+
+  const categories = [
+    { type: 'VNets', count: _lk.vnets?.length || 0, icon: '◈', color: 'var(--vnet-stroke)' },
+    { type: 'Subnets', count: _lk.subnets?.length || 0, icon: '▭', color: 'var(--subnet-private)' },
+    { type: 'NSGs', count: _lk.nsgs?.length || 0, icon: '◧', color: 'var(--nsg-color)' },
+    { type: 'Route Tables', count: _lk.routeTables?.length || 0, icon: '⇄', color: 'var(--text-secondary)' },
+    { type: 'VMs', count: _lk.vms?.length || 0, icon: '▣', color: 'var(--accent-blue)' },
+    { type: 'Load Balancers', count: _lk.loadBalancers?.length || 0, icon: '⚖', color: 'var(--lb-color)' },
+    { type: 'App Gateways', count: _lk.appGateways?.length || 0, icon: '▦', color: 'var(--appgw-color)' },
+    { type: 'Public IPs', count: _lk.publicIps?.length || 0, icon: '◉', color: 'var(--accent-cyan)' },
+    { type: 'NAT Gateways', count: _lk.natGateways?.length || 0, icon: '⇉', color: 'var(--nat-color)' },
+    { type: 'Private Endpoints', count: _lk.privateEndpoints?.length || 0, icon: '●', color: 'var(--pe-color)' },
+    { type: 'Peerings', count: _lk.peerings?.length || 0, icon: '⇌', color: 'var(--peer-color)' },
+    { type: 'Firewalls', count: _lk.firewalls?.length || 0, icon: '◈', color: 'var(--fw-color)' },
+    { type: 'Bastions', count: _lk.bastions?.length || 0, icon: '▲', color: 'var(--bastion-color)' },
+    { type: 'Key Vaults', count: _lk.keyVaults?.length || 0, icon: '⚿', color: 'var(--accent-purple)' },
+    { type: 'Storage Accounts', count: _lk.storageAccounts?.length || 0, icon: '⊟', color: 'var(--accent-orange)' },
+    { type: 'AKS Clusters', count: _lk.aksClusters?.length || 0, icon: '⬡', color: 'var(--accent-cyan)' },
+    { type: 'Function Apps', count: _lk.functionApps?.length || 0, icon: 'ƒ', color: 'var(--accent-green)' },
+    { type: 'NICs', count: _lk.nics?.length || 0, icon: '⚏', color: 'var(--text-muted)' },
+  ];
+
+  const totalResources = categories.reduce((sum, cat) => sum + cat.count, 0);
+
+  let html = `<div class="dp-section">`;
+  html += `<div class="dp-sec-hdr"><span class="dp-sec-title">All Resource Types</span><span class="dp-sec-count">${totalResources} total</span></div>`;
+  html += `<div class="dp-sec-body">`;
+
+  categories.forEach(cat => {
+    if (cat.count > 0) {
+      html += `<div class="dp-row" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:6px 0" onclick="openResourceList('${esc(cat.type)}')">`;
+      html += `<span style="color:${cat.color};font-size:16px;width:20px;text-align:center">${cat.icon}</span>`;
+      html += `<span class="val" style="flex:1;color:var(--text-primary)">${esc(cat.type)}</span>`;
+      html += `<span class="lbl" style="background:var(--bg-tertiary);padding:2px 6px;border-radius:3px">${cat.count}</span>`;
+      html += `</div>`;
+    }
+  });
+
+  html += `</div></div>`;
+
+  openDetailPanel('Resource List', `${categories.filter(c => c.count > 0).length} resource types`, html);
+}
+
+/**
+ * Opens a list of all resources of a specific type
+ * @param {string} type - Resource type (e.g., 'VNets', 'Subnets', 'NSGs')
+ */
+function openResourceList(type) {
+  if (!_lk) {
+    openDetailPanel(type, 'No data loaded', '<div style="padding:16px;text-align:center;color:var(--text-muted)">Load Azure data first</div>');
+    return;
+  }
+
+  let resources = [];
+  let dataAttr = null;
+  let panelFunc = null;
+
+  // Map type to resource array and data attribute
+  switch (type) {
+    case 'VNets':
+      resources = _lk.vnets || [];
+      dataAttr = 'data-vnet-id';
+      panelFunc = (r) => openVNetPanel(r, _lk);
+      break;
+    case 'Subnets':
+      resources = _lk.subnets || [];
+      dataAttr = 'data-subnet-id';
+      panelFunc = (r) => {
+        for (const vnet of _lk.vnets) {
+          const subs = _lk.subnetsByVnet[vnet.id] || [];
+          if (subs.some(s => s.id === r.id)) {
+            openSubnetPanel(r, vnet, _lk);
+            break;
+          }
+        }
+      };
+      break;
+    case 'NSGs':
+      resources = _lk.nsgs || [];
+      dataAttr = null;
+      panelFunc = (r) => openNSGPanel(r.id);
+      break;
+    case 'Route Tables':
+      resources = _lk.routeTables || [];
+      dataAttr = null;
+      panelFunc = (r) => openRouteTablePanel(r.id);
+      break;
+    case 'VMs':
+      resources = _lk.vms || [];
+      dataAttr = null;
+      panelFunc = (r) => openVMPanel(r.id);
+      break;
+    case 'Load Balancers':
+      resources = _lk.loadBalancers || [];
+      dataAttr = null;
+      panelFunc = (r) => openLBPanel(r.id);
+      break;
+    case 'App Gateways':
+      resources = _lk.appGateways || [];
+      dataAttr = null;
+      panelFunc = (r) => openAppGwPanel(r.id);
+      break;
+    case 'Public IPs':
+      resources = _lk.publicIps || [];
+      dataAttr = null;
+      panelFunc = (r) => openPublicIPPanel(r.id);
+      break;
+    case 'NAT Gateways':
+      resources = _lk.natGateways || [];
+      dataAttr = null;
+      panelFunc = (r) => openNATPanel(r.id);
+      break;
+    case 'Private Endpoints':
+      resources = _lk.privateEndpoints || [];
+      dataAttr = null;
+      panelFunc = (r) => openPEPanel(r.id);
+      break;
+    case 'Peerings':
+      resources = _lk.peerings || [];
+      dataAttr = null;
+      panelFunc = (r) => openPeeringPanel(r.id);
+      break;
+    case 'Firewalls':
+      resources = _lk.firewalls || [];
+      dataAttr = null;
+      panelFunc = (r) => openFirewallPanel(r.id);
+      break;
+    case 'Bastions':
+      resources = _lk.bastions || [];
+      dataAttr = null;
+      panelFunc = (r) => openBastionPanel(r.id);
+      break;
+    case 'Key Vaults':
+      resources = _lk.keyVaults || [];
+      dataAttr = null;
+      panelFunc = (r) => {
+        // Key Vaults don't have a detail panel, just show basic info
+        let html = `<div class="dp-section"><div class="dp-sec-hdr"><span class="dp-sec-title">Properties</span></div><div class="dp-sec-body">`;
+        html += `<div class="dp-kv"><span class="k">Name</span><span class="v copyable">${esc(shortName(r))}</span></div>`;
+        html += `<div class="dp-kv"><span class="k">Location</span><span class="v">${esc(r.location || '')}</span></div>`;
+        if (r.vaultUri) html += `<div class="dp-kv"><span class="k">URI</span><span class="v copyable">${esc(r.vaultUri)}</span></div>`;
+        html += `</div></div>`;
+        openDetailPanel(esc(shortName(r)), 'Key Vault', html);
+      };
+      break;
+    case 'Storage Accounts':
+      resources = _lk.storageAccounts || [];
+      dataAttr = null;
+      panelFunc = (r) => openStoragePanel(r.id);
+      break;
+    case 'AKS Clusters':
+      resources = _lk.aksClusters || [];
+      dataAttr = null;
+      panelFunc = (r) => {
+        // AKS Clusters don't have a detail panel, just show basic info
+        let html = `<div class="dp-section"><div class="dp-sec-hdr"><span class="dp-sec-title">Properties</span></div><div class="dp-sec-body">`;
+        html += `<div class="dp-kv"><span class="k">Name</span><span class="v copyable">${esc(shortName(r))}</span></div>`;
+        html += `<div class="dp-kv"><span class="k">Location</span><span class="v">${esc(r.location || '')}</span></div>`;
+        if (r.kubernetesVersion) html += `<div class="dp-kv"><span class="k">Version</span><span class="v">${esc(r.kubernetesVersion)}</span></div>`;
+        if (r.dnsPrefix) html += `<div class="dp-kv"><span class="k">DNS Prefix</span><span class="v copyable">${esc(r.dnsPrefix)}</span></div>`;
+        html += `</div></div>`;
+        openDetailPanel(esc(shortName(r)), 'AKS Cluster', html);
+      };
+      break;
+    case 'Function Apps':
+      resources = _lk.functionApps || [];
+      dataAttr = null;
+      panelFunc = (r) => openFuncPanel(r.id);
+      break;
+    case 'NICs':
+      resources = _lk.nics || [];
+      dataAttr = null;
+      panelFunc = (r) => openNICPanel(r.id);
+      break;
+    default:
+      openDetailPanel(type, 'Unknown resource type', '<div style="padding:16px;text-align:center;color:var(--text-muted)">Resource type not supported</div>');
+      return;
+  }
+
+  if (resources.length === 0) {
+    openDetailPanel(type, 'No resources found', '<div style="padding:16px;text-align:center;color:var(--text-muted)">No resources of this type</div>');
+    return;
+  }
+
+  // Sort resources by name
+  resources.sort((a, b) => {
+    const nameA = shortName(a).toLowerCase();
+    const nameB = shortName(b).toLowerCase();
+    return nameA.localeCompare(nameB);
+  });
+
+  let html = `<div class="dp-section">`;
+  html += `<div class="dp-sec-hdr"><span class="dp-sec-title">${esc(type)}</span><span class="dp-sec-count">${resources.length}</span></div>`;
+  html += `<div class="dp-sec-body">`;
+
+  resources.forEach((resource, index) => {
+    const name = shortName(resource);
+    const rid = resource.id || '';
+    const encodedId = esc(rid);
+
+    // Build the row with click handlers
+    html += `<div class="dp-row" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 0" `;
+
+    // Add onclick for detail panel
+    html += `onclick="event.stopPropagation();(${panelFunc.toString()})(`;
+    if (type === 'VNets' || type === 'Subnets') {
+      // Find resource by ID from _lk
+      html += `_lk.${type === 'VNets' ? 'vnets' : 'subnets'}.find(r => r.id === '${encodedId}')`;
+    } else {
+      html += `_lk.${getResourceArrayName(type)}.find(r => r.id === '${encodedId}')`;
+    }
+    html += `)"`;
+    html += `>`;
+
+    html += `<span class="val" style="flex:1;color:var(--text-primary)">${esc(name)}</span>`;
+
+    // Add zoom button if resource has visual representation
+    if (dataAttr) {
+      html += `<span style="color:var(--accent-cyan);font-size:10px;padding:2px 6px;background:var(--bg-tertiary);border-radius:3px;cursor:pointer" onclick="event.stopPropagation();zoomToResourceById('${encodedId}', '${dataAttr}')" title="Zoom to resource">⊕</span>`;
+    }
+
+    html += `</div>`;
+  });
+
+  html += `</div></div>`;
+  html += `<div style="padding:8px 16px;font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--text-muted);text-align:center">Click a resource to view details${dataAttr ? ' | ⊕ to zoom' : ''}</div>`;
+
+  openDetailPanel(type, `${resources.length} resources`, html);
+}
+
+/**
+ * Helper to get the resource array name in _lk
+ */
+function getResourceArrayName(type) {
+  const map = {
+    'VNets': 'vnets',
+    'Subnets': 'subnets',
+    'NSGs': 'nsgs',
+    'Route Tables': 'routeTables',
+    'VMs': 'vms',
+    'Load Balancers': 'loadBalancers',
+    'App Gateways': 'appGateways',
+    'Public IPs': 'publicIps',
+    'NAT Gateways': 'natGateways',
+    'Private Endpoints': 'privateEndpoints',
+    'Peerings': 'peerings',
+    'Firewalls': 'firewalls',
+    'Bastions': 'bastions',
+    'Key Vaults': 'keyVaults',
+    'Storage Accounts': 'storageAccounts',
+    'AKS Clusters': 'aksClusters',
+    'Function Apps': 'functionApps',
+    'NICs': 'nics'
+  };
+  return map[type] || '';
+}
+
+/**
+ * Zooms to a resource on the map by ID and data attribute
+ * @param {string} id - Resource ID
+ * @param {string} dataAttr - Data attribute to search for (e.g., 'data-vnet-id')
+ */
+function zoomToResourceById(id, dataAttr) {
+  if (!id || !zB || !dataAttr) return;
+
+  const selector = `[${dataAttr}="${CSS.escape(id)}"]`;
+  const el = document.querySelector(selector);
+
+  if (!el) {
+    console.warn(`Resource not found on map: ${id}`);
+    return;
+  }
+
+  try {
+    const bbox = el.getBBox();
+    const svg = document.getElementById('mapSvg');
+    const svgW = svg.clientWidth;
+    const svgH = svg.clientHeight;
+    const scale = Math.min(svgW / (bbox.width + 100), svgH / (bbox.height + 100), 3);
+    const tx = svgW / 2 - (bbox.x + bbox.width / 2) * scale;
+    const ty = svgH / 2 - (bbox.y + bbox.height / 2) * scale;
+
+    d3.select(svg).transition().duration(500).call(zB.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+  } catch (e) {
+    console.error('Error zooming to resource:', e);
+  }
+}
+
+
+// ============================================================
+// NOTES/ANNOTATIONS
+// ============================================================
+
+// ============================================================
+// NOTES/ANNOTATIONS FEATURE
+// ============================================================
+
+const NOTES_STORAGE_KEY = 'azureNetMap_annotations';
+
+// ---- Storage Functions ----
+
+function _getAnnotations() {
+  try {
+    const stored = localStorage.getItem(NOTES_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : {};
+  } catch (e) {
+    console.error('Failed to load annotations:', e);
+    return {};
+  }
+}
+
+function _saveAnnotations(annotations) {
+  try {
+    localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(annotations));
+    return true;
+  } catch (e) {
+    console.error('Failed to save annotations:', e);
+    return false;
+  }
+}
+
+// ---- CRUD Functions ----
+
+function addAnnotation(resourceId, text, category = 'info') {
+  if (!resourceId || !text || !text.trim()) return false;
+
+  const annotations = _getAnnotations();
+  if (!annotations[resourceId]) {
+    annotations[resourceId] = [];
+  }
+
+  const now = new Date().toISOString();
+  annotations[resourceId].push({
+    text: text.trim(),
+    category: category,
+    created: now,
+    updated: now
+  });
+
+  _saveAnnotations(annotations);
+  return true;
+}
+
+function updateAnnotation(resourceId, index, text, category) {
+  if (!resourceId || index < 0 || !text || !text.trim()) return false;
+
+  const annotations = _getAnnotations();
+  if (!annotations[resourceId] || !annotations[resourceId][index]) return false;
+
+  annotations[resourceId][index].text = text.trim();
+  annotations[resourceId][index].category = category;
+  annotations[resourceId][index].updated = new Date().toISOString();
+
+  _saveAnnotations(annotations);
+  return true;
+}
+
+function deleteAnnotation(resourceId, index) {
+  if (!resourceId || index < 0) return false;
+
+  const annotations = _getAnnotations();
+  if (!annotations[resourceId] || !annotations[resourceId][index]) return false;
+
+  annotations[resourceId].splice(index, 1);
+
+  // Clean up empty arrays
+  if (annotations[resourceId].length === 0) {
+    delete annotations[resourceId];
+  }
+
+  _saveAnnotations(annotations);
+  return true;
+}
+
+function getAllNotesList() {
+  const annotations = _getAnnotations();
+  const notesList = [];
+
+  for (const [resourceId, notes] of Object.entries(annotations)) {
+    notes.forEach((note, index) => {
+      notesList.push({
+        resourceId,
+        index,
+        ...note
+      });
+    });
+  }
+
+  // Sort by created date, newest first
+  notesList.sort((a, b) => new Date(b.created) - new Date(a.created));
+
+  return notesList;
+}
+
+function getResourceNoteCount(resourceId) {
+  const annotations = _getAnnotations();
+  return annotations[resourceId] ? annotations[resourceId].length : 0;
+}
+
+// ---- Notes Panel ----
+
+function openNotesPanel(filterResourceId = null) {
+  const allNotes = getAllNotesList();
+  const filteredNotes = filterResourceId
+    ? allNotes.filter(n => n.resourceId === filterResourceId)
+    : allNotes;
+
+  let html = '';
+
+  // Panel header with controls
+  html += `<div class="notes-panel-header">`;
+  html += `<button class="notes-add-btn" onclick="openNoteForm()">+ Add Note</button>`;
+  html += `<select id="notesCategoryFilter" class="notes-filter-select" onchange="filterNotesByCategory(this.value)">`;
+  html += `<option value="">All Categories</option>`;
+  html += `<option value="info">Info</option>`;
+  html += `<option value="warning">Warning</option>`;
+  html += `<option value="todo">To-Do</option>`;
+  html += `<option value="critical">Critical</option>`;
+  html += `</select>`;
+  html += `</div>`;
+
+  // Notes list section
+  html += `<div class="dp-section"><div class="dp-sec-body" style="padding: 12px;">`;
+  html += `<div class="notes-list" id="notesListContainer">`;
+
+  if (filteredNotes.length === 0) {
+    html += `<div class="notes-empty">`;
+    html += filterResourceId
+      ? `No notes for this resource.`
+      : `No notes yet. Click "Add Note" to create one.`;
+    html += `</div>`;
+  } else {
+    filteredNotes.forEach(note => {
+      html += renderNoteCard(note);
+    });
+  }
+
+  html += `</div></div></div>`;
+
+  const title = filterResourceId
+    ? `Notes: ${esc(getResourceDisplayName(filterResourceId))}`
+    : 'All Notes';
+
+  openDetailPanel(title, `${filteredNotes.length} note${filteredNotes.length !== 1 ? 's' : ''}`, html);
+
+  // Store filter resource ID for filtering
+  window._currentNotesFilter = { resourceId: filterResourceId, category: '' };
+}
+
+function renderNoteCard(note) {
+  const resourceName = getResourceDisplayName(note.resourceId);
+  const timestamp = formatNoteTimestamp(note.created, note.updated);
+
+  let html = `<div class="note-card" data-category="${esc(note.category)}">`;
+  html += `<div class="note-card-header">`;
+  html += `<span class="note-badge ${esc(note.category)}">${esc(note.category.toUpperCase())}</span>`;
+  html += `<span class="note-resource-link" onclick="zoomToResource('${esc(note.resourceId)}'); closeDetailPanel();">`;
+  html += esc(resourceName);
+  html += `</span>`;
+  html += `</div>`;
+  html += `<div class="note-card-text">${esc(note.text)}</div>`;
+  html += `<div class="note-card-footer">`;
+  html += `<span class="note-timestamp">${esc(timestamp)}</span>`;
+  html += `<div class="note-actions">`;
+  html += `<button class="note-action-btn" onclick="openNoteForm('${esc(note.resourceId)}', ${note.index})">Edit</button>`;
+  html += `<button class="note-action-btn delete" onclick="confirmDeleteNote('${esc(note.resourceId)}', ${note.index})">Delete</button>`;
+  html += `</div>`;
+  html += `</div>`;
+  html += `</div>`;
+
+  return html;
+}
+
+function filterNotesByCategory(category) {
+  if (!window._currentNotesFilter) return;
+
+  window._currentNotesFilter.category = category;
+  const cards = document.querySelectorAll('.note-card');
+
+  cards.forEach(card => {
+    const cardCategory = card.getAttribute('data-category');
+    if (!category || cardCategory === category) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+
+function getResourceDisplayName(resourceId) {
+  // Try to find resource in _lk
+  const lowerResourceId = resourceId.toLowerCase();
+
+  // Check vnets
+  if (_lk.vnetById && _lk.vnetById[lowerResourceId]) {
+    return shortName(_lk.vnetById[lowerResourceId]);
+  }
+
+  // Check subnets
+  if (_lk.subnetById && _lk.subnetById[lowerResourceId]) {
+    return shortName(_lk.subnetById[lowerResourceId]);
+  }
+
+  // Check VMs
+  if (_lk.vmById && _lk.vmById[lowerResourceId]) {
+    return shortName(_lk.vmById[lowerResourceId]);
+  }
+
+  // Check NSGs
+  if (_lk.nsgById && _lk.nsgById[lowerResourceId]) {
+    return shortName(_lk.nsgById[lowerResourceId]);
+  }
+
+  // Check other resources
+  const resourceTypes = ['publicIpById', 'natGatewayById', 'peById', 'bastionById',
+                         'appGwById', 'lbById', 'fwById', 'rtById'];
+
+  for (const type of resourceTypes) {
+    if (_lk[type] && _lk[type][lowerResourceId]) {
+      return shortName(_lk[type][lowerResourceId]);
+    }
+  }
+
+  // Fall back to parsing the ID
+  const parsed = parseResourceId(resourceId);
+  return parsed ? parsed.resourceName : resourceId;
+}
+
+function formatNoteTimestamp(created, updated) {
+  const createdDate = new Date(created);
+  const updatedDate = new Date(updated);
+
+  const formatDate = (date) => {
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  const createdStr = formatDate(createdDate);
+
+  if (created !== updated) {
+    return `Updated ${formatDate(updatedDate)}`;
+  }
+
+  return `Created ${createdStr}`;
+}
+
+function confirmDeleteNote(resourceId, index) {
+  if (confirm('Are you sure you want to delete this note?')) {
+    deleteAnnotation(resourceId, index);
+    // Refresh the notes panel
+    if (window._currentNotesFilter) {
+      openNotesPanel(window._currentNotesFilter.resourceId);
+    } else {
+      openNotesPanel();
+    }
+    // Re-render badges on map
+    renderNoteBadges();
+  }
+}
+
+// ---- Note Form ----
+
+let _currentNoteEdit = null; // { resourceId, index } or null for new note
+
+function openNoteForm(resourceId = null, noteIndex = null) {
+  const overlay = document.getElementById('noteFormOverlay');
+  const titleEl = document.getElementById('noteFormTitle');
+  const resourceSelect = document.getElementById('noteFormResource');
+  const categorySelect = document.getElementById('noteFormCategory');
+  const textArea = document.getElementById('noteFormText');
+
+  // Populate resource dropdown
+  populateResourceDropdown(resourceSelect);
+
+  // Check if editing or creating new
+  if (resourceId && noteIndex !== null) {
+    // Editing existing note
+    _currentNoteEdit = { resourceId, index: noteIndex };
+    titleEl.textContent = 'Edit Note';
+
+    const annotations = _getAnnotations();
+    const note = annotations[resourceId]?.[noteIndex];
+
+    if (note) {
+      resourceSelect.value = resourceId;
+      categorySelect.value = note.category;
+      textArea.value = note.text;
+    }
+  } else {
+    // Creating new note
+    _currentNoteEdit = null;
+    titleEl.textContent = 'Add Note';
+
+    if (resourceId) {
+      resourceSelect.value = resourceId;
+    }
+    categorySelect.value = 'info';
+    textArea.value = '';
+  }
+
+  overlay.classList.add('open');
+  textArea.focus();
+}
+
+function closeNoteForm() {
+  const overlay = document.getElementById('noteFormOverlay');
+  overlay.classList.remove('open');
+  _currentNoteEdit = null;
+}
+
+function saveNoteFromForm() {
+  const resourceId = document.getElementById('noteFormResource').value;
+  const category = document.getElementById('noteFormCategory').value;
+  const text = document.getElementById('noteFormText').value;
+
+  if (!resourceId) {
+    alert('Please select a resource.');
+    return;
+  }
+
+  if (!text || !text.trim()) {
+    alert('Please enter note text.');
+    return;
+  }
+
+  let success = false;
+
+  if (_currentNoteEdit) {
+    // Update existing note
+    success = updateAnnotation(_currentNoteEdit.resourceId, _currentNoteEdit.index, text, category);
+  } else {
+    // Create new note
+    success = addAnnotation(resourceId, text, category);
+  }
+
+  if (success) {
+    closeNoteForm();
+    // Re-render badges on map
+    renderNoteBadges();
+    // Refresh notes panel if it's open
+    const detailPanel = document.getElementById('detailPanel');
+    if (detailPanel && detailPanel.classList.contains('open')) {
+      if (window._currentNotesFilter) {
+        openNotesPanel(window._currentNotesFilter.resourceId);
+      }
+    }
+  } else {
+    alert('Failed to save note. Please try again.');
+  }
+}
+
+function populateResourceDropdown(selectEl) {
+  // Clear existing options except the first one
+  selectEl.innerHTML = '<option value="">Select a resource...</option>';
+
+  const resources = [];
+
+  // Collect all resources from _lk
+  if (_lk.vnets) {
+    _lk.vnets.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'VNet' }));
+  }
+  if (_lk.subnets) {
+    _lk.subnets.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'Subnet' }));
+  }
+  if (_lk.vms) {
+    _lk.vms.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'VM' }));
+  }
+  if (_lk.nsgs) {
+    _lk.nsgs.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'NSG' }));
+  }
+  if (_lk.publicIps) {
+    _lk.publicIps.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'Public IP' }));
+  }
+  if (_lk.natGateways) {
+    _lk.natGateways.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'NAT Gateway' }));
+  }
+  if (_lk.bastions) {
+    _lk.bastions.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'Bastion' }));
+  }
+  if (_lk.appGateways) {
+    _lk.appGateways.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'App Gateway' }));
+  }
+  if (_lk.loadBalancers) {
+    _lk.loadBalancers.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'Load Balancer' }));
+  }
+  if (_lk.firewalls) {
+    _lk.firewalls.forEach(r => resources.push({ id: r.id, name: shortName(r), type: 'Firewall' }));
+  }
+
+  // Sort by name
+  resources.sort((a, b) => a.name.localeCompare(b.name));
+
+  // Add options
+  resources.forEach(r => {
+    const option = document.createElement('option');
+    option.value = r.id;
+    option.textContent = `${r.name} (${r.type})`;
+    selectEl.appendChild(option);
+  });
+}
+
+// ---- Map Badges ----
+
+function renderNoteBadges() {
+  // Remove existing badges
+  d3.selectAll('.note-count-badge').remove();
+
+  const annotations = _getAnnotations();
+  const svg = d3.select('#mapRoot');
+
+  for (const [resourceId, notes] of Object.entries(annotations)) {
+    if (notes.length === 0) continue;
+
+    const lowerResourceId = resourceId.toLowerCase();
+
+    // Find the SVG group for this resource
+    let targetGroup = null;
+    let badgeX = 0;
+    let badgeY = 0;
+
+    // Check if it's a vnet
+    const vnetGroup = svg.select(`.vnet-group[data-vnet-id="${resourceId}"]`);
+    if (!vnetGroup.empty()) {
+      targetGroup = vnetGroup;
+      const bbox = vnetGroup.select('rect').node()?.getBBox();
+      if (bbox) {
+        badgeX = bbox.x + bbox.width - 8;
+        badgeY = bbox.y + 8;
+      }
+    }
+
+    // Check if it's a subnet
+    if (!targetGroup) {
+      const subnetGroup = svg.select(`.subnet-node[data-subnet-id="${resourceId}"]`);
+      if (!subnetGroup.empty()) {
+        targetGroup = subnetGroup;
+        const bbox = subnetGroup.select('rect').node()?.getBBox();
+        if (bbox) {
+          badgeX = bbox.x + bbox.width - 8;
+          badgeY = bbox.y + 8;
+        }
+      }
+    }
+
+    // If we found a target, add the badge
+    if (targetGroup) {
+      const badge = targetGroup.append('g')
+        .attr('class', 'note-count-badge')
+        .attr('transform', `translate(${badgeX}, ${badgeY})`)
+        .style('cursor', 'pointer')
+        .on('click', function(event) {
+          event.stopPropagation();
+          openNotesPanel(resourceId);
+        });
+
+      badge.append('circle')
+        .attr('r', 9)
+        .attr('fill', 'var(--accent-orange)')
+        .attr('stroke', 'var(--bg-primary)')
+        .attr('stroke-width', 1.5);
+
+      badge.append('text')
+        .attr('dy', '0.1em')
+        .style('fill', '#fff')
+        .style('font-family', "'IBM Plex Mono', monospace")
+        .style('font-size', '10px')
+        .style('font-weight', '600')
+        .style('text-anchor', 'middle')
+        .style('pointer-events', 'none')
+        .text(notes.length > 9 ? '9+' : notes.length);
+    }
+  }
+}
+
+// (zoomToResource and closeDetailPanel defined elsewhere)
+
+
+// ============================================================
 // SVG EXPORT
 // ============================================================
 
@@ -4705,6 +7694,354 @@ function loadSnapshotData(index) {
     loadProjectData(snapshots[index].data);
   }
 }
+
+// ============================================================
+// HISTORY TIMELINE (extends snapshots)
+// ============================================================
+
+// ============================================================
+// HISTORY TIMELINE
+// ============================================================
+
+// State
+let _timelineVisible = false;
+let _viewingSnapshotIndex = null;
+let _preViewState = null;
+
+// Simple hash function for checksum
+function _computeChecksum() {
+  const data = {};
+  INPUT_SECTIONS.forEach(sec => {
+    sec.inputs.forEach(inp => { data[inp.id] = gv(inp.id) });
+  });
+  const str = JSON.stringify(data);
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
+}
+
+// Enhanced snapshot save with deduplication
+function takeSnapshot(label = null, auto = false) {
+  const data = getProjectData();
+  const checksum = _computeChecksum();
+  const snapshots = JSON.parse(localStorage.getItem('azureNetMap_snapshots') || '[]');
+
+  // Deduplicate: check if last snapshot has same checksum
+  if (snapshots.length > 0) {
+    const last = snapshots[snapshots.length - 1];
+    if (last.checksum === checksum) {
+      const toast = document.getElementById('copyToast');
+      toast.textContent = 'No changes to snapshot';
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 1500);
+      return;
+    }
+  }
+
+  const timestamp = new Date().toISOString();
+  const id = 'snap-' + Date.now();
+  const defaultLabel = label || new Date(timestamp).toLocaleDateString() + ' ' + new Date(timestamp).toLocaleTimeString();
+
+  snapshots.push({
+    id,
+    timestamp,
+    label: defaultLabel,
+    auto,
+    checksum,
+    data
+  });
+
+  // Keep max 20 snapshots
+  while (snapshots.length > 20) snapshots.shift();
+
+  localStorage.setItem('azureNetMap_snapshots', JSON.stringify(snapshots));
+
+  // Show toast
+  const toast = document.getElementById('copyToast');
+  toast.textContent = auto ? 'Auto-snapshot saved' : 'Snapshot saved';
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1500);
+
+  // Re-render timeline if visible
+  if (_timelineVisible) {
+    _renderTimeline();
+  }
+}
+
+// Render timeline dots
+function _renderTimeline() {
+  const snapshots = JSON.parse(localStorage.getItem('azureNetMap_snapshots') || '[]');
+  const track = document.querySelector('.timeline-track');
+  if (!track) return;
+
+  // Clear existing dots
+  track.innerHTML = '';
+
+  if (snapshots.length === 0) return;
+
+  // Calculate time range
+  const timestamps = snapshots.map(s => new Date(s.timestamp).getTime());
+  const minTime = Math.min(...timestamps);
+  const maxTime = Math.max(...timestamps);
+  const range = maxTime - minTime || 1;
+
+  // Create dots
+  snapshots.forEach((snap, idx) => {
+    const time = new Date(snap.timestamp).getTime();
+    const position = snapshots.length === 1 ? 50 : ((time - minTime) / range) * 100;
+
+    const dot = document.createElement('div');
+    dot.className = 'timeline-dot';
+
+    // Add type class
+    if (_viewingSnapshotIndex === idx) {
+      dot.classList.add('active');
+    } else if (snap.auto) {
+      dot.classList.add('auto');
+    } else {
+      dot.classList.add('manual');
+    }
+
+    dot.style.left = position + '%';
+
+    // Tooltip
+    const tooltip = document.createElement('div');
+    tooltip.className = 'timeline-tooltip';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'timeline-tooltip-label';
+    labelSpan.textContent = snap.label || 'Snapshot';
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'timeline-tooltip-time';
+    timeSpan.textContent = new Date(snap.timestamp).toLocaleString();
+
+    tooltip.appendChild(labelSpan);
+    tooltip.appendChild(timeSpan);
+    dot.appendChild(tooltip);
+
+    // Click handler
+    dot.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _viewSnapshot(idx);
+    });
+
+    track.appendChild(dot);
+  });
+}
+
+// View a snapshot (read-only mode)
+function _viewSnapshot(index) {
+  const snapshots = JSON.parse(localStorage.getItem('azureNetMap_snapshots') || '[]');
+  if (index < 0 || index >= snapshots.length) return;
+
+  const snap = snapshots[index];
+
+  // Save current state before viewing (if not already viewing)
+  if (_viewingSnapshotIndex === null) {
+    _preViewState = getProjectData();
+  }
+
+  _viewingSnapshotIndex = index;
+
+  // Load snapshot data
+  loadProjectData(snap.data);
+
+  // Show history banner
+  const banner = document.getElementById('historyBanner');
+  const bannerText = document.getElementById('historyBannerText');
+
+  // Clear and rebuild banner text safely
+  bannerText.textContent = '';
+  const viewingText = document.createTextNode('Viewing: ');
+  const labelSpan = document.createElement('span');
+  labelSpan.className = 'history-banner-label';
+  labelSpan.textContent = snap.label || 'Snapshot';
+  const timeSpan = document.createElement('span');
+  timeSpan.className = 'history-banner-time';
+  timeSpan.textContent = new Date(snap.timestamp).toLocaleString();
+
+  bannerText.appendChild(viewingText);
+  bannerText.appendChild(labelSpan);
+  bannerText.appendChild(timeSpan);
+
+  banner.classList.add('visible');
+
+  // Make sidebar inputs read-only
+  document.querySelectorAll('.ji').forEach(el => {
+    el.setAttribute('readonly', 'true');
+    el.style.opacity = '0.6';
+    el.style.cursor = 'not-allowed';
+  });
+
+  // Re-render timeline to show active dot
+  _renderTimeline();
+}
+
+// Restore viewed snapshot as current state
+function _restoreSnapshot() {
+  if (_viewingSnapshotIndex === null) return;
+
+  // Current viewed state is already loaded in inputs
+  // Just clear the viewing mode and save as new snapshot
+  _returnToCurrent(false);
+
+  // Take a new manual snapshot with restored data
+  takeSnapshot('Restored from history', false);
+
+  const toast = document.getElementById('copyToast');
+  toast.textContent = 'Snapshot restored';
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 1500);
+}
+
+// Return to current state (before viewing)
+function _returnToCurrent(restoreState = true) {
+  // Restore pre-view state if requested
+  if (restoreState && _preViewState) {
+    loadProjectData(_preViewState);
+  }
+
+  _viewingSnapshotIndex = null;
+  _preViewState = null;
+
+  // Hide history banner
+  const banner = document.getElementById('historyBanner');
+  banner.classList.remove('visible');
+
+  // Restore sidebar inputs to editable
+  document.querySelectorAll('.ji').forEach(el => {
+    el.removeAttribute('readonly');
+    el.style.opacity = '';
+    el.style.cursor = '';
+  });
+
+  // Re-render timeline
+  _renderTimeline();
+}
+
+// Toggle timeline visibility
+function toggleTimeline() {
+  _timelineVisible = !_timelineVisible;
+  const bar = document.getElementById('timelineBar');
+
+  if (_timelineVisible) {
+    bar.classList.add('visible');
+
+    // Update sidebar-open class based on current sidebar state
+    const sidebar = document.querySelector('.sidebar');
+    if (!sidebar.classList.contains('collapsed')) {
+      bar.classList.add('sidebar-open');
+    }
+
+    _renderTimeline();
+  } else {
+    bar.classList.remove('visible');
+
+    // If viewing a snapshot, return to current
+    if (_viewingSnapshotIndex !== null) {
+      _returnToCurrent();
+    }
+  }
+}
+
+// Update timeline position when sidebar toggles
+function _updateTimelinePosition() {
+  const bar = document.getElementById('timelineBar');
+  const sidebar = document.querySelector('.sidebar');
+
+  if (sidebar.classList.contains('collapsed')) {
+    bar.classList.remove('sidebar-open');
+  } else {
+    bar.classList.add('sidebar-open');
+  }
+}
+
+// Enhance existing saveSnapshot to use new system
+const _originalSaveSnapshot = saveSnapshot;
+saveSnapshot = function() {
+  takeSnapshot(null, false);
+};
+
+// Auto-snapshot every 5 minutes (in addition to existing auto-save)
+setInterval(() => {
+  // Only auto-snapshot if there's actual data
+  let hasData = false;
+  INPUT_SECTIONS.forEach(sec => {
+    sec.inputs.forEach(inp => {
+      const val = gv(inp.id);
+      if (val && val.trim()) {
+        hasData = true;
+      }
+    });
+  });
+
+  if (hasData) {
+    takeSnapshot(null, true);
+  }
+}, 5 * 60 * 1000); // 5 minutes
+
+// Add keyboard shortcut 'h' to toggle timeline
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+
+  if (e.key === 'h' && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    toggleTimeline();
+  }
+});
+
+// Initialize: migrate old snapshots to new format
+(function migrateSnapshots() {
+  const snapshots = JSON.parse(localStorage.getItem('azureNetMap_snapshots') || '[]');
+  let migrated = false;
+
+  snapshots.forEach((snap, idx) => {
+    if (!snap.id) {
+      snap.id = 'snap-' + new Date(snap.timestamp).getTime() + '-' + idx;
+      migrated = true;
+    }
+    if (snap.label === undefined) {
+      const dt = new Date(snap.timestamp);
+      snap.label = dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString();
+      migrated = true;
+    }
+    if (snap.auto === undefined) {
+      snap.auto = false;
+      migrated = true;
+    }
+    if (snap.checksum === undefined) {
+      // Compute checksum from data
+      const str = JSON.stringify(snap.data);
+      let hash = 0;
+      for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+      }
+      snap.checksum = hash;
+      migrated = true;
+    }
+  });
+
+  if (migrated) {
+    localStorage.setItem('azureNetMap_snapshots', JSON.stringify(snapshots));
+  }
+})();
+
+// Hook into sidebar toggle to update timeline position
+const _originalToggleSidebar = typeof toggleSidebar !== 'undefined' ? toggleSidebar : null;
+if (_originalToggleSidebar) {
+  toggleSidebar = function() {
+    _originalToggleSidebar();
+    setTimeout(_updateTimelinePosition, 250);
+  };
+}
+
 
 // ============================================================
 // DEMO DATA GENERATOR -- Azure Enterprise Hub-Spoke
@@ -5486,6 +8823,8 @@ document.addEventListener('keydown', e => {
   else if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); document.getElementById('saveProjectBtn').click() }
   else if (e.key === 'T' && e.shiftKey) { e.preventDefault(); if (document.getElementById('layoutMode').value !== 'executive') openFlowForm() }
   else if (e.key === 'C' && e.shiftKey) { e.preventDefault(); openComplianceDashboard() }
+  else if (e.key === 'R' && e.shiftKey) { e.preventDefault(); openResourceListIndex() }
+  else if (e.key === 'n' && !e.ctrlKey && !e.metaKey) { e.preventDefault(); openNotesPanel() }
 });
 
 // ---- Button handlers ----
@@ -5644,7 +8983,7 @@ function runSelfTests() {
   // ============================================================
   // esc — XSS prevention
   // ============================================================
-  assert('esc: escapes <', esc('<script>') === '&lt;script&gt;');
+  assert('esc: escapes <', esc('<scr' + 'ipt>') === '&lt;script&gt;');
   assert('esc: escapes >', esc('a>b') === 'a&gt;b');
   assert('esc: escapes single quote', esc("O'Brien") === 'O&#39;Brien');
   assert('esc: escapes &', esc('A&B') === 'A&amp;B');
