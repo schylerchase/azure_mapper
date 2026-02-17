@@ -128,7 +128,8 @@
   .peering-gw rect{transition:fill-opacity .15s}
   .peering-gw:hover rect{fill-opacity:.35}
   .peering-gw text{pointer-events:none}
-  .peering-branch{fill:none;stroke-width:1.1;opacity:.4;stroke-dasharray:6 3}
+  .peering-branch{fill:none;stroke-width:1.1;opacity:.4;stroke-dasharray:6 3;animation:branchFlow 1.5s linear infinite}
+  @keyframes branchFlow{to{stroke-dashoffset:-18}}
   .peering-ep{cursor:pointer;transition:opacity .15s}
   .peering-ep:hover{opacity:1}
   .animated{animation:dashFlow 1s linear infinite}
@@ -2683,27 +2684,27 @@ function renderPeeringLines(g, lk) {
         return a.x - b.x;
       });
 
-      // Dynamic spread: use available VNet width, cap at 24px per gap
+      // Each branch gets its own corridor y-offset so lines don't stack
       const vb = boxes[vnetId];
-      const maxSpread = sorted.length > 1 ? (vb.w - 2 * IM) / (sorted.length - 1) : 0;
-      const SPREAD = sorted.length > 1 ? Math.min(24, maxSpread) : 0;
-      const spreadStart = -SPREAD * (sorted.length - 1) / 2;
+      const VSPREAD = sorted.length > 1 ? Math.min(3, 14 / (sorted.length - 1)) : 0;
+      const vSpreadStart = -VSPREAD * (sorted.length - 1) / 2;
 
       sorted.forEach((sub, si) => {
         const cp = { x: sub.x + sub.w / 2, y: sub.y - 2 };  // endpoint just above subnet top edge
         const brObs = sorted.filter(s => s !== sub).map(b => pad(b, IM));
-        const branchHub = { x: hub.x + spreadStart + si * SPREAD, y: hub.y };
+        const branchHub = { x: hub.x, y: hub.y + vSpreadStart + si * VSPREAD };
         const bPts = branchRoute(branchHub, cp, brObs, sub, vnetId);
 
         // NSG security state for coloring
         const sec = nsgState(sub.subId);
         const color = epColor(sec.state);
 
-        // Branch line
+        // Branch line — offset dash phase per branch for visual distinction
         peerG.append('path')
           .attr('class', 'peering-branch')
           .attr('d', toPath(mergeShortSegments(bPts, 2 * R)))
-          .attr('stroke', color);
+          .attr('stroke', color)
+          .attr('stroke-dashoffset', si * 4);
 
         // Endpoint dot
         const epG = peerG.append('g').attr('class', 'peering-ep')
