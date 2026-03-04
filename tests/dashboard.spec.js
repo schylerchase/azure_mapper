@@ -61,7 +61,7 @@ test.describe('Dashboard Tabs', () => {
     await openDashTab(page, 'inventory');
     // Should contain a table or grid with resource types
     const body = await page.locator('#udashBody').innerHTML();
-    expect(body).toContain('EC2');
+    expect(body).toContain('Subnet');
   });
 
   test('closing dashboard removes open class', async ({ page }) => {

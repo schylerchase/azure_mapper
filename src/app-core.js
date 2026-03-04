@@ -7317,9 +7317,10 @@ function renderLandingZoneMap(ctx){
     const ss=subByVnet[vl.vpc.VpcId]||[];
     const az=ss.find(s=>s.AvailabilityZone)?.AvailabilityZone||'';
     const region=az.replace(/[a-z]$/,'')||'';
-    const lzAcctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+vl.vpc._subscriptionId+']'):'';
+    const _lzAcctLbl=vl.vpc._accountLabel||vl.vpc._subscriptionId;
+    const lzAcctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+_lzAcctLbl+']'):'';
     vG.append('text').attr('class','vpc-cidr').attr('x',vl.x+12).attr('y',vl.y+28)
-      .text(vl.vpc.CidrBlock+(region?' '+region:'')+lzAcctTag);
+      .text(vl.vpc.CidrBlock+(region?' | '+region:'')+lzAcctTag);
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
       const lzAcCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
       if(lzAcCol){
@@ -10009,7 +10010,8 @@ function _renderMapInner(){
     vG.append('text').attr('class','vpc-label').attr('x',vl.x+14).attr('y',vl.y+26)
       .attr('textLength',Math.min(_vpcName.length*8,vl.w*0.55)).attr('lengthAdjust','spacing').text(_vpcName);
     const regionTag=vpcRegionMap[vl.vpc.VpcId]||'';
-    const acctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+vl.vpc._subscriptionId+']'):'';
+    const _acLbl2=vl.vpc._accountLabel||vl.vpc._subscriptionId;
+    const acctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+_acLbl2+']'):'';
     vG.append('text').attr('class','vpc-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').text(vl.vpc.CidrBlock+(regionTag?' | '+regionTag:'')+(acctTag?acctTag:''));
     // Account color stripe for multi-account
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
@@ -11231,13 +11233,14 @@ if(_isElectron){
     setTimeout(()=>{document.getElementById('scanModal').style.display='none'},1000);
   });
 
-  // Scan event listeners
+  // Scan event listeners (guarded — methods may be missing in web/older preload)
   const _unsubs=[];
-  _unsubs.push(window.electronAPI.onScanProgress((text)=>{
+  const _safeOn=(fn,cb)=>{if(typeof fn==='function'){const u=fn(cb);if(u)_unsubs.push(u)}};
+  _safeOn(window.electronAPI.onScanProgress,(text)=>{
     const log=document.getElementById('scanLog');
     log.textContent+=text;log.scrollTop=log.scrollHeight;
-  }));
-  _unsubs.push(window.electronAPI.onScanComplete(({code,outDir,files})=>{
+  });
+  _safeOn(window.electronAPI.onScanComplete,({code,outDir,files})=>{
     const log=document.getElementById('scanLog');
     log.textContent+='\\n--- Scan complete ---\\n';
     if(files){
@@ -11251,24 +11254,24 @@ if(_isElectron){
     } else {
       log.textContent+='No output files found. Check export-azure-data.sh output.\\n';
     }
-  }));
-  _unsubs.push(window.electronAPI.onScanError((msg)=>{
+  });
+  _safeOn(window.electronAPI.onScanError,(msg)=>{
     const log=document.getElementById('scanLog');
     log.textContent+='\\nERROR: '+msg+'\\n';
     log.style.color='#ef4444';
-  }));
+  });
 
   // Menu event listeners
-  _unsubs.push(window.electronAPI.onMenuSave(()=>saveProject()));
-  _unsubs.push(window.electronAPI.onMenuOpen(()=>document.getElementById('loadProjectBtn').click()));
-  _unsubs.push(window.electronAPI.onMenuScanAzure(()=>_openScanModal()));
-  _unsubs.push(window.electronAPI.onMenuToggleTheme(()=>toggleTheme()));
-  _unsubs.push(window.electronAPI.onFileOpened((content)=>{
+  _safeOn(window.electronAPI.onMenuSave,()=>saveProject());
+  _safeOn(window.electronAPI.onMenuOpen,()=>document.getElementById('loadProjectBtn').click());
+  _safeOn(window.electronAPI.onMenuScanAzure,()=>_openScanModal());
+  _safeOn(window.electronAPI.onMenuToggleTheme,()=>toggleTheme());
+  _safeOn(window.electronAPI.onFileOpened,(content)=>{
     try{_loadProjectData(JSON.parse(content))}catch(ex){_showToast('Failed to load file: '+ex.message)}
-  }));
+  });
 
   // Update available — show persistent banner with download/install controls
-  _unsubs.push(window.electronAPI.onUpdateAvailable(({version,currentVersion})=>{
+  _safeOn(window.electronAPI.onUpdateAvailable,({version,currentVersion})=>{
     var banner=document.getElementById('updateBanner');
     if(!banner){
       banner=document.createElement('div');banner.id='updateBanner';
@@ -11290,14 +11293,14 @@ if(_isElectron){
     dismiss.style.cssText='background:none;border:none;color:#fff;cursor:pointer;font-size:16px;padding:0 4px;opacity:.7';
     dismiss.onclick=function(){banner.remove()};
     banner.appendChild(txt);banner.appendChild(btn);banner.appendChild(dismiss);
-  }));
-  _unsubs.push(window.electronAPI.onUpdateDownloadProgress(({percent})=>{
+  });
+  _safeOn(window.electronAPI.onUpdateDownloadProgress,({percent})=>{
     var banner=document.getElementById('updateBanner');
     if(!banner) return;
     var btn=banner.querySelector('button');
     if(btn) btn.textContent='Downloading... '+percent+'%';
-  }));
-  _unsubs.push(window.electronAPI.onUpdateDownloaded(()=>{
+  });
+  _safeOn(window.electronAPI.onUpdateDownloaded,()=>{
     var banner=document.getElementById('updateBanner');
     if(!banner) return;
     banner.textContent='';
@@ -11311,12 +11314,12 @@ if(_isElectron){
     later.style.cssText='background:none;border:1px solid rgba(255,255,255,.4);color:#fff;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px';
     later.onclick=function(){banner.remove()};
     banner.appendChild(txt);banner.appendChild(btn);banner.appendChild(later);
-  }));
-  _unsubs.push(window.electronAPI.onUpdateError((msg)=>{
+  });
+  _safeOn(window.electronAPI.onUpdateError,(msg)=>{
     var banner=document.getElementById('updateBanner');
     if(banner) banner.remove();
     _showToast('Update error: '+msg);
-  }));
+  });
 
   // Import Folder button (native folder picker)
   document.getElementById('importFolderBtn').style.display='inline-block';
@@ -22973,32 +22976,35 @@ document.getElementById('landingDemo').addEventListener('click',function(){docum
 document.getElementById('landingImport').addEventListener('click',function(){document.getElementById('uploadBtn').click()});
 document.getElementById('landingImportReport').addEventListener('click',function(){document.getElementById('importReportInput').click()});
 document.getElementById('loadDemo').addEventListener('click',()=>{
+  try{
   // OPTIMIZED: Generate demo data on first load (lazy initialization)
   if(typeof demo==='undefined'||!demo)demo=generateDemo();
   // Split demo data into 2 accounts for multi-account view
-  const allVpcs=demo.vpcs?demo.vpcs.Vpcs||[]:[];
-  const allSubs=demo.subnets?demo.subnets.Subnets||[]:[];
-  const allInsts=demo.ec2?demo.ec2.Reservations?demo.ec2.Reservations.flatMap(r=>r.Instances||[]):[]:[];
+  // ext() helper: extract arrays from wrapper objects (checks 'value' + named keys)
+  const _dext=(obj,...keys)=>{if(!obj)return[];for(const k of ['value',...keys]){if(obj[k])return Array.isArray(obj[k])?obj[k]:[obj[k]]}return Array.isArray(obj)?obj:[]};
+  const allVpcs=_dext(demo.vnets,'VirtualNetworks');
+  const allSubs=_dext(demo.subnets,'Subnets');
+  const allInsts=_dext(demo.vms,'Instances');
   const splitIdx=Math.ceil(allVpcs.length/2);
   const acct1Vpcs=new Set(allVpcs.slice(0,splitIdx).map(v=>v.VpcId));
   const acct2Vpcs=new Set(allVpcs.slice(splitIdx).map(v=>v.VpcId));
   const byVpc=(arr,vpcSet,field)=>arr.filter(r=>vpcSet.has(r[field||'VpcId']));
-  const allRts=demo.rts?demo.rts.RouteTables||[]:[];
-  const allSgs=demo.sgs?demo.sgs.SecurityGroups||[]:[];
-  const allNacls=demo.nacls?demo.nacls.NetworkAcls||[]:[];
-  const allIgws=demo.igws?demo.igws.InternetGateways||[]:[];
-  const allNats=demo.nats?demo.nats.NatGateways||[]:[];
-  const allAlbs=demo.albs?demo.albs.LoadBalancers||[]:[];
-  const allVpces=demo.vpces?demo.vpces.VpcEndpoints||[]:[];
-  const allEnis=demo.enis?demo.enis.NetworkInterfaces||[]:[];
-  const allVols=demo.vols?demo.vols.Volumes||[]:[];
-  const allSnaps=demo.snaps?demo.snaps.Snapshots||[]:[];
-  const allTgs=demo.tgs?demo.tgs.TargetGroups||[]:[];
-  const allRds=demo.rds?demo.rds.DBInstances||[]:[];
-  const allEcs=demo.ecs?demo.ecs.services||[]:[];
-  const allLambda=demo.lambda?demo.lambda.Functions||[]:[];
-  const allEcache=demo.elasticache?demo.elasticache.CacheClusters||[]:[];
-  const allRedshift=demo.redshift?demo.redshift.Clusters||[]:[];
+  const allRts=_dext(demo.udrs,'RouteTables');
+  const allSgs=_dext(demo.nsgs,'SecurityGroups');
+  const allNacls=_dext(demo.nacls);
+  const allIgws=_dext(demo.igws);
+  const allNats=_dext(demo.nats,'NatGateways');
+  const allAlbs=_dext(demo.albs,'LoadBalancers');
+  const allVpces=_dext(demo.pvteps,'VpcEndpoints');
+  const allEnis=_dext(demo.nics,'NetworkInterfaces');
+  const allVols=_dext(demo.disks,'Volumes');
+  const allSnaps=_dext(demo.snaps,'Snapshots');
+  const allTgs=_dext(demo.tgs,'TargetGroups');
+  const allRds=_dext(demo.sql,'DBInstances');
+  const allEcs=_dext(demo.containers,'services');
+  const allLambda=_dext(demo.funcapps,'Functions');
+  const allEcache=_dext(demo.elasticache,'CacheClusters');
+  const allRedshift=_dext(demo.aks,'Clusters');
   // Subnet -> VPC lookup
   const subVpc={};allSubs.forEach(s=>{subVpc[s.SubnetId]=s.VpcId});
   // Instance -> subnet VPC
@@ -23071,6 +23077,7 @@ document.getElementById('loadDemo').addEventListener('click',()=>{
   enterMultiView();
   // MEMORY: Release demo data — now stored in _loadedContexts textareas
   demo=null;
+  }catch(e){console.error('Demo load error:',e)}
 });
 
 // store layout data globally for export

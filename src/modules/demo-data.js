@@ -1552,19 +1552,35 @@ export function generateDemo() {
     tags: { environment: 'shared', purpose: 'monitoring' },
   }];
 
+  // ─── Build VNet lookups for NSG/RT/NAT → VNet association ───
+  const _nsgVnet = {};
+  const _rtVnet = {};
+  const _natVnet = {};
+  allSubnets.forEach(s => {
+    const vnetId = s._vnetName ? vnets.find(v => v.name === s._vnetName)?.id : '';
+    if (!vnetId) return;
+    if (s.properties.networkSecurityGroup) _nsgVnet[s.properties.networkSecurityGroup.id] = vnetId;
+    if (s.properties.routeTable) _rtVnet[s.properties.routeTable.id] = vnetId;
+    if (s.properties.natGateway) _natVnet[s.properties.natGateway.id] = vnetId;
+  });
+
   // ─── Assemble return object ───
-  // Map to AWS-like structure for backward compatibility with existing consumers
-  // The keys match what the rest of the codebase expects from generateDemo()
+  // Keys match Azure textarea IDs (in_vnets, in_nsgs, in_udrs, etc.)
+  // Wrapper uses 'value' key for compatibility with ext() parser
   return {
     // Core networking
-    vpcs: { Vpcs: vnets.map(v => ({
+    vnets: { value: vnets.map(v => ({
+      id: v.id,
+      name: v.name,
       VpcId: v.id,
       CidrBlock: v.properties.addressSpace.addressPrefixes[0],
       State: 'available',
       Tags: [{ Key: 'Name', Value: v.name }],
       _azure: v,
     }))},
-    subnets: { Subnets: allSubnets.map(s => ({
+    subnets: { value: allSubnets.map(s => ({
+      id: s.id,
+      name: s._vnetName + '-' + s.name,
       SubnetId: s.id,
       VpcId: s._vnetName ? vnets.find(v => v.name === s._vnetName)?.id : '',
       CidrBlock: s.properties.addressPrefix,
@@ -1573,9 +1589,11 @@ export function generateDemo() {
       Tags: [{ Key: 'Name', Value: s._vnetName + '-' + s.name }],
       _azure: s,
     }))},
-    rts: { RouteTables: routeTables.map(rt => ({
+    udrs: { value: routeTables.map(rt => ({
+      id: rt.id,
+      name: rt.name,
       RouteTableId: rt.id,
-      VpcId: '',
+      VpcId: _rtVnet[rt.id] || '',
       Routes: (rt.properties.routes || []).map(r => ({
         DestinationCidrBlock: r.properties.addressPrefix,
         GatewayId: r.properties.nextHopType === 'VnetLocal' ? 'local' : undefined,
@@ -1585,10 +1603,12 @@ export function generateDemo() {
       Tags: [{ Key: 'Name', Value: rt.name }],
       _azure: rt,
     }))},
-    sgs: { SecurityGroups: nsgs.map(nsg => ({
+    nsgs: { value: nsgs.map(nsg => ({
+      id: nsg.id,
+      name: nsg.name,
       GroupId: nsg.id,
       GroupName: nsg.name,
-      VpcId: '',
+      VpcId: _nsgVnet[nsg.id] || '',
       IpPermissions: (nsg.properties.securityRules || []).filter(r => r.properties.direction === 'Inbound').map(r => ({
         IpProtocol: r.properties.protocol === '*' ? '-1' : r.properties.protocol.toLowerCase(),
         FromPort: r.properties.destinationPortRange === '*' ? 0 : parseInt(r.properties.destinationPortRange) || 0,
@@ -1602,17 +1622,21 @@ export function generateDemo() {
       Tags: [{ Key: 'Name', Value: nsg.name }],
       _azure: nsg,
     }))},
-    nacls: { NetworkAcls: [] },
-    igws: { InternetGateways: [] },
-    nats: { NatGateways: natGateways.map(ng => ({
+    nacls: { value: [] },
+    igws: { value: [] },
+    nats: { value: natGateways.map(ng => ({
+      id: ng.id,
+      name: ng.name,
       NatGatewayId: ng.id,
-      VpcId: '',
+      VpcId: _natVnet[ng.id] || '',
       SubnetId: (ng.properties.subnets || [])[0]?.id || '',
       State: 'available',
       Tags: [{ Key: 'Name', Value: ng.name }],
       _azure: ng,
     }))},
-    ec2: { Reservations: [{ Instances: vms.map(vm => ({
+    vms: { value: vms.map(vm => ({
+      id: vm.id,
+      name: vm.name,
       InstanceId: vm.id,
       SubnetId: nics.find(n => n.properties.virtualMachine?.id === vm.id)?.properties.ipConfigurations[0]?.properties.subnet?.id || '',
       InstanceType: vm.properties.hardwareProfile.vmSize,
@@ -1621,9 +1645,11 @@ export function generateDemo() {
       State: { Name: vm.properties.instanceView?.statuses[0]?.code === 'PowerState/running' ? 'running' : 'stopped', Code: vm.properties.instanceView?.statuses[0]?.code === 'PowerState/running' ? 16 : 80 },
       Tags: [{ Key: 'Name', Value: vm.name }],
       _azure: vm,
-    }))}]},
-    albs: { LoadBalancers: [
+    }))},
+    albs: { value: [
       ...loadBalancers.map(lb => ({
+        id: lb.id,
+        name: lb.name,
         LoadBalancerArn: lb.id,
         LoadBalancerName: lb.name,
         Type: 'network',
@@ -1635,6 +1661,8 @@ export function generateDemo() {
         _azure: lb,
       })),
       ...appGateways.map(ag => ({
+        id: ag.id,
+        name: ag.name,
         LoadBalancerArn: ag.id,
         LoadBalancerName: ag.name,
         Type: 'application',
@@ -1646,7 +1674,9 @@ export function generateDemo() {
         _azure: ag,
       })),
     ]},
-    vpces: { VpcEndpoints: privateEndpoints.map(pe => ({
+    pvteps: { value: privateEndpoints.map(pe => ({
+      id: pe.id,
+      name: pe.name,
       VpcEndpointId: pe.id,
       VpcId: '',
       ServiceName: (pe.properties.privateLinkServiceConnections[0]?.properties.groupIds || [])[0] || '',
@@ -1656,7 +1686,9 @@ export function generateDemo() {
       Tags: [{ Key: 'Name', Value: pe.name }],
       _azure: pe,
     }))},
-    peer: { VpcPeeringConnections: peerings.map(p => ({
+    peer: { value: peerings.map(p => ({
+      id: p.id,
+      name: p.name,
       VpcPeeringConnectionId: p.id,
       Status: { Code: p.properties.peeringState === 'Connected' ? 'active' : 'pending' },
       RequesterVpcInfo: { VpcId: p._localVnetId, CidrBlock: '' },
@@ -1664,7 +1696,9 @@ export function generateDemo() {
       Tags: [{ Key: 'Name', Value: p.name }],
       _azure: p,
     }))},
-    vpn: { VpnConnections: [{
+    vpn: { value: [{
+      id: vpnConnection.id,
+      name: vpnConnection.name,
       VpnConnectionId: vpnConnection.id,
       State: 'available',
       VpnGatewayId: vpnGateway.id,
@@ -1672,23 +1706,27 @@ export function generateDemo() {
       Tags: [{ Key: 'Name', Value: vpnConnection.name }],
       _azure: vpnConnection,
     }]},
-    vols: { Volumes: [] },
-    snaps: { Snapshots: [] },
-    s3: { Buckets: storageAccounts.map(sa => ({
+    disks: { value: [] },
+    snaps: { value: [] },
+    storage: { value: storageAccounts.map(sa => ({
+      id: sa.id,
+      name: sa.name,
       Name: sa.name,
       CreationDate: '2025-01-15',
       _azure: sa,
     }))},
-    r53: { HostedZones: dnsZones.map(dz => ({
+    dnsz: { value: dnsZones.map(dz => ({
       Id: dz.id,
       Name: dz.name,
       Config: { PrivateZone: true },
       ResourceRecordSetCount: dz.properties.numberOfRecordSets || 0,
       _azure: dz,
     }))},
-    r53records: { ResourceRecordSets: [] },
-    tgs: { TargetGroups: [] },
-    enis: { NetworkInterfaces: nics.map(nic => ({
+    r53records: { value: [] },
+    tgs: { value: [] },
+    nics: { value: nics.map(nic => ({
+      id: nic.id,
+      name: nic.name,
       NetworkInterfaceId: nic.id,
       SubnetId: nic.properties.ipConfigurations[0]?.properties.subnet?.id || '',
       VpcId: '',
@@ -1700,7 +1738,7 @@ export function generateDemo() {
       },
       _azure: nic,
     }))},
-    waf: { WebACLs: appGateways.filter(ag => ag.properties.webApplicationFirewallConfiguration).map(ag => ({
+    waf: { value: appGateways.filter(ag => ag.properties.webApplicationFirewallConfiguration).map(ag => ({
       Name: ag.name + '-waf',
       Id: ag.id,
       ARN: ag.id,
@@ -1713,7 +1751,9 @@ export function generateDemo() {
       ResourceArns: [ag.id],
       _azure: ag.properties.webApplicationFirewallConfiguration,
     }))},
-    rds: { DBInstances: sqlServers.map(srv => ({
+    sql: { value: sqlServers.map(srv => ({
+      id: srv.id,
+      name: srv.name,
       DBInstanceIdentifier: srv.name,
       DBInstanceClass: 'GeneralPurpose',
       Engine: 'azure-sql',
@@ -1727,7 +1767,9 @@ export function generateDemo() {
       _azure: srv,
       _databases: sqlDatabases.filter(db => db.id.startsWith(srv.id)),
     }))},
-    ecs: { services: [{
+    containers: { value: [{
+      id: aksCluster.id,
+      name: aksCluster.name,
       serviceName: aksCluster.name,
       clusterArn: aksCluster.id,
       status: 'ACTIVE',
@@ -1736,7 +1778,9 @@ export function generateDemo() {
       launchType: 'KUBERNETES',
       _azure: aksCluster,
     }]},
-    lambda: { Functions: functionApps.map(fa => ({
+    funcapps: { value: functionApps.map(fa => ({
+      id: fa.id,
+      name: fa.name,
       FunctionName: fa.name,
       Runtime: fa.properties.siteConfig?.linuxFxVersion || 'unknown',
       FunctionArn: fa.id,
@@ -1749,7 +1793,9 @@ export function generateDemo() {
       },
       _azure: fa,
     }))},
-    elasticache: { CacheClusters: redisCaches.map(rc => ({
+    elasticache: { value: redisCaches.map(rc => ({
+      id: rc.id,
+      name: rc.name,
       CacheClusterId: rc.name,
       Engine: 'redis',
       CacheNodeType: rc.properties.sku.name + '_' + rc.properties.sku.family + rc.properties.sku.capacity,
@@ -1759,7 +1805,9 @@ export function generateDemo() {
       CacheNodes: [{ CacheNodeId: '0001', CacheNodeStatus: 'available', Endpoint: { Address: rc.properties.hostName, Port: rc.properties.sslPort } }],
       _azure: rc,
     }))},
-    redshift: { Clusters: synapseWorkspaces.map(sw => ({
+    aks: { value: synapseWorkspaces.map(sw => ({
+      id: sw.id,
+      name: sw.name,
       ClusterIdentifier: sw.name,
       NodeType: 'synapse-workspace',
       ClusterStatus: 'available',
@@ -1769,9 +1817,9 @@ export function generateDemo() {
       Encrypted: true,
       _azure: sw,
     }))},
-    tgwatt: { TransitGatewayAttachments: [] },
-    cf: { DistributionList: { Items: [] } },
-    iam: {
+    tgwatt: { value: [] },
+    cf: { value: [] },
+    rbac: {
       RoleDetailList: roleAssignments.filter(r => r._roleName !== 'Reader' && r._roleName !== 'Key Vault Secrets User').map(ra => ({
         RoleName: ra._roleName + ' (' + ra._principalName + ')',
         Arn: ra.id,

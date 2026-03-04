@@ -218,6 +218,48 @@ ipcMain.handle('dialog:saveAs', async () => {
     return { canceled, filePath };
 });
 
+ipcMain.handle('dialog:openFile', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: 'Open Azure Map Project',
+        filters: [{ name: 'Azure Map', extensions: ['azuremap'] }],
+        properties: ['openFile']
+    });
+    if (!canceled && filePaths.length > 0) {
+        return fs.readFileSync(filePaths[0], 'utf8');
+    }
+    return null;
+});
+
+ipcMain.handle('dialog:openFolder', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+        title: 'Select Azure Export Folder',
+        properties: ['openDirectory']
+    });
+    if (!canceled && filePaths.length > 0) {
+        const folder = filePaths[0];
+        const files = fs.readdirSync(folder);
+        return mapFolderFiles(files, f => fs.readFileSync(path.join(folder, f), 'utf8'));
+    }
+    return null;
+});
+
+ipcMain.handle('file:export', async (event, { data, name, filters }) => {
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export',
+        defaultPath: name,
+        filters: filters || [{ name: 'All Files', extensions: ['*'] }]
+    });
+    if (!canceled && filePath) {
+        if (data instanceof Uint8Array || Buffer.isBuffer(data)) {
+            fs.writeFileSync(filePath, Buffer.from(data));
+        } else {
+            fs.writeFileSync(filePath, data, 'utf8');
+        }
+        return filePath;
+    }
+    return null;
+});
+
 // ── Auto-Update ───────────────────────────────────────────────────
 
 function checkForUpdates() {
