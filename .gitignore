@@ -8,7 +8,9 @@ out/
 *.deb
 *.snap
 .DS_Store
+azure-export-*/
 aws-export-*/
 docs/
 delete-me/
+test-results/
 .vercel
