@@ -19,5 +19,6 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - run: npm test
+      - run: npm run test:unit
+      - run: npm run bundle:prod
       - run: npx electron-builder --linux --publish never

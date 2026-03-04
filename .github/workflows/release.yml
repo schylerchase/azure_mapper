@@ -49,6 +49,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run bundle:prod
       - run: npx electron-builder --linux --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -64,6 +65,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run bundle:prod
       - run: npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -79,6 +81,7 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      - run: npm run bundle:prod
       - run: npx electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

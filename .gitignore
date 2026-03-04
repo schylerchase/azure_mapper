@@ -1,4 +1,14 @@
 node_modules/
 dist/
-*.log
-.env
+out/
+*.dmg
+*.zip
+*.exe
+*.AppImage
+*.deb
+*.snap
+.DS_Store
+aws-export-*/
+docs/
+delete-me/
+.vercel

@@ -1,0 +1,182 @@
+// Main entry point for Azure Network Mapper
+// Imports all modules and initializes the application
+// This file is bundled by esbuild into dist/app.bundle.js
+
+// Core utilities
+import { SEV_ORDER, FW_LABELS, EOL_RUNTIMES, EFFORT_LABELS, EFFORT_TIME, PRIORITY_META, TIER_META, PRIORITY_ORDER, PRIORITY_KEYS, MUTE_KEY, NOTES_KEY, SNAP_KEY, SAVE_KEY, MAX_SNAPSHOTS, SAVE_INTERVAL, NOTE_CATEGORIES } from './modules/constants.js';
+import { safeParse, ext, esc, gn, sid, clsGw, isShared, gcv, gch, gv, parseResourceId, getTenantFromResource } from './modules/utils.js';
+import { showToast, closeAllDashboards, toggleClass, setVisible, getEl, qs, qsa } from './modules/dom-helpers.js';
+import { _prefs, loadPrefs, savePrefs } from './modules/prefs.js';
+
+// Cloud environment management
+import { CLOUDS, getCloudEnv, setCloudEnv, getCloudConfig, getComplianceFrameworks, isServiceAvailable, getPortalUrl, detectCloudFromEndpoint } from './modules/cloud-env.js';
+
+// Feature engines
+import { generateDemo } from './modules/demo-data.js';
+import { ipToInt, intToIp, parseCIDR, cidrToString, splitCIDR, cidrContains, cidrOverlap, ipInCIDR } from './modules/cidr-engine.js';
+import { runComplianceChecks, invalidateComplianceCache } from './modules/compliance-engine.js';
+
+// Network rules (Azure NSG + UDR evaluation)
+import { evaluateNsgRules, evaluateNsgPath, evaluateRoute, protocolMatch, portMatch, addressMatch, classifySubnet } from './modules/network-rules.js';
+
+// Shared state (cross-cutting globals used by 5+ regions)
+import * as State from './modules/state.js';
+
+// Safe DOM builders (used by extracted modules, available to inline code during transition)
+import { buildEl, buildOption, buildSelect, buildButton, setText, replaceChildren, safeHtml } from './modules/dom-builders.js';
+
+// BUDR engine (backup, uptime, disaster recovery assessment)
+import {
+  _BUDR_STRATEGY, _BUDR_STRATEGY_ORDER, _BUDR_STRATEGY_LEGEND,
+  _BUDR_RTO_RPO, _BUDR_EST_MINUTES, _TIER_TARGETS,
+  runBUDRChecks, _budrTierCompliance, _fmtMin,
+  _enrichBudrWithClassification, _reapplyBUDROverrides,
+  _getBUDRTierCounts, _getBudrComplianceCounts,
+  budrFindings, budrAssessments, budrOverrides,
+  setBudrFindings, setBudrAssessments, setBudrOverrides,
+  _budrFindings, _budrAssessments, _budrOverrides
+} from './modules/budr-engine.js';
+
+// Dependency graph (pure logic — DOM display functions remain inline)
+import {
+  buildDependencyGraph, getBlastRadius, getResType, getResName,
+  clearBlastRadius, resetDepGraph, isBlastActive,
+  depGraph, blastActive
+} from './modules/dep-graph.js';
+
+// RBAC engine (Azure role assignment analysis and compliance checks)
+import {
+  analyzeRoleAssignments, findOverPrivileged, findOrphanedAssignments,
+  countOwnersPerScope, findGuestPrivileges, findServicePrincipalRisks,
+  classifyPermission, getScopeLevel
+} from './modules/iam-engine.js';
+
+// Timeline & Annotations (state + pure logic — DOM rendering remains inline)
+import * as Timeline from './modules/timeline.js';
+
+// Phase 3: Feature Engines
+// Design mode (validation, apply functions, CLI generation — DOM forms remain inline)
+import * as DesignMode from './modules/design-mode.js';
+
+// Flow tracing (trace engine, network position — DOM/SVG rendering remains inline)
+import * as FlowTracing from './modules/flow-tracing.js';
+
+// Flow analysis (traffic flow discovery — dashboard rendering remains inline)
+import * as FlowAnalysis from './modules/flow-analysis.js';
+
+// Firewall editor (NSG rule CRUD, validation, CLI — DOM editor remains inline)
+import * as FirewallEditor from './modules/firewall-editor.js';
+
+// Multi-tenant (context building, merging, Lighthouse — DOM panels remain inline)
+import * as MultiTenant from './modules/multi-tenant.js';
+
+// Phase 4: Dashboards & Reports
+// Compliance view (scoring, grouping, muting — DOM rendering remains inline)
+import * as ComplianceView from './modules/compliance-view.js';
+
+// Unified dashboard (state + filter — DOM orchestration remains inline)
+import * as UnifiedDashboard from './modules/unified-dashboard.js';
+
+// Governance & Inventory (classification, inventory, RBAC permissions — DOM rendering remains inline)
+import * as Governance from './modules/governance.js';
+
+// Phase 5: Core
+// Export utilities (VSDX layout, XML builders, downloadBlob — DOM export handlers remain inline)
+import * as ExportUtils from './modules/export-utils.js';
+
+// IaC generator (Terraform azurerm, ARM, Bicep, Checkov — DOM modal remains inline)
+import * as IacGenerator from './modules/iac-generator.js';
+
+// NOTE: diff-engine.js and report-builder.js are NOT imported here.
+// They have top-level DOM event listeners and are loaded via separate <script type="module"> tags
+// in index.html (after DOM is ready).
+
+// Export to global scope for backward compatibility with inline code
+window.AppModules = {
+  // Constants (clean + underscore-prefixed aliases for inline code)
+  SEV_ORDER, FW_LABELS, EOL_RUNTIMES, EFFORT_LABELS, EFFORT_TIME,
+  PRIORITY_META, TIER_META, PRIORITY_ORDER, PRIORITY_KEYS,
+  MUTE_KEY, NOTES_KEY, SNAP_KEY, SAVE_KEY, MAX_SNAPSHOTS, SAVE_INTERVAL, NOTE_CATEGORIES,
+  _SEV_ORDER: SEV_ORDER,
+  _FW_LABELS: FW_LABELS,
+
+  // Utils
+  safeParse, ext, esc, gn, sid, clsGw, isShared, gcv, gch, gv,
+  parseResourceId, getTenantFromResource,
+
+  // Cloud environment
+  CLOUDS, getCloudEnv, setCloudEnv, getCloudConfig, getComplianceFrameworks,
+  isServiceAvailable, getPortalUrl, detectCloudFromEndpoint,
+
+  // DOM helpers
+  showToast, closeAllDashboards, toggleClass, setVisible, getEl, qs, qsa,
+
+  // Prefs
+  _prefs, loadPrefs, savePrefs,
+
+  // CIDR engine
+  ipToInt, intToIp, parseCIDR, cidrToString, splitCIDR, cidrContains, cidrOverlap, ipInCIDR,
+
+  // Compliance
+  runComplianceChecks, invalidateComplianceCache,
+
+  // Engines
+  generateDemo,
+
+  // Network rules (Azure NSG + UDR)
+  evaluateNsgRules, evaluateNsgPath, evaluateRoute,
+  protocolMatch, portMatch, addressMatch, classifySubnet,
+
+  // Shared state
+  State,
+
+  // DOM builders
+  buildEl, buildOption, buildSelect, buildButton, setText, replaceChildren, safeHtml,
+
+  // BUDR engine
+  _BUDR_STRATEGY, _BUDR_STRATEGY_ORDER, _BUDR_STRATEGY_LEGEND,
+  _BUDR_RTO_RPO, _BUDR_EST_MINUTES, _TIER_TARGETS,
+  runBUDRChecks, _budrTierCompliance, _fmtMin,
+  _enrichBudrWithClassification, _reapplyBUDROverrides,
+  _getBUDRTierCounts, _getBudrComplianceCounts,
+  _budrFindings, _budrAssessments, _budrOverrides,
+  setBudrFindings, setBudrAssessments, setBudrOverrides,
+
+  // Dependency graph
+  buildDependencyGraph, getBlastRadius, getResType, getResName,
+  clearBlastRadius, resetDepGraph, isBlastActive,
+
+  // RBAC engine (Azure role-based access control)
+  analyzeRoleAssignments, findOverPrivileged, findOrphanedAssignments,
+  countOwnersPerScope, findGuestPrivileges, findServicePrincipalRisks,
+  classifyPermission, getScopeLevel,
+
+  // Timeline & Annotations
+  Timeline,
+
+  // Phase 3: Feature Engines
+  DesignMode,
+  FlowTracing,
+  FlowAnalysis,
+  FirewallEditor,
+  MultiTenant,
+
+  // Phase 4: Dashboards & Reports
+  ComplianceView,
+  UnifiedDashboard,
+  Governance,
+
+  // Phase 5: Core
+  ExportUtils,
+  IacGenerator,
+
+  // Note: diff-engine and report-builder loaded via separate script tags (DOM-dependent)
+};
+
+// Make functions available globally (transitional - will remove once all code is modularized)
+Object.assign(window, window.AppModules);
+
+// Initialize _complianceFindings on window so inline code can reference it before first run
+if (!window._complianceFindings) window._complianceFindings = [];
+
+console.log('Azure Network Mapper modules loaded');

@@ -1,28 +1,68 @@
 #!/usr/bin/env bash
 # Azure Network Mapper - Data Export Script
-# Usage: ./export-azure-data.sh -s <subscription-name-or-id> [-g <resource-group>] [-l <location>]
+# Usage: ./export-azure-data.sh -s <subscription> [-g <resource-group>] [-l <location>] [-c <cloud>] [-t <tenant-id>] [--lighthouse]
 #
 # Exports Azure resource data as JSON files for import into the mapper.
+# Supports: Commercial, GCC, GCC High, DoD cloud environments.
+# Supports: Azure Lighthouse delegated access (--lighthouse flag).
 
 set -euo pipefail
 
 SUB=""
 RG=""
 LOC=""
+CLOUD=""
+TENANT=""
+LIGHTHOUSE=false
 
-while getopts "s:g:l:" opt; do
+# Parse long options manually, short options via getopts
+ARGS=()
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --lighthouse) LIGHTHOUSE=true; shift ;;
+    --cloud) CLOUD="$2"; shift 2 ;;
+    --tenant) TENANT="$2"; shift 2 ;;
+    *) ARGS+=("$1"); shift ;;
+  esac
+done
+set -- "${ARGS[@]}"
+
+while getopts "s:g:l:c:t:" opt; do
   case $opt in
     s) SUB="$OPTARG" ;;
     g) RG="$OPTARG" ;;
     l) LOC="$OPTARG" ;;
-    *) echo "Usage: $0 -s <subscription> [-g <resource-group>] [-l <location>]" >&2; exit 1 ;;
+    c) CLOUD="$OPTARG" ;;
+    t) TENANT="$OPTARG" ;;
+    *) echo "Usage: $0 -s <subscription> [-g <resource-group>] [-l <location>] [-c <cloud>] [-t <tenant-id>] [--lighthouse]" >&2; exit 1 ;;
   esac
 done
 
 if [ -z "$SUB" ]; then
   echo "ERROR: Subscription (-s) is required" >&2
-  echo "Usage: $0 -s <subscription> [-g <resource-group>] [-l <location>]" >&2
+  echo "Usage: $0 -s <subscription> [-g <resource-group>] [-l <location>] [-c <cloud>] [-t <tenant-id>] [--lighthouse]" >&2
   exit 1
+fi
+
+# Set cloud environment if specified
+if [ -n "$CLOUD" ]; then
+  case "$CLOUD" in
+    commercial|AzureCloud) az cloud set --name AzureCloud 2>/dev/null; echo "Cloud: Azure Commercial" ;;
+    gcc) az cloud set --name AzureCloud 2>/dev/null; echo "Cloud: Azure GCC (Commercial endpoints, policy-restricted)" ;;
+    gcc-high|AzureUSGovernment) az cloud set --name AzureUSGovernment 2>/dev/null; echo "Cloud: Azure GCC High" ;;
+    dod) az cloud set --name AzureUSGovernment 2>/dev/null; echo "Cloud: Azure DoD" ;;
+    *) echo "ERROR: Unknown cloud '$CLOUD'. Use: commercial, gcc, gcc-high, dod" >&2; exit 1 ;;
+  esac
+fi
+
+# Set tenant if specified (for Lighthouse / cross-tenant access)
+TENANT_FLAG=""
+if [ -n "$TENANT" ]; then
+  TENANT_FLAG="--tenant $TENANT"
+  echo "Tenant: $TENANT"
+  if [ "$LIGHTHOUSE" = true ]; then
+    echo "Mode: Azure Lighthouse (delegated access)"
+  fi
 fi
 
 # Check az CLI is installed and logged in

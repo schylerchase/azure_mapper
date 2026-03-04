@@ -1,0 +1,2370 @@
+// IAC Generator — Terraform (azurerm), ARM Template, Bicep, Checkov, az CLI
+// DOM handlers (modal output, download, copy) remain inline in index.html.
+
+import { rlCtx } from './state.js';
+import { gn } from './utils.js';
+import { sanitizeName } from './export-utils.js';
+
+// === Module State ===
+let _iacType = 'terraform'; // 'terraform' | 'arm' | 'bicep'
+let _iacOutput = '';         // raw generated text
+let _tfIdMap = {};           // resource ID -> TF name mapping
+
+// === State Accessors ===
+export function getIacType() { return _iacType; }
+export function setIacType(v) { _iacType = v; }
+export function getIacOutput() { return _iacOutput; }
+export function setIacOutput(v) { _iacOutput = v; }
+export function getTfIdMap() { return _tfIdMap; }
+export function setTfIdMap(v) { _tfIdMap = v; }
+
+// === Name Helpers ===
+
+/**
+ * Sanitize a name for Terraform resource identifiers.
+ * Strips non-alphanumeric/underscore chars, lowercases, prefixes if starts with digit.
+ */
+export function safeName(name) {
+  if (!name) return 'unnamed';
+  return name
+    .replace(/[^a-zA-Z0-9_]/g, '_')
+    .replace(/^[0-9]/, 'r$&')
+    .replace(/__+/g, '_')
+    .replace(/_$/, '')
+    .toLowerCase();
+}
+
+/**
+ * Extract a display name from an Azure resource.
+ * Falls back through name, id segment, or prefix.
+ */
+function _resName(resource, prefix) {
+  const raw = resource.name
+    || (resource.id ? resource.id.split('/').pop() : null)
+    || prefix
+    || 'res';
+  return safeName(raw);
+}
+
+/**
+ * Build a Terraform reference string for a given resource ID.
+ * Returns the mapped TF resource ref if known, otherwise a quoted literal.
+ */
+export function _tfRef(id, attr) {
+  if (_tfIdMap[id]) return _tfIdMap[id] + '.' + attr;
+  return '"' + (id || '') + '"';
+}
+
+/**
+ * Extract tags from an Azure resource object.
+ * Azure tags are a flat object: { "Environment": "prod", "Team": "net" }
+ */
+function _extractTags(resource) {
+  return resource.tags || {};
+}
+
+/**
+ * Write HCL tags block from Azure tag object.
+ */
+function _writeTags(lines, resource) {
+  const tags = _extractTags(resource);
+  const keys = Object.keys(tags);
+  if (!keys.length) return;
+  lines.push('');
+  lines.push('  tags = {');
+  keys.forEach(k => {
+    const safeKey = k.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/) ? k : ('"' + k + '"');
+    lines.push('    ' + safeKey + ' = "' + (tags[k] || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"');
+  });
+  lines.push('  }');
+}
+
+/**
+ * Escape a string for use in HCL double-quoted strings.
+ */
+function _hclEsc(s) {
+  return (s || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+/**
+ * Get the location from a resource, with fallback.
+ */
+function _loc(resource) {
+  return resource.location || 'eastus';
+}
+
+/**
+ * Map Azure protocol string to Terraform/ARM-safe value.
+ */
+function _proto(p) {
+  if (!p || p === '*') return '*';
+  const low = p.toLowerCase();
+  if (low === 'tcp') return 'Tcp';
+  if (low === 'udp') return 'Udp';
+  if (low === 'icmp') return 'Icmp';
+  return p;
+}
+
+/**
+ * Extract resource group name from an Azure resource ID.
+ */
+function _rgFromId(id) {
+  if (!id) return '';
+  const m = id.match(/\/resourceGroups\/([^/]+)/i);
+  return m ? m[1] : '';
+}
+
+/**
+ * Extract the VNet name from a subnet ID.
+ */
+function _vnetFromSubnetId(subnetId) {
+  if (!subnetId) return '';
+  const m = subnetId.match(/\/virtualNetworks\/([^/]+)/i);
+  return m ? m[1] : '';
+}
+
+
+// ============================================================
+// 1. TERRAFORM HCL GENERATION (azurerm provider)
+// ============================================================
+
+export function generateTerraform(data, options) {
+  if (!data) return { code: '# No data loaded', warnings: [], stats: {} };
+  const opts = options || {};
+  _tfIdMap = {};
+  const lines = [];
+  const warnings = [];
+  const includeVars = opts.variables !== false;
+  const designOnly = opts.designOnly || false;
+
+  const vnets = data.vnets || [];
+  const nsgs = (data.nsgs || []).concat(data.subnetNsgs || []);
+  const udrs = data.udrs || [];
+  const natGateways = data.natGateways || [];
+  const vms = data.vms || [];
+  const nics = data.nics || [];
+  const disks = data.disks || [];
+  const peerings = data.peerings || [];
+  const firewalls = data.firewalls || [];
+  const bastions = data.bastions || [];
+  const resourceGroups = data.resourceGroups || [];
+
+  // Collect all subnets from vnets
+  const allSubnets = [];
+  vnets.forEach(vnet => {
+    (vnet.properties?.subnets || []).forEach(sub => {
+      allSubnets.push({ ...sub, _vnetName: vnet.name, _vnetId: vnet.id, _location: _loc(vnet) });
+    });
+  });
+
+  // Deduplicate NSGs by id
+  const nsgMap = new Map();
+  nsgs.forEach(n => { if (n.id) nsgMap.set(n.id.toLowerCase(), n); });
+  const uniqueNsgs = Array.from(nsgMap.values());
+
+  // Determine location
+  const primaryLocation = vnets.length ? _loc(vnets[0]) : 'eastus';
+
+  // --- Header ---
+  lines.push('# Generated by Azure Mapper');
+  lines.push('# Date: ' + new Date().toISOString().split('T')[0]);
+  lines.push('#');
+  lines.push('# REVIEW BEFORE APPLYING:');
+  lines.push('# - Resource group names must be unique in your subscription');
+  lines.push('# - VM admin passwords are placeholders — use Azure Key Vault');
+  lines.push('# - Managed identity and RBAC assignments are not included');
+  lines.push('# - DNS and custom DHCP settings may need manual configuration');
+  lines.push('');
+
+  // --- Provider ---
+  lines.push('terraform {');
+  lines.push('  required_providers {');
+  lines.push('    azurerm = {');
+  lines.push('      source  = "hashicorp/azurerm"');
+  lines.push('      version = "~> 3.0"');
+  lines.push('    }');
+  lines.push('  }');
+  lines.push('}');
+  lines.push('');
+  lines.push('provider "azurerm" {');
+  lines.push('  features {}');
+  lines.push('}');
+  lines.push('');
+
+  // --- Variables ---
+  if (includeVars) {
+    lines.push('variable "location" {');
+    lines.push('  description = "Azure region for resources"');
+    lines.push('  type        = string');
+    lines.push('  default     = "' + primaryLocation + '"');
+    lines.push('}');
+    lines.push('');
+    lines.push('variable "admin_username" {');
+    lines.push('  description = "Admin username for VMs"');
+    lines.push('  type        = string');
+    lines.push('  default     = "azureadmin"');
+    lines.push('}');
+    lines.push('');
+    lines.push('variable "admin_password" {');
+    lines.push('  description = "Admin password for VMs — use Key Vault in production"');
+    lines.push('  type        = string');
+    lines.push('  sensitive   = true');
+    lines.push('  default     = "CHANGE_ME_P@ssw0rd!"');
+    lines.push('}');
+    lines.push('');
+  }
+
+  // --- Resource Groups ---
+  const rgSet = new Set();
+  resourceGroups.forEach(rg => {
+    const name = _resName(rg, 'rg');
+    if (rgSet.has(name)) return;
+    rgSet.add(name);
+    const resName = 'azurerm_resource_group.' + name;
+    _tfIdMap[(rg.id || '').toLowerCase()] = resName;
+    lines.push('resource "azurerm_resource_group" "' + name + '" {');
+    lines.push('  name     = "' + _hclEsc(rg.name || name) + '"');
+    lines.push('  location = ' + (includeVars ? 'var.location' : '"' + _loc(rg) + '"'));
+    _writeTags(lines, rg);
+    lines.push('}');
+    lines.push('');
+  });
+
+  // If no RGs found, create a default one
+  if (!resourceGroups.length && vnets.length) {
+    const rgName = 'rg_default';
+    lines.push('resource "azurerm_resource_group" "' + rgName + '" {');
+    lines.push('  name     = "rg-azure-mapper"');
+    lines.push('  location = ' + (includeVars ? 'var.location' : '"' + primaryLocation + '"'));
+    lines.push('}');
+    lines.push('');
+    _tfIdMap['__default_rg__'] = 'azurerm_resource_group.' + rgName;
+  }
+
+  // Helper: resolve RG reference for a resource
+  function _rgRef(resource) {
+    const rgName = _rgFromId(resource.id);
+    if (rgName) {
+      // Try to find mapped RG
+      for (const [key, val] of Object.entries(_tfIdMap)) {
+        if (key.includes('/resourcegroups/' + rgName.toLowerCase()) && val.startsWith('azurerm_resource_group.')) {
+          return val + '.name';
+        }
+      }
+    }
+    // Fallback to default RG
+    if (_tfIdMap['__default_rg__']) return _tfIdMap['__default_rg__'] + '.name';
+    return '"' + _hclEsc(rgName || 'rg-azure-mapper') + '"';
+  }
+
+  function _locRef(resource) {
+    const rgName = _rgFromId(resource.id);
+    if (rgName) {
+      for (const [key, val] of Object.entries(_tfIdMap)) {
+        if (key.includes('/resourcegroups/' + rgName.toLowerCase()) && val.startsWith('azurerm_resource_group.')) {
+          return val + '.location';
+        }
+      }
+    }
+    if (_tfIdMap['__default_rg__']) return _tfIdMap['__default_rg__'] + '.location';
+    return includeVars ? 'var.location' : '"' + _loc(resource) + '"';
+  }
+
+  // --- Virtual Networks ---
+  vnets.forEach(vnet => {
+    const name = _resName(vnet, 'vnet');
+    const resName = 'azurerm_virtual_network.' + name;
+    _tfIdMap[(vnet.id || '').toLowerCase()] = resName;
+    const addrSpace = vnet.properties?.addressSpace?.addressPrefixes || ['10.0.0.0/16'];
+    lines.push('# VNet: ' + (vnet.name || name));
+    lines.push('resource "azurerm_virtual_network" "' + name + '" {');
+    lines.push('  name                = "' + _hclEsc(vnet.name || name) + '"');
+    lines.push('  address_space       = ' + JSON.stringify(addrSpace));
+    lines.push('  location            = ' + _locRef(vnet));
+    lines.push('  resource_group_name = ' + _rgRef(vnet));
+    const dnsServers = vnet.properties?.dhcpOptions?.dnsServers || [];
+    if (dnsServers.length) {
+      lines.push('  dns_servers         = ' + JSON.stringify(dnsServers));
+    }
+    _writeTags(lines, vnet);
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Subnets ---
+  allSubnets.forEach(sub => {
+    const subName = sub.name || 'subnet';
+    const name = safeName(sub._vnetName + '_' + subName);
+    const resName = 'azurerm_subnet.' + name;
+    _tfIdMap[(sub.id || '').toLowerCase()] = resName;
+    const prefix = sub.properties?.addressPrefix;
+    const prefixes = sub.properties?.addressPrefixes || (prefix ? [prefix] : ['10.0.0.0/24']);
+    lines.push('resource "azurerm_subnet" "' + name + '" {');
+    lines.push('  name                 = "' + _hclEsc(subName) + '"');
+    lines.push('  resource_group_name  = ' + _rgRef({ id: sub._vnetId }));
+    lines.push('  virtual_network_name = ' + _tfRef((sub._vnetId || '').toLowerCase(), 'name'));
+    lines.push('  address_prefixes     = ' + JSON.stringify(prefixes));
+    // Service endpoints
+    const svcEndpoints = sub.properties?.serviceEndpoints || [];
+    if (svcEndpoints.length) {
+      lines.push('  service_endpoints    = ' + JSON.stringify(svcEndpoints.map(se => se.service)));
+    }
+    // Delegations
+    const delegations = sub.properties?.delegations || [];
+    delegations.forEach(del => {
+      lines.push('');
+      lines.push('  delegation {');
+      lines.push('    name = "' + _hclEsc(del.name || 'delegation') + '"');
+      lines.push('    service_delegation {');
+      lines.push('      name = "' + _hclEsc(del.properties?.serviceName || '') + '"');
+      const actions = del.properties?.actions || [];
+      if (actions.length) {
+        lines.push('      actions = ' + JSON.stringify(actions));
+      }
+      lines.push('    }');
+      lines.push('  }');
+    });
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Network Security Groups ---
+  uniqueNsgs.forEach(nsg => {
+    const name = _resName(nsg, 'nsg');
+    const resName = 'azurerm_network_security_group.' + name;
+    _tfIdMap[(nsg.id || '').toLowerCase()] = resName;
+    lines.push('# NSG: ' + (nsg.name || name));
+    lines.push('resource "azurerm_network_security_group" "' + name + '" {');
+    lines.push('  name                = "' + _hclEsc(nsg.name || name) + '"');
+    lines.push('  location            = ' + _locRef(nsg));
+    lines.push('  resource_group_name = ' + _rgRef(nsg));
+    _writeTags(lines, nsg);
+    lines.push('}');
+    lines.push('');
+
+    // --- NSG Rules as separate resources ---
+    const rules = nsg.properties?.securityRules || [];
+    rules.forEach((rule, ri) => {
+      const ruleName = safeName(name + '_' + (rule.name || 'rule_' + ri));
+      const rp = rule.properties || {};
+      lines.push('resource "azurerm_network_security_rule" "' + ruleName + '" {');
+      lines.push('  name                        = "' + _hclEsc(rule.name || 'rule-' + ri) + '"');
+      lines.push('  priority                    = ' + (rp.priority || (100 + ri * 10)));
+      lines.push('  direction                   = "' + (rp.direction || 'Inbound') + '"');
+      lines.push('  access                      = "' + (rp.access || 'Allow') + '"');
+      lines.push('  protocol                    = "' + _proto(rp.protocol) + '"');
+      lines.push('  source_port_range           = "' + (rp.sourcePortRange || '*') + '"');
+      lines.push('  destination_port_range      = "' + (rp.destinationPortRange || '*') + '"');
+      lines.push('  source_address_prefix       = "' + _hclEsc(rp.sourceAddressPrefix || '*') + '"');
+      lines.push('  destination_address_prefix  = "' + _hclEsc(rp.destinationAddressPrefix || '*') + '"');
+      lines.push('  resource_group_name         = ' + _rgRef(nsg));
+      lines.push('  network_security_group_name = ' + _tfRef((nsg.id || '').toLowerCase(), 'name'));
+      lines.push('}');
+      lines.push('');
+    });
+  });
+
+  // --- NSG-to-Subnet Associations ---
+  allSubnets.forEach(sub => {
+    const nsgId = sub.properties?.networkSecurityGroup?.id;
+    if (!nsgId) return;
+    const subTfName = safeName(sub._vnetName + '_' + (sub.name || 'subnet'));
+    const assocName = safeName(subTfName + '_nsg_assoc');
+    lines.push('resource "azurerm_subnet_network_security_group_association" "' + assocName + '" {');
+    lines.push('  subnet_id                 = ' + _tfRef((sub.id || '').toLowerCase(), 'id'));
+    lines.push('  network_security_group_id = ' + _tfRef(nsgId.toLowerCase(), 'id'));
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Route Tables (UDRs) ---
+  udrs.forEach(udr => {
+    const name = _resName(udr, 'rt');
+    const resName = 'azurerm_route_table.' + name;
+    _tfIdMap[(udr.id || '').toLowerCase()] = resName;
+    lines.push('# Route Table: ' + (udr.name || name));
+    lines.push('resource "azurerm_route_table" "' + name + '" {');
+    lines.push('  name                          = "' + _hclEsc(udr.name || name) + '"');
+    lines.push('  location                      = ' + _locRef(udr));
+    lines.push('  resource_group_name           = ' + _rgRef(udr));
+    const disableProp = udr.properties?.disableBgpRoutePropagation;
+    if (disableProp === true) {
+      lines.push('  disable_bgp_route_propagation = true');
+    }
+    _writeTags(lines, udr);
+    lines.push('}');
+    lines.push('');
+
+    // Routes as separate resources
+    const routes = udr.properties?.routes || [];
+    routes.forEach((route, ri) => {
+      const routeName = safeName(name + '_' + (route.name || 'route_' + ri));
+      const rp = route.properties || {};
+      lines.push('resource "azurerm_route" "' + routeName + '" {');
+      lines.push('  name                = "' + _hclEsc(route.name || 'route-' + ri) + '"');
+      lines.push('  resource_group_name = ' + _rgRef(udr));
+      lines.push('  route_table_name    = ' + _tfRef((udr.id || '').toLowerCase(), 'name'));
+      lines.push('  address_prefix      = "' + _hclEsc(rp.addressPrefix || '0.0.0.0/0') + '"');
+      lines.push('  next_hop_type       = "' + _hclEsc(rp.nextHopType || 'None') + '"');
+      if (rp.nextHopIpAddress) {
+        lines.push('  next_hop_in_ip_address = "' + rp.nextHopIpAddress + '"');
+      }
+      lines.push('}');
+      lines.push('');
+    });
+  });
+
+  // --- UDR-to-Subnet Associations ---
+  allSubnets.forEach(sub => {
+    const rtId = sub.properties?.routeTable?.id;
+    if (!rtId) return;
+    const subTfName = safeName(sub._vnetName + '_' + (sub.name || 'subnet'));
+    const assocName = safeName(subTfName + '_rt_assoc');
+    lines.push('resource "azurerm_subnet_route_table_association" "' + assocName + '" {');
+    lines.push('  subnet_id      = ' + _tfRef((sub.id || '').toLowerCase(), 'id'));
+    lines.push('  route_table_id = ' + _tfRef(rtId.toLowerCase(), 'id'));
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- NAT Gateways ---
+  natGateways.forEach(nat => {
+    const name = _resName(nat, 'natgw');
+    const resName = 'azurerm_nat_gateway.' + name;
+    _tfIdMap[(nat.id || '').toLowerCase()] = resName;
+    lines.push('resource "azurerm_nat_gateway" "' + name + '" {');
+    lines.push('  name                    = "' + _hclEsc(nat.name || name) + '"');
+    lines.push('  location                = ' + _locRef(nat));
+    lines.push('  resource_group_name     = ' + _rgRef(nat));
+    const sku = nat.sku?.name || 'Standard';
+    lines.push('  sku_name                = "' + sku + '"');
+    const idle = nat.properties?.idleTimeoutInMinutes;
+    if (idle) lines.push('  idle_timeout_in_minutes = ' + idle);
+    _writeTags(lines, nat);
+    lines.push('}');
+    lines.push('');
+
+    // Public IP associations for NAT
+    const pubIps = nat.properties?.publicIpAddresses || [];
+    pubIps.forEach((pip, pi) => {
+      const pipName = safeName(name + '_pip_' + pi);
+      lines.push('resource "azurerm_public_ip" "' + pipName + '" {');
+      lines.push('  name                = "' + _hclEsc(pip.id ? pip.id.split('/').pop() : name + '-pip-' + pi) + '"');
+      lines.push('  location            = ' + _locRef(nat));
+      lines.push('  resource_group_name = ' + _rgRef(nat));
+      lines.push('  allocation_method   = "Static"');
+      lines.push('  sku                 = "Standard"');
+      lines.push('}');
+      lines.push('');
+    });
+  });
+
+  // --- VNet Peerings ---
+  peerings.forEach(peer => {
+    const name = _resName(peer, 'peer');
+    lines.push('resource "azurerm_virtual_network_peering" "' + name + '" {');
+    lines.push('  name                      = "' + _hclEsc(peer.name || name) + '"');
+    // Resolve source VNet
+    const srcVnetId = peer._sourceVnetId || peer.id?.split('/virtualNetworkPeerings/')[0] || '';
+    lines.push('  resource_group_name       = "' + _hclEsc(_rgFromId(srcVnetId)) + '"');
+    lines.push('  virtual_network_name      = "' + _hclEsc(_vnetFromSubnetId(srcVnetId + '/subnets/x') || srcVnetId.split('/').pop()) + '"');
+    const remoteVnetId = peer.properties?.remoteVirtualNetwork?.id || '';
+    lines.push('  remote_virtual_network_id = "' + _hclEsc(remoteVnetId) + '"');
+    const pp = peer.properties || {};
+    lines.push('  allow_virtual_network_access = ' + (pp.allowVirtualNetworkAccess !== false ? 'true' : 'false'));
+    lines.push('  allow_forwarded_traffic      = ' + (pp.allowForwardedTraffic === true ? 'true' : 'false'));
+    lines.push('  allow_gateway_transit        = ' + (pp.allowGatewayTransit === true ? 'true' : 'false'));
+    lines.push('  use_remote_gateways          = ' + (pp.useRemoteGateways === true ? 'true' : 'false'));
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Network Interfaces ---
+  nics.forEach(nic => {
+    const name = _resName(nic, 'nic');
+    const resName = 'azurerm_network_interface.' + name;
+    _tfIdMap[(nic.id || '').toLowerCase()] = resName;
+    lines.push('resource "azurerm_network_interface" "' + name + '" {');
+    lines.push('  name                = "' + _hclEsc(nic.name || name) + '"');
+    lines.push('  location            = ' + _locRef(nic));
+    lines.push('  resource_group_name = ' + _rgRef(nic));
+    const ipConfigs = nic.properties?.ipConfigurations || [];
+    ipConfigs.forEach((ipc, idx) => {
+      lines.push('');
+      lines.push('  ip_configuration {');
+      lines.push('    name                          = "' + _hclEsc(ipc.name || 'ipconfig' + idx) + '"');
+      const subId = ipc.properties?.subnet?.id;
+      if (subId) {
+        lines.push('    subnet_id                     = ' + _tfRef(subId.toLowerCase(), 'id'));
+      }
+      lines.push('    private_ip_address_allocation = "' + (ipc.properties?.privateIPAllocationMethod || 'Dynamic') + '"');
+      if (ipc.properties?.privateIPAddress && ipc.properties?.privateIPAllocationMethod === 'Static') {
+        lines.push('    private_ip_address            = "' + ipc.properties.privateIPAddress + '"');
+      }
+      const pubIpId = ipc.properties?.publicIPAddress?.id;
+      if (pubIpId) {
+        lines.push('    public_ip_address_id          = "' + _hclEsc(pubIpId) + '"');
+      }
+      lines.push('  }');
+    });
+    _writeTags(lines, nic);
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Virtual Machines ---
+  vms.forEach(vm => {
+    const name = _resName(vm, 'vm');
+    const vmp = vm.properties || {};
+    const osProfile = vmp.osProfile || {};
+    const isWindows = !!(osProfile.windowsConfiguration || (vmp.storageProfile?.osDisk?.osType || '').toLowerCase() === 'windows');
+    const resType = isWindows ? 'azurerm_windows_virtual_machine' : 'azurerm_linux_virtual_machine';
+    const resName = resType + '.' + name;
+    _tfIdMap[(vm.id || '').toLowerCase()] = resName;
+
+    lines.push('# VM: ' + (vm.name || name));
+    lines.push('resource "' + resType + '" "' + name + '" {');
+    lines.push('  name                = "' + _hclEsc(vm.name || name) + '"');
+    lines.push('  resource_group_name = ' + _rgRef(vm));
+    lines.push('  location            = ' + _locRef(vm));
+    lines.push('  size                = "' + (vmp.hardwareProfile?.vmSize || 'Standard_B2s') + '"');
+    lines.push('  admin_username      = ' + (includeVars ? 'var.admin_username' : '"azureadmin"'));
+    if (isWindows) {
+      lines.push('  admin_password      = ' + (includeVars ? 'var.admin_password' : '"CHANGE_ME_P@ssw0rd!"'));
+    } else {
+      lines.push('  admin_password                  = ' + (includeVars ? 'var.admin_password' : '"CHANGE_ME_P@ssw0rd!"'));
+      lines.push('  disable_password_authentication = false');
+    }
+
+    // NIC IDs
+    const nicIds = vmp.networkProfile?.networkInterfaces || [];
+    if (nicIds.length) {
+      lines.push('  network_interface_ids = [');
+      nicIds.forEach(n => {
+        lines.push('    ' + _tfRef((n.id || '').toLowerCase(), 'id') + ',');
+      });
+      lines.push('  ]');
+    }
+
+    // OS Disk
+    const osDisk = vmp.storageProfile?.osDisk || {};
+    lines.push('');
+    lines.push('  os_disk {');
+    lines.push('    caching              = "' + (osDisk.caching || 'ReadWrite') + '"');
+    lines.push('    storage_account_type = "' + (osDisk.managedDisk?.storageAccountType || 'Standard_LRS') + '"');
+    if (osDisk.diskSizeGB) lines.push('    disk_size_gb         = ' + osDisk.diskSizeGB);
+    lines.push('  }');
+
+    // Image reference
+    const imgRef = vmp.storageProfile?.imageReference;
+    if (imgRef && imgRef.publisher) {
+      lines.push('');
+      lines.push('  source_image_reference {');
+      lines.push('    publisher = "' + _hclEsc(imgRef.publisher) + '"');
+      lines.push('    offer     = "' + _hclEsc(imgRef.offer) + '"');
+      lines.push('    sku       = "' + _hclEsc(imgRef.sku) + '"');
+      lines.push('    version   = "' + _hclEsc(imgRef.version || 'latest') + '"');
+      lines.push('  }');
+    }
+
+    _writeTags(lines, vm);
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Managed Disks ---
+  disks.forEach(disk => {
+    const name = _resName(disk, 'disk');
+    const resName = 'azurerm_managed_disk.' + name;
+    _tfIdMap[(disk.id || '').toLowerCase()] = resName;
+    const dp = disk.properties || {};
+    lines.push('resource "azurerm_managed_disk" "' + name + '" {');
+    lines.push('  name                 = "' + _hclEsc(disk.name || name) + '"');
+    lines.push('  location             = ' + _locRef(disk));
+    lines.push('  resource_group_name  = ' + _rgRef(disk));
+    lines.push('  storage_account_type = "' + (dp.accountType || disk.sku?.name || 'Standard_LRS') + '"');
+    lines.push('  create_option        = "' + (dp.creationData?.createOption || 'Empty') + '"');
+    if (dp.diskSizeGB) lines.push('  disk_size_gb         = ' + dp.diskSizeGB);
+    if (dp.encryptionSettingsCollection?.enabled) {
+      lines.push('');
+      lines.push('  encryption_settings {');
+      lines.push('    enabled = true');
+      lines.push('  }');
+    }
+    _writeTags(lines, disk);
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Azure Firewall ---
+  firewalls.forEach(fw => {
+    const name = _resName(fw, 'fw');
+    const fwp = fw.properties || {};
+    lines.push('# Azure Firewall: ' + (fw.name || name));
+    lines.push('resource "azurerm_firewall" "' + name + '" {');
+    lines.push('  name                = "' + _hclEsc(fw.name || name) + '"');
+    lines.push('  location            = ' + _locRef(fw));
+    lines.push('  resource_group_name = ' + _rgRef(fw));
+    lines.push('  sku_name            = "' + (fw.sku?.name || 'AZFW_VNet') + '"');
+    lines.push('  sku_tier            = "' + (fw.sku?.tier || 'Standard') + '"');
+    const ipConfigs = fwp.ipConfigurations || [];
+    ipConfigs.forEach((ipc, idx) => {
+      lines.push('');
+      lines.push('  ip_configuration {');
+      lines.push('    name                 = "' + _hclEsc(ipc.name || 'fw-ipconfig-' + idx) + '"');
+      if (ipc.properties?.subnet?.id) {
+        lines.push('    subnet_id            = ' + _tfRef(ipc.properties.subnet.id.toLowerCase(), 'id'));
+      }
+      if (ipc.properties?.publicIPAddress?.id) {
+        lines.push('    public_ip_address_id = "' + _hclEsc(ipc.properties.publicIPAddress.id) + '"');
+      }
+      lines.push('  }');
+    });
+    _writeTags(lines, fw);
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Bastion Host ---
+  bastions.forEach(bast => {
+    const name = _resName(bast, 'bastion');
+    const bp = bast.properties || {};
+    lines.push('resource "azurerm_bastion_host" "' + name + '" {');
+    lines.push('  name                = "' + _hclEsc(bast.name || name) + '"');
+    lines.push('  location            = ' + _locRef(bast));
+    lines.push('  resource_group_name = ' + _rgRef(bast));
+    const ipConfigs = bp.ipConfigurations || [];
+    ipConfigs.forEach((ipc, idx) => {
+      lines.push('');
+      lines.push('  ip_configuration {');
+      lines.push('    name                 = "' + _hclEsc(ipc.name || 'bastion-ipconfig-' + idx) + '"');
+      if (ipc.properties?.subnet?.id) {
+        lines.push('    subnet_id            = ' + _tfRef(ipc.properties.subnet.id.toLowerCase(), 'id'));
+      }
+      if (ipc.properties?.publicIPAddress?.id) {
+        lines.push('    public_ip_address_id = "' + _hclEsc(ipc.properties.publicIPAddress.id) + '"');
+      }
+      lines.push('  }');
+    });
+    _writeTags(lines, bast);
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Warnings ---
+  if (vms.length) warnings.push('VM admin passwords are placeholders. Use Azure Key Vault for production.');
+  if (vms.some(vm => vm.properties?.storageProfile?.imageReference?.publisher)) {
+    warnings.push('Image references are region-specific. Verify availability in target region.');
+  }
+  if (peerings.length) warnings.push('VNet peering requires both sides. Reverse peerings may need separate config.');
+
+  _iacOutput = lines.join('\n');
+  return {
+    code: _iacOutput,
+    warnings,
+    stats: {
+      resourceGroups: resourceGroups.length,
+      vnets: vnets.length,
+      subnets: allSubnets.length,
+      nsgs: uniqueNsgs.length,
+      vms: vms.length,
+      total: lines.filter(l => l.startsWith('resource ')).length
+    }
+  };
+}
+
+
+// ============================================================
+// 2. ARM TEMPLATE GENERATION
+// ============================================================
+
+/**
+ * Convert Azure tags object to ARM template tags format.
+ */
+function _armTags(resource) {
+  return resource.tags || {};
+}
+
+/**
+ * Generate a unique logical ID for ARM template resources.
+ */
+function _armId(name, prefix, seen) {
+  let base = (name || prefix || 'Res').replace(/[^a-zA-Z0-9]/g, '');
+  if (!base || /^\d/.test(base)) base = (prefix || 'R') + base;
+  let id = base, i = 2;
+  while (seen.has(id)) { id = base + i; i++; }
+  seen.add(id);
+  return id;
+}
+
+export function generateARM(data, options) {
+  if (!data) return { code: '{}', warnings: [], stats: {} };
+  const opts = options || {};
+  const warnings = [];
+
+  const vnets = data.vnets || [];
+  const nsgs = (data.nsgs || []).concat(data.subnetNsgs || []);
+  const udrs = data.udrs || [];
+  const natGateways = data.natGateways || [];
+  const vms = data.vms || [];
+  const nics = data.nics || [];
+  const disks = data.disks || [];
+  const peerings = data.peerings || [];
+  const firewalls = data.firewalls || [];
+  const bastions = data.bastions || [];
+
+  // Deduplicate NSGs
+  const nsgMap = new Map();
+  nsgs.forEach(n => { if (n.id) nsgMap.set(n.id.toLowerCase(), n); });
+  const uniqueNsgs = Array.from(nsgMap.values());
+
+  const primaryLocation = vnets.length ? _loc(vnets[0]) : 'eastus';
+
+  const template = {
+    '$schema': 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#',
+    contentVersion: '1.0.0.0',
+    parameters: {
+      location: {
+        type: 'string',
+        defaultValue: '[resourceGroup().location]',
+        metadata: { description: 'Azure region for all resources' }
+      },
+      adminUsername: {
+        type: 'string',
+        defaultValue: 'azureadmin',
+        metadata: { description: 'Admin username for VMs' }
+      },
+      adminPassword: {
+        type: 'securestring',
+        metadata: { description: 'Admin password for VMs' }
+      }
+    },
+    variables: {},
+    resources: [],
+    outputs: {}
+  };
+
+  const resources = template.resources;
+  const seen = new Set();
+
+  // --- NSGs ---
+  uniqueNsgs.forEach(nsg => {
+    const secRules = (nsg.properties?.securityRules || []).map(rule => {
+      const rp = rule.properties || {};
+      const armRule = {
+        name: rule.name || 'rule',
+        properties: {
+          priority: rp.priority || 100,
+          direction: rp.direction || 'Inbound',
+          access: rp.access || 'Allow',
+          protocol: _proto(rp.protocol),
+          sourcePortRange: rp.sourcePortRange || '*',
+          destinationPortRange: rp.destinationPortRange || '*',
+          sourceAddressPrefix: rp.sourceAddressPrefix || '*',
+          destinationAddressPrefix: rp.destinationAddressPrefix || '*'
+        }
+      };
+      return armRule;
+    });
+
+    resources.push({
+      type: 'Microsoft.Network/networkSecurityGroups',
+      apiVersion: '2023-04-01',
+      name: nsg.name || 'nsg',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(nsg),
+      properties: {
+        securityRules: secRules
+      }
+    });
+  });
+
+  // --- Route Tables ---
+  udrs.forEach(udr => {
+    const routes = (udr.properties?.routes || []).map(route => {
+      const rp = route.properties || {};
+      const armRoute = {
+        name: route.name || 'route',
+        properties: {
+          addressPrefix: rp.addressPrefix || '0.0.0.0/0',
+          nextHopType: rp.nextHopType || 'None'
+        }
+      };
+      if (rp.nextHopIpAddress) armRoute.properties.nextHopIpAddress = rp.nextHopIpAddress;
+      return armRoute;
+    });
+
+    resources.push({
+      type: 'Microsoft.Network/routeTables',
+      apiVersion: '2023-04-01',
+      name: udr.name || 'rt',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(udr),
+      properties: {
+        disableBgpRoutePropagation: udr.properties?.disableBgpRoutePropagation || false,
+        routes: routes
+      }
+    });
+  });
+
+  // --- Virtual Networks (with inline subnets) ---
+  vnets.forEach(vnet => {
+    const addrSpace = vnet.properties?.addressSpace?.addressPrefixes || ['10.0.0.0/16'];
+    const subnets = (vnet.properties?.subnets || []).map(sub => {
+      const sp = sub.properties || {};
+      const armSub = {
+        name: sub.name || 'subnet',
+        properties: {
+          addressPrefix: sp.addressPrefix || (sp.addressPrefixes ? sp.addressPrefixes[0] : '10.0.0.0/24')
+        }
+      };
+      if (sp.networkSecurityGroup?.id) {
+        const nsgName = sp.networkSecurityGroup.id.split('/').pop();
+        armSub.properties.networkSecurityGroup = {
+          id: '[resourceId(\'Microsoft.Network/networkSecurityGroups\', \'' + nsgName + '\')]'
+        };
+      }
+      if (sp.routeTable?.id) {
+        const rtName = sp.routeTable.id.split('/').pop();
+        armSub.properties.routeTable = {
+          id: '[resourceId(\'Microsoft.Network/routeTables\', \'' + rtName + '\')]'
+        };
+      }
+      const svcEndpoints = sp.serviceEndpoints || [];
+      if (svcEndpoints.length) {
+        armSub.properties.serviceEndpoints = svcEndpoints.map(se => ({ service: se.service }));
+      }
+      const delegations = sp.delegations || [];
+      if (delegations.length) {
+        armSub.properties.delegations = delegations.map(d => ({
+          name: d.name || 'delegation',
+          properties: { serviceName: d.properties?.serviceName || '' }
+        }));
+      }
+      return armSub;
+    });
+
+    const dependsOn = [];
+    uniqueNsgs.forEach(nsg => dependsOn.push('[resourceId(\'Microsoft.Network/networkSecurityGroups\', \'' + nsg.name + '\')]'));
+    udrs.forEach(udr => dependsOn.push('[resourceId(\'Microsoft.Network/routeTables\', \'' + udr.name + '\')]'));
+
+    resources.push({
+      type: 'Microsoft.Network/virtualNetworks',
+      apiVersion: '2023-04-01',
+      name: vnet.name || 'vnet',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(vnet),
+      dependsOn: dependsOn,
+      properties: {
+        addressSpace: { addressPrefixes: addrSpace },
+        subnets: subnets
+      }
+    });
+  });
+
+  // --- NAT Gateways ---
+  natGateways.forEach(nat => {
+    resources.push({
+      type: 'Microsoft.Network/natGateways',
+      apiVersion: '2023-04-01',
+      name: nat.name || 'natgw',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(nat),
+      sku: { name: nat.sku?.name || 'Standard' },
+      properties: {
+        idleTimeoutInMinutes: nat.properties?.idleTimeoutInMinutes || 4
+      }
+    });
+  });
+
+  // --- Network Interfaces ---
+  nics.forEach(nic => {
+    const ipConfigs = (nic.properties?.ipConfigurations || []).map(ipc => {
+      const ipcProps = ipc.properties || {};
+      const armIpc = {
+        name: ipc.name || 'ipconfig',
+        properties: {
+          privateIPAllocationMethod: ipcProps.privateIPAllocationMethod || 'Dynamic'
+        }
+      };
+      if (ipcProps.subnet?.id) {
+        const parts = ipcProps.subnet.id.split('/');
+        const vnetName = parts[parts.indexOf('virtualNetworks') + 1] || 'vnet';
+        const subName = parts[parts.indexOf('subnets') + 1] || 'subnet';
+        armIpc.properties.subnet = {
+          id: '[resourceId(\'Microsoft.Network/virtualNetworks/subnets\', \'' + vnetName + '\', \'' + subName + '\')]'
+        };
+      }
+      if (ipcProps.privateIPAddress && ipcProps.privateIPAllocationMethod === 'Static') {
+        armIpc.properties.privateIPAddress = ipcProps.privateIPAddress;
+      }
+      return armIpc;
+    });
+
+    const nicDeps = [];
+    vnets.forEach(v => nicDeps.push('[resourceId(\'Microsoft.Network/virtualNetworks\', \'' + v.name + '\')]'));
+
+    resources.push({
+      type: 'Microsoft.Network/networkInterfaces',
+      apiVersion: '2023-04-01',
+      name: nic.name || 'nic',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(nic),
+      dependsOn: nicDeps,
+      properties: {
+        ipConfigurations: ipConfigs
+      }
+    });
+  });
+
+  // --- Virtual Machines ---
+  vms.forEach(vm => {
+    const vmp = vm.properties || {};
+    const osProfile = vmp.osProfile || {};
+    const isWindows = !!(osProfile.windowsConfiguration || (vmp.storageProfile?.osDisk?.osType || '').toLowerCase() === 'windows');
+    const imgRef = vmp.storageProfile?.imageReference || {};
+    const osDisk = vmp.storageProfile?.osDisk || {};
+    const nicRefs = (vmp.networkProfile?.networkInterfaces || []).map(n => {
+      const nicName = n.id ? n.id.split('/').pop() : 'nic';
+      return { id: '[resourceId(\'Microsoft.Network/networkInterfaces\', \'' + nicName + '\')]' };
+    });
+    const vmDeps = nicRefs.map(n => n.id.replace('[', '').replace(']', '').replace('resourceId', '[resourceId'));
+
+    const vmResource = {
+      type: 'Microsoft.Compute/virtualMachines',
+      apiVersion: '2023-07-01',
+      name: vm.name || 'vm',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(vm),
+      dependsOn: nics.map(n => '[resourceId(\'Microsoft.Network/networkInterfaces\', \'' + n.name + '\')]'),
+      properties: {
+        hardwareProfile: { vmSize: vmp.hardwareProfile?.vmSize || 'Standard_B2s' },
+        storageProfile: {
+          imageReference: {
+            publisher: imgRef.publisher || (isWindows ? 'MicrosoftWindowsServer' : 'Canonical'),
+            offer: imgRef.offer || (isWindows ? 'WindowsServer' : '0001-com-ubuntu-server-jammy'),
+            sku: imgRef.sku || (isWindows ? '2022-datacenter-g2' : '22_04-lts-gen2'),
+            version: imgRef.version || 'latest'
+          },
+          osDisk: {
+            createOption: osDisk.createOption || 'FromImage',
+            managedDisk: {
+              storageAccountType: osDisk.managedDisk?.storageAccountType || 'Standard_LRS'
+            }
+          }
+        },
+        osProfile: {
+          computerName: vm.name || 'vm',
+          adminUsername: '[parameters(\'adminUsername\')]',
+          adminPassword: '[parameters(\'adminPassword\')]'
+        },
+        networkProfile: {
+          networkInterfaces: nicRefs
+        }
+      }
+    };
+    resources.push(vmResource);
+  });
+
+  // --- Managed Disks ---
+  disks.forEach(disk => {
+    const dp = disk.properties || {};
+    resources.push({
+      type: 'Microsoft.Compute/disks',
+      apiVersion: '2023-04-02',
+      name: disk.name || 'disk',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(disk),
+      sku: { name: dp.accountType || disk.sku?.name || 'Standard_LRS' },
+      properties: {
+        creationData: { createOption: dp.creationData?.createOption || 'Empty' },
+        diskSizeGB: dp.diskSizeGB || 128
+      }
+    });
+  });
+
+  // --- Azure Firewall ---
+  firewalls.forEach(fw => {
+    const fwp = fw.properties || {};
+    const ipConfigs = (fwp.ipConfigurations || []).map(ipc => ({
+      name: ipc.name || 'fw-ipconfig',
+      properties: {
+        subnet: ipc.properties?.subnet ? { id: ipc.properties.subnet.id } : undefined,
+        publicIPAddress: ipc.properties?.publicIPAddress ? { id: ipc.properties.publicIPAddress.id } : undefined
+      }
+    }));
+    resources.push({
+      type: 'Microsoft.Network/azureFirewalls',
+      apiVersion: '2023-04-01',
+      name: fw.name || 'firewall',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(fw),
+      properties: {
+        sku: { name: fw.sku?.name || 'AZFW_VNet', tier: fw.sku?.tier || 'Standard' },
+        ipConfigurations: ipConfigs
+      }
+    });
+  });
+
+  // --- Bastion Host ---
+  bastions.forEach(bast => {
+    const bp = bast.properties || {};
+    const ipConfigs = (bp.ipConfigurations || []).map(ipc => ({
+      name: ipc.name || 'bastion-ipconfig',
+      properties: {
+        subnet: ipc.properties?.subnet ? { id: ipc.properties.subnet.id } : undefined,
+        publicIPAddress: ipc.properties?.publicIPAddress ? { id: ipc.properties.publicIPAddress.id } : undefined
+      }
+    }));
+    resources.push({
+      type: 'Microsoft.Network/bastionHosts',
+      apiVersion: '2023-04-01',
+      name: bast.name || 'bastion',
+      location: '[parameters(\'location\')]',
+      tags: _armTags(bast),
+      properties: {
+        ipConfigurations: ipConfigs
+      }
+    });
+  });
+
+  // --- VNet Peerings ---
+  peerings.forEach(peer => {
+    const pp = peer.properties || {};
+    const srcVnetId = peer._sourceVnetId || peer.id?.split('/virtualNetworkPeerings/')[0] || '';
+    const srcVnetName = srcVnetId.split('/').pop() || 'vnet';
+    resources.push({
+      type: 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings',
+      apiVersion: '2023-04-01',
+      name: srcVnetName + '/' + (peer.name || 'peering'),
+      dependsOn: ['[resourceId(\'Microsoft.Network/virtualNetworks\', \'' + srcVnetName + '\')]'],
+      properties: {
+        remoteVirtualNetwork: { id: pp.remoteVirtualNetwork?.id || '' },
+        allowVirtualNetworkAccess: pp.allowVirtualNetworkAccess !== false,
+        allowForwardedTraffic: pp.allowForwardedTraffic === true,
+        allowGatewayTransit: pp.allowGatewayTransit === true,
+        useRemoteGateways: pp.useRemoteGateways === true
+      }
+    });
+  });
+
+  // --- Outputs ---
+  vnets.forEach(vnet => {
+    template.outputs[_armId(vnet.name, 'vnet', seen) + 'Id'] = {
+      type: 'string',
+      value: '[resourceId(\'Microsoft.Network/virtualNetworks\', \'' + (vnet.name || 'vnet') + '\')]'
+    };
+  });
+
+  // Count and warn
+  if (resources.length > 750) warnings.push('Resource count (' + resources.length + ') approaching ARM 800-resource limit. Consider linked templates.');
+  if (vms.length) warnings.push('VM passwords must be provided at deployment. Use Key Vault references for production.');
+
+  const code = JSON.stringify(template, null, 2);
+  _iacOutput = code;
+  return {
+    code,
+    warnings,
+    stats: { resources: resources.length }
+  };
+}
+
+
+// ============================================================
+// 3. BICEP GENERATION
+// ============================================================
+
+export function generateBicep(data, options) {
+  if (!data) return { code: '// No data loaded', warnings: [], stats: {} };
+  const opts = options || {};
+  const lines = [];
+  const warnings = [];
+
+  const vnets = data.vnets || [];
+  const nsgs = (data.nsgs || []).concat(data.subnetNsgs || []);
+  const udrs = data.udrs || [];
+  const natGateways = data.natGateways || [];
+  const vms = data.vms || [];
+  const nics = data.nics || [];
+  const disks = data.disks || [];
+  const peerings = data.peerings || [];
+  const firewalls = data.firewalls || [];
+  const bastions = data.bastions || [];
+
+  // Deduplicate NSGs
+  const nsgMap = new Map();
+  nsgs.forEach(n => { if (n.id) nsgMap.set(n.id.toLowerCase(), n); });
+  const uniqueNsgs = Array.from(nsgMap.values());
+
+  // Bicep symbol name tracker to avoid collisions
+  const symSeen = new Set();
+  function _bsym(raw, prefix) {
+    let base = (raw || prefix || 'res').replace(/[^a-zA-Z0-9_]/g, '_').replace(/^[0-9]/, 'r$&');
+    // Bicep identifiers are camelCase by convention
+    base = base.charAt(0).toLowerCase() + base.slice(1);
+    let sym = base, i = 2;
+    while (symSeen.has(sym)) { sym = base + i; i++; }
+    symSeen.add(sym);
+    return sym;
+  }
+
+  // Map resource id -> bicep symbol for references
+  const bicepIdMap = {};
+
+  // --- Header ---
+  lines.push('// Generated by Azure Mapper');
+  lines.push('// Date: ' + new Date().toISOString().split('T')[0]);
+  lines.push('');
+
+  // --- Parameters ---
+  lines.push('param location string = resourceGroup().location');
+  lines.push('param adminUsername string = \'azureadmin\'');
+  lines.push('@secure()');
+  lines.push('param adminPassword string');
+  lines.push('');
+
+  // Helper: write Bicep tags
+  function _bicepTags(resource, indent) {
+    const tags = _extractTags(resource);
+    const keys = Object.keys(tags);
+    if (!keys.length) return;
+    const pad = '  '.repeat(indent);
+    lines.push(pad + 'tags: {');
+    keys.forEach(k => {
+      const safeKey = k.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/) ? k : ('\'' + k + '\'');
+      lines.push(pad + '  ' + safeKey + ': \'' + (tags[k] || '').replace(/'/g, '\\\'') + '\'');
+    });
+    lines.push(pad + '}');
+  }
+
+  // --- NSGs ---
+  uniqueNsgs.forEach(nsg => {
+    const sym = _bsym(nsg.name, 'nsg');
+    bicepIdMap[(nsg.id || '').toLowerCase()] = sym;
+    lines.push('resource ' + sym + ' \'Microsoft.Network/networkSecurityGroups@2023-04-01\' = {');
+    lines.push('  name: \'' + (nsg.name || 'nsg') + '\'');
+    lines.push('  location: location');
+    _bicepTags(nsg, 1);
+    lines.push('  properties: {');
+    const rules = nsg.properties?.securityRules || [];
+    if (rules.length) {
+      lines.push('    securityRules: [');
+      rules.forEach(rule => {
+        const rp = rule.properties || {};
+        lines.push('      {');
+        lines.push('        name: \'' + (rule.name || 'rule') + '\'');
+        lines.push('        properties: {');
+        lines.push('          priority: ' + (rp.priority || 100));
+        lines.push('          direction: \'' + (rp.direction || 'Inbound') + '\'');
+        lines.push('          access: \'' + (rp.access || 'Allow') + '\'');
+        lines.push('          protocol: \'' + _proto(rp.protocol) + '\'');
+        lines.push('          sourcePortRange: \'' + (rp.sourcePortRange || '*') + '\'');
+        lines.push('          destinationPortRange: \'' + (rp.destinationPortRange || '*') + '\'');
+        lines.push('          sourceAddressPrefix: \'' + (rp.sourceAddressPrefix || '*') + '\'');
+        lines.push('          destinationAddressPrefix: \'' + (rp.destinationAddressPrefix || '*') + '\'');
+        lines.push('        }');
+        lines.push('      }');
+      });
+      lines.push('    ]');
+    } else {
+      lines.push('    securityRules: []');
+    }
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Route Tables ---
+  udrs.forEach(udr => {
+    const sym = _bsym(udr.name, 'rt');
+    bicepIdMap[(udr.id || '').toLowerCase()] = sym;
+    lines.push('resource ' + sym + ' \'Microsoft.Network/routeTables@2023-04-01\' = {');
+    lines.push('  name: \'' + (udr.name || 'rt') + '\'');
+    lines.push('  location: location');
+    _bicepTags(udr, 1);
+    lines.push('  properties: {');
+    if (udr.properties?.disableBgpRoutePropagation) {
+      lines.push('    disableBgpRoutePropagation: true');
+    }
+    const routes = udr.properties?.routes || [];
+    if (routes.length) {
+      lines.push('    routes: [');
+      routes.forEach(route => {
+        const rp = route.properties || {};
+        lines.push('      {');
+        lines.push('        name: \'' + (route.name || 'route') + '\'');
+        lines.push('        properties: {');
+        lines.push('          addressPrefix: \'' + (rp.addressPrefix || '0.0.0.0/0') + '\'');
+        lines.push('          nextHopType: \'' + (rp.nextHopType || 'None') + '\'');
+        if (rp.nextHopIpAddress) {
+          lines.push('          nextHopIpAddress: \'' + rp.nextHopIpAddress + '\'');
+        }
+        lines.push('        }');
+        lines.push('      }');
+      });
+      lines.push('    ]');
+    } else {
+      lines.push('    routes: []');
+    }
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Virtual Networks ---
+  vnets.forEach(vnet => {
+    const sym = _bsym(vnet.name, 'vnet');
+    bicepIdMap[(vnet.id || '').toLowerCase()] = sym;
+    const addrSpace = vnet.properties?.addressSpace?.addressPrefixes || ['10.0.0.0/16'];
+    lines.push('resource ' + sym + ' \'Microsoft.Network/virtualNetworks@2023-04-01\' = {');
+    lines.push('  name: \'' + (vnet.name || 'vnet') + '\'');
+    lines.push('  location: location');
+    _bicepTags(vnet, 1);
+    lines.push('  properties: {');
+    lines.push('    addressSpace: {');
+    lines.push('      addressPrefixes: [');
+    addrSpace.forEach(a => lines.push('        \'' + a + '\''));
+    lines.push('      ]');
+    lines.push('    }');
+    const dnsServers = vnet.properties?.dhcpOptions?.dnsServers || [];
+    if (dnsServers.length) {
+      lines.push('    dhcpOptions: {');
+      lines.push('      dnsServers: [');
+      dnsServers.forEach(d => lines.push('        \'' + d + '\''));
+      lines.push('      ]');
+      lines.push('    }');
+    }
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+
+    // Subnets as child resources
+    (vnet.properties?.subnets || []).forEach(sub => {
+      const subSym = _bsym(sub.name, 'subnet');
+      bicepIdMap[(sub.id || '').toLowerCase()] = subSym;
+      const sp = sub.properties || {};
+      const prefix = sp.addressPrefix || (sp.addressPrefixes ? sp.addressPrefixes[0] : '10.0.0.0/24');
+      lines.push('resource ' + subSym + ' \'Microsoft.Network/virtualNetworks/subnets@2023-04-01\' = {');
+      lines.push('  parent: ' + sym);
+      lines.push('  name: \'' + (sub.name || 'subnet') + '\'');
+      lines.push('  properties: {');
+      lines.push('    addressPrefix: \'' + prefix + '\'');
+      // NSG reference
+      const nsgId = sp.networkSecurityGroup?.id;
+      if (nsgId) {
+        const nsgSym = bicepIdMap[nsgId.toLowerCase()];
+        if (nsgSym) {
+          lines.push('    networkSecurityGroup: {');
+          lines.push('      id: ' + nsgSym + '.id');
+          lines.push('    }');
+        }
+      }
+      // Route table reference
+      const rtId = sp.routeTable?.id;
+      if (rtId) {
+        const rtSym = bicepIdMap[rtId.toLowerCase()];
+        if (rtSym) {
+          lines.push('    routeTable: {');
+          lines.push('      id: ' + rtSym + '.id');
+          lines.push('    }');
+        }
+      }
+      // Service endpoints
+      const svcEndpoints = sp.serviceEndpoints || [];
+      if (svcEndpoints.length) {
+        lines.push('    serviceEndpoints: [');
+        svcEndpoints.forEach(se => {
+          lines.push('      {');
+          lines.push('        service: \'' + se.service + '\'');
+          lines.push('      }');
+        });
+        lines.push('    ]');
+      }
+      // Delegations
+      const delegations = sp.delegations || [];
+      if (delegations.length) {
+        lines.push('    delegations: [');
+        delegations.forEach(d => {
+          lines.push('      {');
+          lines.push('        name: \'' + (d.name || 'delegation') + '\'');
+          lines.push('        properties: {');
+          lines.push('          serviceName: \'' + (d.properties?.serviceName || '') + '\'');
+          lines.push('        }');
+          lines.push('      }');
+        });
+        lines.push('    ]');
+      }
+      lines.push('  }');
+      lines.push('}');
+      lines.push('');
+    });
+  });
+
+  // --- NAT Gateways ---
+  natGateways.forEach(nat => {
+    const sym = _bsym(nat.name, 'natGw');
+    lines.push('resource ' + sym + ' \'Microsoft.Network/natGateways@2023-04-01\' = {');
+    lines.push('  name: \'' + (nat.name || 'natgw') + '\'');
+    lines.push('  location: location');
+    lines.push('  sku: {');
+    lines.push('    name: \'' + (nat.sku?.name || 'Standard') + '\'');
+    lines.push('  }');
+    _bicepTags(nat, 1);
+    lines.push('  properties: {');
+    lines.push('    idleTimeoutInMinutes: ' + (nat.properties?.idleTimeoutInMinutes || 4));
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- NICs ---
+  nics.forEach(nic => {
+    const sym = _bsym(nic.name, 'nic');
+    bicepIdMap[(nic.id || '').toLowerCase()] = sym;
+    lines.push('resource ' + sym + ' \'Microsoft.Network/networkInterfaces@2023-04-01\' = {');
+    lines.push('  name: \'' + (nic.name || 'nic') + '\'');
+    lines.push('  location: location');
+    _bicepTags(nic, 1);
+    lines.push('  properties: {');
+    const ipConfigs = nic.properties?.ipConfigurations || [];
+    lines.push('    ipConfigurations: [');
+    ipConfigs.forEach(ipc => {
+      const ipcProps = ipc.properties || {};
+      lines.push('      {');
+      lines.push('        name: \'' + (ipc.name || 'ipconfig') + '\'');
+      lines.push('        properties: {');
+      lines.push('          privateIPAllocationMethod: \'' + (ipcProps.privateIPAllocationMethod || 'Dynamic') + '\'');
+      const subId = ipcProps.subnet?.id;
+      if (subId) {
+        const subSym = bicepIdMap[subId.toLowerCase()];
+        if (subSym) {
+          lines.push('          subnet: {');
+          lines.push('            id: ' + subSym + '.id');
+          lines.push('          }');
+        }
+      }
+      if (ipcProps.privateIPAddress && ipcProps.privateIPAllocationMethod === 'Static') {
+        lines.push('          privateIPAddress: \'' + ipcProps.privateIPAddress + '\'');
+      }
+      lines.push('        }');
+      lines.push('      }');
+    });
+    lines.push('    ]');
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Virtual Machines ---
+  vms.forEach(vm => {
+    const sym = _bsym(vm.name, 'vm');
+    const vmp = vm.properties || {};
+    const osProfile = vmp.osProfile || {};
+    const isWindows = !!(osProfile.windowsConfiguration || (vmp.storageProfile?.osDisk?.osType || '').toLowerCase() === 'windows');
+    const imgRef = vmp.storageProfile?.imageReference || {};
+    const osDisk = vmp.storageProfile?.osDisk || {};
+
+    lines.push('resource ' + sym + ' \'Microsoft.Compute/virtualMachines@2023-07-01\' = {');
+    lines.push('  name: \'' + (vm.name || 'vm') + '\'');
+    lines.push('  location: location');
+    _bicepTags(vm, 1);
+    lines.push('  properties: {');
+    lines.push('    hardwareProfile: {');
+    lines.push('      vmSize: \'' + (vmp.hardwareProfile?.vmSize || 'Standard_B2s') + '\'');
+    lines.push('    }');
+    lines.push('    storageProfile: {');
+    lines.push('      imageReference: {');
+    lines.push('        publisher: \'' + (imgRef.publisher || (isWindows ? 'MicrosoftWindowsServer' : 'Canonical')) + '\'');
+    lines.push('        offer: \'' + (imgRef.offer || (isWindows ? 'WindowsServer' : '0001-com-ubuntu-server-jammy')) + '\'');
+    lines.push('        sku: \'' + (imgRef.sku || (isWindows ? '2022-datacenter-g2' : '22_04-lts-gen2')) + '\'');
+    lines.push('        version: \'' + (imgRef.version || 'latest') + '\'');
+    lines.push('      }');
+    lines.push('      osDisk: {');
+    lines.push('        createOption: \'' + (osDisk.createOption || 'FromImage') + '\'');
+    lines.push('        managedDisk: {');
+    lines.push('          storageAccountType: \'' + (osDisk.managedDisk?.storageAccountType || 'Standard_LRS') + '\'');
+    lines.push('        }');
+    if (osDisk.diskSizeGB) lines.push('        diskSizeGB: ' + osDisk.diskSizeGB);
+    lines.push('      }');
+    lines.push('    }');
+    lines.push('    osProfile: {');
+    lines.push('      computerName: \'' + (vm.name || 'vm') + '\'');
+    lines.push('      adminUsername: adminUsername');
+    lines.push('      adminPassword: adminPassword');
+    lines.push('    }');
+    // Network profile
+    const nicRefs = vmp.networkProfile?.networkInterfaces || [];
+    if (nicRefs.length) {
+      lines.push('    networkProfile: {');
+      lines.push('      networkInterfaces: [');
+      nicRefs.forEach(n => {
+        const nicSym = bicepIdMap[(n.id || '').toLowerCase()];
+        lines.push('        {');
+        if (nicSym) {
+          lines.push('          id: ' + nicSym + '.id');
+        } else {
+          lines.push('          id: \'' + (n.id || '') + '\'');
+        }
+        lines.push('        }');
+      });
+      lines.push('      ]');
+      lines.push('    }');
+    }
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Managed Disks ---
+  disks.forEach(disk => {
+    const sym = _bsym(disk.name, 'disk');
+    const dp = disk.properties || {};
+    lines.push('resource ' + sym + ' \'Microsoft.Compute/disks@2023-04-02\' = {');
+    lines.push('  name: \'' + (disk.name || 'disk') + '\'');
+    lines.push('  location: location');
+    lines.push('  sku: {');
+    lines.push('    name: \'' + (dp.accountType || disk.sku?.name || 'Standard_LRS') + '\'');
+    lines.push('  }');
+    _bicepTags(disk, 1);
+    lines.push('  properties: {');
+    lines.push('    creationData: {');
+    lines.push('      createOption: \'' + (dp.creationData?.createOption || 'Empty') + '\'');
+    lines.push('    }');
+    if (dp.diskSizeGB) lines.push('    diskSizeGB: ' + dp.diskSizeGB);
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Azure Firewall ---
+  firewalls.forEach(fw => {
+    const sym = _bsym(fw.name, 'firewall');
+    const fwp = fw.properties || {};
+    lines.push('resource ' + sym + ' \'Microsoft.Network/azureFirewalls@2023-04-01\' = {');
+    lines.push('  name: \'' + (fw.name || 'firewall') + '\'');
+    lines.push('  location: location');
+    _bicepTags(fw, 1);
+    lines.push('  properties: {');
+    lines.push('    sku: {');
+    lines.push('      name: \'' + (fw.sku?.name || 'AZFW_VNet') + '\'');
+    lines.push('      tier: \'' + (fw.sku?.tier || 'Standard') + '\'');
+    lines.push('    }');
+    const ipConfigs = fwp.ipConfigurations || [];
+    if (ipConfigs.length) {
+      lines.push('    ipConfigurations: [');
+      ipConfigs.forEach(ipc => {
+        lines.push('      {');
+        lines.push('        name: \'' + (ipc.name || 'fw-ipconfig') + '\'');
+        lines.push('        properties: {');
+        if (ipc.properties?.subnet?.id) {
+          const subSym = bicepIdMap[(ipc.properties.subnet.id || '').toLowerCase()];
+          if (subSym) {
+            lines.push('          subnet: { id: ' + subSym + '.id }');
+          } else {
+            lines.push('          subnet: { id: \'' + ipc.properties.subnet.id + '\' }');
+          }
+        }
+        if (ipc.properties?.publicIPAddress?.id) {
+          lines.push('          publicIPAddress: { id: \'' + ipc.properties.publicIPAddress.id + '\' }');
+        }
+        lines.push('        }');
+        lines.push('      }');
+      });
+      lines.push('    ]');
+    }
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Bastion Host ---
+  bastions.forEach(bast => {
+    const sym = _bsym(bast.name, 'bastion');
+    const bp = bast.properties || {};
+    lines.push('resource ' + sym + ' \'Microsoft.Network/bastionHosts@2023-04-01\' = {');
+    lines.push('  name: \'' + (bast.name || 'bastion') + '\'');
+    lines.push('  location: location');
+    _bicepTags(bast, 1);
+    lines.push('  properties: {');
+    const ipConfigs = bp.ipConfigurations || [];
+    if (ipConfigs.length) {
+      lines.push('    ipConfigurations: [');
+      ipConfigs.forEach(ipc => {
+        lines.push('      {');
+        lines.push('        name: \'' + (ipc.name || 'bastion-ipconfig') + '\'');
+        lines.push('        properties: {');
+        if (ipc.properties?.subnet?.id) {
+          const subSym = bicepIdMap[(ipc.properties.subnet.id || '').toLowerCase()];
+          if (subSym) {
+            lines.push('          subnet: { id: ' + subSym + '.id }');
+          } else {
+            lines.push('          subnet: { id: \'' + ipc.properties.subnet.id + '\' }');
+          }
+        }
+        if (ipc.properties?.publicIPAddress?.id) {
+          lines.push('          publicIPAddress: { id: \'' + ipc.properties.publicIPAddress.id + '\' }');
+        }
+        lines.push('        }');
+        lines.push('      }');
+      });
+      lines.push('    ]');
+    }
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Peerings ---
+  peerings.forEach(peer => {
+    const pp = peer.properties || {};
+    const srcVnetId = peer._sourceVnetId || peer.id?.split('/virtualNetworkPeerings/')[0] || '';
+    const srcVnetSym = bicepIdMap[srcVnetId.toLowerCase()];
+    const sym = _bsym(peer.name, 'peering');
+    lines.push('resource ' + sym + ' \'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2023-04-01\' = {');
+    if (srcVnetSym) {
+      lines.push('  parent: ' + srcVnetSym);
+    }
+    lines.push('  name: \'' + (peer.name || 'peering') + '\'');
+    lines.push('  properties: {');
+    lines.push('    remoteVirtualNetwork: {');
+    lines.push('      id: \'' + (pp.remoteVirtualNetwork?.id || '') + '\'');
+    lines.push('    }');
+    lines.push('    allowVirtualNetworkAccess: ' + (pp.allowVirtualNetworkAccess !== false));
+    lines.push('    allowForwardedTraffic: ' + (pp.allowForwardedTraffic === true));
+    lines.push('    allowGatewayTransit: ' + (pp.allowGatewayTransit === true));
+    lines.push('    useRemoteGateways: ' + (pp.useRemoteGateways === true));
+    lines.push('  }');
+    lines.push('}');
+    lines.push('');
+  });
+
+  // --- Outputs ---
+  vnets.forEach(vnet => {
+    const sym = bicepIdMap[(vnet.id || '').toLowerCase()];
+    if (sym) {
+      lines.push('output ' + sym + 'Id string = ' + sym + '.id');
+    }
+  });
+
+  if (vms.length) warnings.push('VM passwords must be provided at deployment. Use Key Vault references for production.');
+  if (peerings.length) warnings.push('VNet peering requires both sides. Reverse peerings may need separate config.');
+
+  const code = lines.join('\n');
+  _iacOutput = code;
+  return {
+    code,
+    warnings,
+    stats: {
+      vnets: vnets.length,
+      nsgs: uniqueNsgs.length,
+      vms: vms.length,
+      total: lines.filter(l => l.match(/^resource /)).length
+    }
+  };
+}
+
+
+// ============================================================
+// 4. CHECKOV POLICY GENERATION (Python checks for ARM/Terraform)
+// ============================================================
+
+/**
+ * Map compliance finding severity to Checkov check categories.
+ */
+function _ckCategory(finding) {
+  const ctrl = (finding.control || '').toUpperCase();
+  if (ctrl.includes('IAM') || ctrl.includes('RBAC')) return 'CheckCategories.IAM';
+  if (ctrl.includes('ENCRYPT') || ctrl.includes('CRYPTO') || ctrl.includes('TLS')) return 'CheckCategories.ENCRYPTION';
+  if (ctrl.includes('LOG') || ctrl.includes('MONITOR') || ctrl.includes('AUDIT')) return 'CheckCategories.LOGGING';
+  return 'CheckCategories.NETWORKING';
+}
+
+/**
+ * Map finding to the appropriate ARM resource type for Checkov.
+ */
+function _ckResourceType(finding) {
+  const msg = (finding.message || '').toLowerCase();
+  const resource = (finding.resource || '').toLowerCase();
+  if (msg.includes('nsg') || msg.includes('security group') || resource.includes('networksecuritygroup')) {
+    return 'Microsoft.Network/networkSecurityGroups';
+  }
+  if (msg.includes('vnet') || msg.includes('virtual network') || resource.includes('virtualnetwork')) {
+    return 'Microsoft.Network/virtualNetworks';
+  }
+  if (msg.includes('vm') || msg.includes('virtual machine') || resource.includes('virtualmachine')) {
+    return 'Microsoft.Compute/virtualMachines';
+  }
+  if (msg.includes('disk') || resource.includes('disk')) {
+    return 'Microsoft.Compute/disks';
+  }
+  if (msg.includes('storage') || resource.includes('storageaccount')) {
+    return 'Microsoft.Storage/storageAccounts';
+  }
+  if (msg.includes('sql') || resource.includes('sql')) {
+    return 'Microsoft.Sql/servers';
+  }
+  if (msg.includes('firewall') || resource.includes('azurefirewall')) {
+    return 'Microsoft.Network/azureFirewalls';
+  }
+  if (msg.includes('bastion') || resource.includes('bastionhost')) {
+    return 'Microsoft.Network/bastionHosts';
+  }
+  if (msg.includes('route') || resource.includes('routetable')) {
+    return 'Microsoft.Network/routeTables';
+  }
+  return 'Microsoft.Network/networkSecurityGroups';
+}
+
+/**
+ * Map finding to a Terraform resource type for Checkov.
+ */
+function _ckTfResourceType(finding) {
+  const msg = (finding.message || '').toLowerCase();
+  const resource = (finding.resource || '').toLowerCase();
+  if (msg.includes('nsg') || msg.includes('security group') || resource.includes('networksecuritygroup')) {
+    return 'azurerm_network_security_group';
+  }
+  if (msg.includes('vnet') || msg.includes('virtual network') || resource.includes('virtualnetwork')) {
+    return 'azurerm_virtual_network';
+  }
+  if (msg.includes('vm') || msg.includes('virtual machine') || resource.includes('virtualmachine')) {
+    return 'azurerm_linux_virtual_machine';
+  }
+  if (msg.includes('disk') || resource.includes('disk')) {
+    return 'azurerm_managed_disk';
+  }
+  if (msg.includes('storage') || resource.includes('storageaccount')) {
+    return 'azurerm_storage_account';
+  }
+  if (msg.includes('sql') || resource.includes('sql')) {
+    return 'azurerm_mssql_server';
+  }
+  if (msg.includes('firewall') || resource.includes('azurefirewall')) {
+    return 'azurerm_firewall';
+  }
+  if (msg.includes('route') || resource.includes('routetable')) {
+    return 'azurerm_route_table';
+  }
+  return 'azurerm_network_security_group';
+}
+
+/**
+ * Generate scan logic Python code for a finding.
+ */
+function _ckScanLogic(finding) {
+  const ctrl = (finding.control || '').toUpperCase();
+  const msg = (finding.message || '').toLowerCase();
+
+  // NSG: no SSH from internet
+  if (msg.includes('ssh') && msg.includes('internet')) {
+    return [
+      '        rules = conf.get("properties", {}).get("securityRules", [])',
+      '        for rule in rules:',
+      '            props = rule.get("properties", {})',
+      '            if (props.get("direction") == "Inbound" and',
+      '                    props.get("access") == "Allow" and',
+      '                    props.get("destinationPortRange") in ["22", "*"] and',
+      '                    props.get("sourceAddressPrefix") in ["*", "0.0.0.0/0", "Internet"]):',
+      '                return CheckResult.FAILED',
+      '        return CheckResult.PASSED'
+    ];
+  }
+
+  // NSG: no RDP from internet
+  if (msg.includes('rdp') && msg.includes('internet')) {
+    return [
+      '        rules = conf.get("properties", {}).get("securityRules", [])',
+      '        for rule in rules:',
+      '            props = rule.get("properties", {})',
+      '            if (props.get("direction") == "Inbound" and',
+      '                    props.get("access") == "Allow" and',
+      '                    props.get("destinationPortRange") in ["3389", "*"] and',
+      '                    props.get("sourceAddressPrefix") in ["*", "0.0.0.0/0", "Internet"]):',
+      '                return CheckResult.FAILED',
+      '        return CheckResult.PASSED'
+    ];
+  }
+
+  // NSG: no unrestricted inbound
+  if (msg.includes('unrestricted') || msg.includes('all ports')) {
+    return [
+      '        rules = conf.get("properties", {}).get("securityRules", [])',
+      '        for rule in rules:',
+      '            props = rule.get("properties", {})',
+      '            if (props.get("direction") == "Inbound" and',
+      '                    props.get("access") == "Allow" and',
+      '                    props.get("destinationPortRange") == "*" and',
+      '                    props.get("sourceAddressPrefix") in ["*", "0.0.0.0/0", "Internet"]):',
+      '                return CheckResult.FAILED',
+      '        return CheckResult.PASSED'
+    ];
+  }
+
+  // Disk encryption
+  if (msg.includes('encrypt') && msg.includes('disk')) {
+    return [
+      '        encryption = conf.get("properties", {}).get("encryptionSettingsCollection", {})',
+      '        if encryption.get("enabled") is True:',
+      '            return CheckResult.PASSED',
+      '        return CheckResult.FAILED'
+    ];
+  }
+
+  // Storage encryption
+  if (msg.includes('encrypt') && msg.includes('storage')) {
+    return [
+      '        encryption = conf.get("properties", {}).get("encryption", {})',
+      '        if encryption.get("services", {}).get("blob", {}).get("enabled") is True:',
+      '            return CheckResult.PASSED',
+      '        return CheckResult.FAILED'
+    ];
+  }
+
+  // Flow logs
+  if (msg.includes('flow log')) {
+    return [
+      '        # Check if NSG has flow logs enabled',
+      '        flow_logs = conf.get("properties", {}).get("flowLogs", [])',
+      '        if flow_logs:',
+      '            return CheckResult.PASSED',
+      '        return CheckResult.FAILED'
+    ];
+  }
+
+  // Default: generic check
+  return [
+    '        # Implement check logic for: ' + (finding.message || '').replace(/'/g, "\\'"),
+    '        # Resource: ' + _ckResourceType(finding),
+    '        # Remediation: ' + (finding.remediation || '').replace(/'/g, "\\'"),
+    '        return CheckResult.PASSED  # Replace with actual logic'
+  ];
+}
+
+export function generateCheckov(findings, options) {
+  if (!findings || !findings.length) return { code: '# No compliance findings to generate checks for', warnings: [], stats: {} };
+  const opts = options || {};
+
+  const lines = [];
+  const checks = new Map();
+  const warnings = [];
+  let checkCount = 0;
+
+  // Header
+  lines.push('# Azure Checkov Custom Checks');
+  lines.push('# Generated by Azure Mapper on ' + new Date().toISOString().split('T')[0]);
+  lines.push('# Install: pip install checkov');
+  lines.push('# Usage: checkov -d . --external-checks-dir ./custom_checks');
+  lines.push('#');
+  lines.push('# These checks scan ARM templates for Azure-specific compliance issues.');
+  lines.push('');
+  lines.push('from checkov.common.models.enums import CheckResult, CheckCategories');
+  lines.push('from checkov.arm.base_resource_check import BaseResourceCheck');
+  lines.push('');
+
+  findings.forEach(f => {
+    const key = f.control;
+    if (checks.has(key)) return;
+    checks.set(key, true);
+
+    const className = (f.control || 'Check').replace(/[^a-zA-Z0-9]/g, '') + 'Check';
+    const checkId = 'CKV_AZURE_CUSTOM_' + (f.control || 'UNKNOWN').replace(/[^a-zA-Z0-9]/g, '_');
+    const armType = _ckResourceType(f);
+    const category = _ckCategory(f);
+    const scanLogic = _ckScanLogic(f);
+
+    lines.push('');
+    lines.push('class ' + className + '(BaseResourceCheck):');
+    lines.push('    """');
+    lines.push('    ' + (f.message || 'Custom compliance check'));
+    lines.push('    Severity: ' + (f.severity || 'MEDIUM'));
+    lines.push('    Remediation: ' + (f.remediation || 'See Azure documentation'));
+    lines.push('    """');
+    lines.push('    def __init__(self):');
+    lines.push('        name = "' + (f.message || 'Custom check').replace(/"/g, '\\"') + '"');
+    lines.push('        id = "' + checkId + '"');
+    lines.push('        supported_resources = [\'' + armType + '\']');
+    lines.push('        categories = [' + category + ']');
+    lines.push('        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)');
+    lines.push('');
+    lines.push('    def scan_resource_conf(self, conf):');
+    scanLogic.forEach(l => lines.push(l));
+    lines.push('');
+    lines.push('');
+    lines.push('check = ' + className + '()');
+    lines.push('');
+
+    checkCount++;
+  });
+
+  // Also generate a Terraform variant section
+  if (checkCount > 0) {
+    lines.push('');
+    lines.push('# =============================================');
+    lines.push('# Terraform (azurerm) variants');
+    lines.push('# =============================================');
+    lines.push('from checkov.terraform.checks.resource.base_resource_check import BaseResourceCheck as TFBaseResourceCheck');
+    lines.push('');
+
+    const tfChecks = new Map();
+    findings.forEach(f => {
+      const key = f.control + '_tf';
+      if (tfChecks.has(key)) return;
+      tfChecks.set(key, true);
+
+      const className = 'TF' + (f.control || 'Check').replace(/[^a-zA-Z0-9]/g, '') + 'Check';
+      const checkId = 'CKV_AZURE_TF_CUSTOM_' + (f.control || 'UNKNOWN').replace(/[^a-zA-Z0-9]/g, '_');
+      const tfType = _ckTfResourceType(f);
+      const category = _ckCategory(f);
+
+      lines.push('');
+      lines.push('class ' + className + '(TFBaseResourceCheck):');
+      lines.push('    def __init__(self):');
+      lines.push('        name = "' + (f.message || 'Custom check').replace(/"/g, '\\"') + '"');
+      lines.push('        id = "' + checkId + '"');
+      lines.push('        supported_resources = [\'' + tfType + '\']');
+      lines.push('        categories = [' + category + ']');
+      lines.push('        super().__init__(name=name, id=id, categories=categories, supported_resources=supported_resources)');
+      lines.push('');
+      lines.push('    def scan_resource_conf(self, conf):');
+      lines.push('        # Implement Terraform-specific check logic');
+      lines.push('        return CheckResult.PASSED');
+      lines.push('');
+      lines.push('');
+      lines.push('tf_check = ' + className + '()');
+      lines.push('');
+    });
+  }
+
+  const code = lines.join('\n');
+  _iacOutput = code;
+  return {
+    code,
+    warnings,
+    stats: {
+      armChecks: checkCount,
+      tfChecks: checkCount,
+      total: checkCount * 2
+    }
+  };
+}
+
+
+// ============================================================
+// 5. CHECKOV ARM TEMPLATE GENERATION (for scanning)
+// ============================================================
+
+/**
+ * Generate an ARM template enriched with security-relevant properties
+ * for Checkov scanning.
+ */
+export function generateCheckovArm(data) {
+  if (!data) return null;
+
+  const template = {
+    '$schema': 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#',
+    contentVersion: '1.0.0.0',
+    resources: []
+  };
+  const resources = template.resources;
+
+  const vnets = data.vnets || [];
+  const nsgs = (data.nsgs || []).concat(data.subnetNsgs || []);
+  const udrs = data.udrs || [];
+  const vms = data.vms || [];
+  const disks = data.disks || [];
+  const storageAccounts = data.storageAccounts || [];
+  const sqlServers = data.sqlServers || [];
+  const firewalls = data.firewalls || [];
+  const bastions = data.bastions || [];
+
+  // Deduplicate NSGs
+  const nsgMap = new Map();
+  nsgs.forEach(n => { if (n.id) nsgMap.set(n.id.toLowerCase(), n); });
+  const uniqueNsgs = Array.from(nsgMap.values());
+
+  // VNets
+  vnets.forEach(vnet => {
+    resources.push({
+      type: 'Microsoft.Network/virtualNetworks',
+      apiVersion: '2023-04-01',
+      name: vnet.name || 'vnet',
+      location: '[resourceGroup().location]',
+      tags: _armTags(vnet),
+      properties: {
+        addressSpace: vnet.properties?.addressSpace || { addressPrefixes: ['10.0.0.0/16'] },
+        subnets: (vnet.properties?.subnets || []).map(sub => ({
+          name: sub.name,
+          properties: {
+            addressPrefix: sub.properties?.addressPrefix || '10.0.0.0/24',
+            networkSecurityGroup: sub.properties?.networkSecurityGroup || undefined,
+            routeTable: sub.properties?.routeTable || undefined,
+            serviceEndpoints: sub.properties?.serviceEndpoints || []
+          }
+        }))
+      }
+    });
+  });
+
+  // NSGs with full rule detail
+  uniqueNsgs.forEach(nsg => {
+    resources.push({
+      type: 'Microsoft.Network/networkSecurityGroups',
+      apiVersion: '2023-04-01',
+      name: nsg.name || 'nsg',
+      location: '[resourceGroup().location]',
+      tags: _armTags(nsg),
+      properties: {
+        securityRules: (nsg.properties?.securityRules || []).map(rule => ({
+          name: rule.name,
+          properties: rule.properties || {}
+        }))
+      }
+    });
+  });
+
+  // Route Tables
+  udrs.forEach(udr => {
+    resources.push({
+      type: 'Microsoft.Network/routeTables',
+      apiVersion: '2023-04-01',
+      name: udr.name || 'rt',
+      location: '[resourceGroup().location]',
+      tags: _armTags(udr),
+      properties: {
+        disableBgpRoutePropagation: udr.properties?.disableBgpRoutePropagation || false,
+        routes: (udr.properties?.routes || []).map(r => ({
+          name: r.name,
+          properties: r.properties || {}
+        }))
+      }
+    });
+  });
+
+  // VMs with security-relevant properties
+  vms.forEach(vm => {
+    const vmp = vm.properties || {};
+    resources.push({
+      type: 'Microsoft.Compute/virtualMachines',
+      apiVersion: '2023-07-01',
+      name: vm.name || 'vm',
+      location: '[resourceGroup().location]',
+      tags: _armTags(vm),
+      properties: {
+        hardwareProfile: vmp.hardwareProfile || { vmSize: 'Standard_B2s' },
+        storageProfile: {
+          osDisk: {
+            createOption: vmp.storageProfile?.osDisk?.createOption || 'FromImage',
+            managedDisk: {
+              storageAccountType: vmp.storageProfile?.osDisk?.managedDisk?.storageAccountType || 'Standard_LRS'
+            }
+          },
+          imageReference: vmp.storageProfile?.imageReference || {}
+        },
+        osProfile: {
+          computerName: vm.name || 'vm',
+          adminUsername: 'azureadmin'
+        },
+        networkProfile: vmp.networkProfile || {}
+      }
+    });
+  });
+
+  // Managed Disks
+  disks.forEach(disk => {
+    const dp = disk.properties || {};
+    resources.push({
+      type: 'Microsoft.Compute/disks',
+      apiVersion: '2023-04-02',
+      name: disk.name || 'disk',
+      location: '[resourceGroup().location]',
+      tags: _armTags(disk),
+      sku: { name: dp.accountType || disk.sku?.name || 'Standard_LRS' },
+      properties: {
+        creationData: dp.creationData || { createOption: 'Empty' },
+        diskSizeGB: dp.diskSizeGB || 128,
+        encryptionSettingsCollection: dp.encryptionSettingsCollection || { enabled: false }
+      }
+    });
+  });
+
+  // Storage Accounts
+  storageAccounts.forEach(sa => {
+    const sap = sa.properties || {};
+    resources.push({
+      type: 'Microsoft.Storage/storageAccounts',
+      apiVersion: '2023-01-01',
+      name: sa.name || 'storage',
+      location: '[resourceGroup().location]',
+      tags: _armTags(sa),
+      sku: sa.sku || { name: 'Standard_LRS' },
+      kind: sa.kind || 'StorageV2',
+      properties: {
+        supportsHttpsTrafficOnly: sap.supportsHttpsTrafficOnly !== false,
+        minimumTlsVersion: sap.minimumTlsVersion || 'TLS1_0',
+        allowBlobPublicAccess: sap.allowBlobPublicAccess === true,
+        networkAcls: sap.networkAcls || { defaultAction: 'Allow' },
+        encryption: sap.encryption || {}
+      }
+    });
+  });
+
+  // SQL Servers
+  sqlServers.forEach(sql => {
+    const sqlp = sql.properties || {};
+    resources.push({
+      type: 'Microsoft.Sql/servers',
+      apiVersion: '2023-05-01-preview',
+      name: sql.name || 'sqlserver',
+      location: '[resourceGroup().location]',
+      tags: _armTags(sql),
+      properties: {
+        administratorLogin: sqlp.administratorLogin || 'sqladmin',
+        publicNetworkAccess: sqlp.publicNetworkAccess || 'Enabled',
+        minimalTlsVersion: sqlp.minimalTlsVersion || '1.0'
+      }
+    });
+  });
+
+  // Azure Firewall
+  firewalls.forEach(fw => {
+    resources.push({
+      type: 'Microsoft.Network/azureFirewalls',
+      apiVersion: '2023-04-01',
+      name: fw.name || 'firewall',
+      location: '[resourceGroup().location]',
+      tags: _armTags(fw),
+      properties: fw.properties || {}
+    });
+  });
+
+  // Bastion Hosts
+  bastions.forEach(bast => {
+    resources.push({
+      type: 'Microsoft.Network/bastionHosts',
+      apiVersion: '2023-04-01',
+      name: bast.name || 'bastion',
+      location: '[resourceGroup().location]',
+      tags: _armTags(bast),
+      properties: bast.properties || {}
+    });
+  });
+
+  return JSON.stringify(template, null, 2);
+}
+
+
+// ============================================================
+// 6. AZ CLI COMMAND GENERATION (for design mode changes)
+// ============================================================
+
+export function generateAzCli(changes) {
+  if (!changes || !changes.length) return '# No changes to apply';
+
+  const lines = [];
+  lines.push('#!/bin/bash');
+  lines.push('# Azure CLI commands generated by Azure Mapper');
+  lines.push('# Date: ' + new Date().toISOString().split('T')[0]);
+  lines.push('# REVIEW EACH COMMAND BEFORE RUNNING');
+  lines.push('');
+  lines.push('set -euo pipefail');
+  lines.push('');
+
+  changes.forEach(change => {
+    const type = change.type || '';
+    const action = change.action || 'create';
+    const props = change.properties || {};
+
+    lines.push('# ' + (change.description || type + ' ' + action));
+
+    switch (type) {
+      case 'resource-group':
+        if (action === 'create') {
+          lines.push('az group create \\');
+          lines.push('  --name "' + (props.name || 'rg-new') + '" \\');
+          lines.push('  --location "' + (props.location || 'eastus') + '"');
+        } else if (action === 'delete') {
+          lines.push('az group delete \\');
+          lines.push('  --name "' + (props.name || '') + '" \\');
+          lines.push('  --yes --no-wait');
+        }
+        break;
+
+      case 'vnet':
+        if (action === 'create') {
+          lines.push('az network vnet create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'vnet-new') + '" \\');
+          lines.push('  --address-prefixes "' + (props.addressPrefix || '10.0.0.0/16') + '" \\');
+          lines.push('  --location "' + (props.location || 'eastus') + '"');
+        } else if (action === 'delete') {
+          lines.push('az network vnet delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'subnet':
+        if (action === 'create') {
+          lines.push('az network vnet subnet create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --vnet-name "' + (props.vnetName || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'subnet-new') + '" \\');
+          lines.push('  --address-prefixes "' + (props.addressPrefix || '10.0.1.0/24') + '"');
+          if (props.nsgName) {
+            lines.push('  --network-security-group "' + props.nsgName + '"');
+          }
+          if (props.routeTableName) {
+            lines.push('  --route-table "' + props.routeTableName + '"');
+          }
+        } else if (action === 'delete') {
+          lines.push('az network vnet subnet delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --vnet-name "' + (props.vnetName || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'nsg':
+        if (action === 'create') {
+          lines.push('az network nsg create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'nsg-new') + '" \\');
+          lines.push('  --location "' + (props.location || 'eastus') + '"');
+        } else if (action === 'delete') {
+          lines.push('az network nsg delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'nsg-rule':
+        if (action === 'create') {
+          lines.push('az network nsg rule create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --nsg-name "' + (props.nsgName || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'rule-new') + '" \\');
+          lines.push('  --priority ' + (props.priority || 100) + ' \\');
+          lines.push('  --direction "' + (props.direction || 'Inbound') + '" \\');
+          lines.push('  --access "' + (props.access || 'Allow') + '" \\');
+          lines.push('  --protocol "' + (props.protocol || 'Tcp') + '" \\');
+          lines.push('  --source-port-ranges "' + (props.sourcePortRange || '*') + '" \\');
+          lines.push('  --destination-port-ranges "' + (props.destinationPortRange || '*') + '" \\');
+          lines.push('  --source-address-prefixes "' + (props.sourceAddressPrefix || '*') + '" \\');
+          lines.push('  --destination-address-prefixes "' + (props.destinationAddressPrefix || '*') + '"');
+        } else if (action === 'delete') {
+          lines.push('az network nsg rule delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --nsg-name "' + (props.nsgName || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'route-table':
+        if (action === 'create') {
+          lines.push('az network route-table create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'rt-new') + '" \\');
+          lines.push('  --location "' + (props.location || 'eastus') + '"');
+        } else if (action === 'delete') {
+          lines.push('az network route-table delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'route':
+        if (action === 'create') {
+          lines.push('az network route-table route create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --route-table-name "' + (props.routeTableName || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'route-new') + '" \\');
+          lines.push('  --address-prefix "' + (props.addressPrefix || '0.0.0.0/0') + '" \\');
+          lines.push('  --next-hop-type "' + (props.nextHopType || 'None') + '"');
+          if (props.nextHopIpAddress) {
+            lines.push('  --next-hop-ip-address "' + props.nextHopIpAddress + '"');
+          }
+        } else if (action === 'delete') {
+          lines.push('az network route-table route delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --route-table-name "' + (props.routeTableName || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'peering':
+        if (action === 'create') {
+          lines.push('az network vnet peering create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'peer-new') + '" \\');
+          lines.push('  --vnet-name "' + (props.vnetName || '') + '" \\');
+          lines.push('  --remote-vnet "' + (props.remoteVnetId || '') + '" \\');
+          lines.push('  --allow-vnet-access');
+        } else if (action === 'delete') {
+          lines.push('az network vnet peering delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --vnet-name "' + (props.vnetName || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'nat-gateway':
+        if (action === 'create') {
+          lines.push('az network nat gateway create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'natgw-new') + '" \\');
+          lines.push('  --location "' + (props.location || 'eastus') + '" \\');
+          lines.push('  --idle-timeout ' + (props.idleTimeout || 4));
+        } else if (action === 'delete') {
+          lines.push('az network nat gateway delete \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || '') + '"');
+        }
+        break;
+
+      case 'public-ip':
+        if (action === 'create') {
+          lines.push('az network public-ip create \\');
+          lines.push('  --resource-group "' + (props.resourceGroup || '') + '" \\');
+          lines.push('  --name "' + (props.name || 'pip-new') + '" \\');
+          lines.push('  --location "' + (props.location || 'eastus') + '" \\');
+          lines.push('  --allocation-method "' + (props.allocationMethod || 'Static') + '" \\');
+          lines.push('  --sku "' + (props.sku || 'Standard') + '"');
+        }
+        break;
+
+      default:
+        lines.push('# Unsupported change type: ' + type);
+        lines.push('# Action: ' + action);
+        lines.push('# Properties: ' + JSON.stringify(props));
+        break;
+    }
+
+    lines.push('');
+  });
+
+  lines.push('echo "Azure CLI commands complete. Review output for errors."');
+  return lines.join('\n');
+}
+
+
+// ============================================================
+// SYNTAX HIGHLIGHTING
+// ============================================================
+
+/**
+ * Basic HCL syntax highlighter for Terraform.
+ */
+export function highlightHCL(code) {
+  code = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return code.split('\n').map(line => {
+    if (line.match(/^\s*#/)) return '<span class="hcl-cmt">' + line + '</span>';
+    line = line.replace(/"([^"]*)"/g, function(_, s) { return '"<span class="hcl-str">' + s + '</span>"'; });
+    line = line.replace(/\b(resource|variable|data|module|provider|output|terraform|required_providers|import|locals|dynamic|param)\b/g, '<span class="hcl-kw">$1</span>');
+    line = line.replace(/\b(string|number|bool|list|map|set|object|any)\b/g, '<span class="hcl-type">$1</span>');
+    line = line.replace(/= (\d+)$/g, '= <span class="hcl-num">$1</span>');
+    line = line.replace(/\b(true|false|null)\b/g, '<span class="hcl-num">$1</span>');
+    line = line.replace(/(azurerm_[a-z_]+\.[a-z_0-9]+\.[a-z_]+)/g, '<span class="hcl-ref">$1</span>');
+    return line;
+  }).join('\n');
+}
+
+/**
+ * Basic JSON/ARM Template syntax highlighter.
+ */
+export function highlightJSON(code) {
+  code = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return code.split('\n').map(line => {
+    line = line.replace(/"([^"]*)":/g, '"<span class="hcl-kw">$1</span>":');
+    line = line.replace(/: "([^"]*)"/g, ': "<span class="hcl-str">$1</span>"');
+    line = line.replace(/: (\d+)/g, ': <span class="hcl-num">$1</span>');
+    line = line.replace(/: (true|false|null)\b/g, ': <span class="hcl-num">$1</span>');
+    line = line.replace(/(Microsoft\.[A-Za-z./]+)/g, '<span class="hcl-type">$1</span>');
+    return line;
+  }).join('\n');
+}
+
+/**
+ * Basic Bicep syntax highlighter.
+ */
+export function highlightBicep(code) {
+  code = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return code.split('\n').map(line => {
+    if (line.match(/^\s*\/\//)) return '<span class="hcl-cmt">' + line + '</span>';
+    line = line.replace(/'([^']*)'/g, "'<span class=\"hcl-str\">$1</span>'");
+    line = line.replace(/\b(resource|param|var|output|module|targetScope|existing|if|for|in)\b/g, '<span class="hcl-kw">$1</span>');
+    line = line.replace(/\b(string|int|bool|array|object)\b/g, '<span class="hcl-type">$1</span>');
+    line = line.replace(/\b(true|false|null)\b/g, '<span class="hcl-num">$1</span>');
+    line = line.replace(/(Microsoft\.[A-Za-z./@0-9-]+)/g, '<span class="hcl-type">$1</span>');
+    return line;
+  }).join('\n');
+}
+
+/**
+ * Basic Python syntax highlighter for Checkov checks.
+ */
+export function highlightPython(code) {
+  code = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return code.split('\n').map(line => {
+    if (line.match(/^\s*#/)) return '<span class="hcl-cmt">' + line + '</span>';
+    line = line.replace(/"([^"]*)"/g, '"<span class="hcl-str">$1</span>"');
+    line = line.replace(/'([^']*)'/g, "'<span class=\"hcl-str\">$1</span>'");
+    line = line.replace(/\b(class|def|import|from|return|if|else|elif|for|in|not|and|or|is|None|True|False|super|self)\b/g, '<span class="hcl-kw">$1</span>');
+    line = line.replace(/\b(CheckResult|CheckCategories|BaseResourceCheck)\b/g, '<span class="hcl-type">$1</span>');
+    return line;
+  }).join('\n');
+}
+
+/**
+ * YAML syntax highlighter (kept for backward compat).
+ */
+export function highlightYAML(code) {
+  code = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return code.split('\n').map(line => {
+    if (line.match(/^\s*#/)) return '<span class="hcl-cmt">' + line + '</span>';
+    line = line.replace(/'([^']*)'/g, "'<span class=\"hcl-str\">$1</span>'");
+    line = line.replace(/\b(true|false|null)\b/g, '<span class="hcl-num">$1</span>');
+    line = line.replace(/(Microsoft\.[A-Za-z./]+)/g, '<span class="hcl-type">$1</span>');
+    return line;
+  }).join('\n');
+}
+
+
+// ============================================================
+// WINDOW BRIDGE
+// ============================================================
+
+if (typeof window !== 'undefined') {
+  // State accessors
+  window.getIacType = getIacType;
+  window.setIacType = setIacType;
+  window.getIacOutput = getIacOutput;
+  window.setIacOutput = setIacOutput;
+  window.getTfIdMap = getTfIdMap;
+  window.setTfIdMap = setTfIdMap;
+
+  // Name helpers
+  window.safeName = safeName;
+  window._sanitizeName = sanitizeName;
+
+  // Generators
+  window.generateTerraform = generateTerraform;
+  window.generateARM = generateARM;
+  window.generateBicep = generateBicep;
+  window.generateCheckov = generateCheckov;
+  window.generateCheckovArm = generateCheckovArm;
+  window.generateAzCli = generateAzCli;
+
+  // Syntax highlighters
+  window.highlightHCL = highlightHCL;
+  window.highlightJSON = highlightJSON;
+  window.highlightBicep = highlightBicep;
+  window.highlightPython = highlightPython;
+  window.highlightYAML = highlightYAML;
+
+  // Backward-compatible aliases
+  window._highlightHCL = highlightHCL;
+  window._highlightYAML = highlightYAML;
+
+  // Ref helper exposed for external callers
+  window._tfRef = _tfRef;
+}
