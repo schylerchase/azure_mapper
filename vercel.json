@@ -1,0 +1,13 @@
+{
+  "buildCommand": "npm run bundle:prod",
+  "outputDirectory": ".",
+  "framework": null,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Frame-Options", "value": "DENY" }
+      ]
+    }
+  ]
+}
