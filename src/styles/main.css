@@ -199,6 +199,9 @@
   .route-line.route-structural{stroke-dasharray:6 3;animation:dashStruct 1s linear infinite}
   .route-trunk{fill:none;stroke-width:1.5;opacity:1;pointer-events:none}
   .route-trunk.animated{stroke-dasharray:6 3;animation:dashStruct 1s linear infinite}
+  .pe-service-line{transition:opacity .3s ease;pointer-events:none}
+  .pe-dns-line{transition:opacity .3s ease;pointer-events:none}
+  .pe-ext-target{transition:opacity .3s ease}
   .route-structural{opacity:1}
   .route-trunk.route-structural{stroke-dasharray:6 3;animation:dashStruct 1s linear infinite}
   .hl-active .route-group{opacity:.06}
@@ -209,6 +212,9 @@
   .peering-label-g{opacity:1}
   .hl-active .peering-group{opacity:.03}
   .hl-active .pe-summary{opacity:.15}
+  .hl-active .pe-service-line{opacity:.08}
+  .hl-active .pe-ext-target{opacity:.15}
+  .hl-active .pe-dns-line{opacity:.08}
   .hl-active .dns-summary{opacity:.15}
   .hl-active .peering-label-g{opacity:.08}
   .hl-active .gw-node{opacity:.15}

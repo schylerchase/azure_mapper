@@ -85,6 +85,18 @@ function _buildSearchIndex(ctx){
       acct:fw._accountLabel||fw._accountId||'',
       searchStr:('firewall azure firewall '+n+' '+fw.id).toLowerCase()});
   });
+  (ctx.privateEndpoints||[]).forEach(function(pe){
+    var n=pe.name||pe.id;
+    var props=pe.properties||pe._azure&&pe._azure.properties||{};
+    var conn=props.privateLinkServiceConnections&&props.privateLinkServiceConnections[0];
+    var connProps=conn&&conn.properties||{};
+    var targetId=connProps.privateLinkServiceId||'';
+    var groupId=(connProps.groupIds||[])[0]||'';
+    var ip=props.customDnsConfigs&&props.customDnsConfigs[0]&&props.customDnsConfigs[0].ipAddresses&&props.customDnsConfigs[0].ipAddresses[0]||'';
+    idx.push({type:'Private Endpoint',name:n,id:pe.id,extra:groupId,
+      acct:pe._accountLabel||pe._accountId||'',
+      searchStr:('private endpoint pe privateendpoint '+n+' '+pe.id+' '+groupId+' '+targetId.split('/').pop()+' '+ip).toLowerCase()});
+  });
   (ctx.bastions||[]).forEach(function(b){
     var n=b.name||b.id;
     idx.push({type:'Bastion',name:n,id:b.id,extra:'',
@@ -403,6 +415,21 @@ function _gatherResourceInfo(rid){
     info.type='NAT Gateway';info.name=nat.name||rid;
     info.details=[['ID',rid],['State',(nat.properties&&nat.properties.provisioningState)||'—'],['Location',nat.location||'—']];
     if(nat.properties&&nat.properties.vnetId) info.related.push({id:nat.properties.vnetId,name:nat.properties.vnetId,type:'VNet'});
+  } else if(low.includes('/privateendpoints/')){
+    var pe=(_rlCtx.privateEndpoints||[]).find(function(p){return p.id===rid});
+    if(!pe) return null;
+    info.type='PE';info.name=pe.name||rid;
+    var peProps=pe.properties||pe._azure&&pe._azure.properties||{};
+    var peConn=peProps.privateLinkServiceConnections&&peProps.privateLinkServiceConnections[0];
+    var peConnProps=peConn&&peConn.properties||{};
+    var peTarget=peConnProps.privateLinkServiceId||'—';
+    var peGroupId=(peConnProps.groupIds||[])[0]||'—';
+    var peState=peConnProps.privateLinkServiceConnectionState&&peConnProps.privateLinkServiceConnectionState.status||'—';
+    var peSubId=peProps.subnet&&peProps.subnet.id||'';
+    var peFqdn=peProps.customDnsConfigs&&peProps.customDnsConfigs[0]&&peProps.customDnsConfigs[0].fqdn||'—';
+    var peIp=peProps.customDnsConfigs&&peProps.customDnsConfigs[0]&&peProps.customDnsConfigs[0].ipAddresses&&peProps.customDnsConfigs[0].ipAddresses[0]||'—';
+    info.details=[['Target',peTarget.split('/').pop()],['Group ID',peGroupId],['State',peState],['IP',peIp],['FQDN',peFqdn],['Location',pe.location||'—']];
+    if(peSubId) info.related.push({id:peSubId,name:peSubId.split('/').pop(),type:'Subnet'});
   } else {
     // Try SQL Server, Function App, etc. by id lookup
     var sql=(_rlCtx.sqlServers||[]).find(function(d){return d.id===rid});

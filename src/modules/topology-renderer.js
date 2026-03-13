@@ -32,7 +32,7 @@ function _renderMapInner(){
   let firewalls=ext(_cachedParse('in_firewalls'),['value']);
   let bastions=ext(_cachedParse('in_bastions'),['value']);
   let natGateways=ext(_cachedParse('in_nats'),['value']);
-  let privateEndpoints=ext(_cachedParse('in_privateEndpoints'),['value']);
+  let privateEndpoints=ext(_cachedParse('in_pvteps'),['value']);
   let vms=[];
   const vmRaw=_cachedParse('in_vms');
   if(vmRaw){
@@ -47,7 +47,7 @@ function _renderMapInner(){
   let managedDisks=ext(_cachedParse('in_disks'),['value']);
   let diskSnapshots=ext(_cachedParse('in_snaps'),['value']);
   let storageRaw=_cachedParse('in_storage');let storageAccounts=storageRaw?ext(storageRaw,['value']):[];
-  let dnsZones=ext(_cachedParse('in_dns'),['value']);
+  let dnsZones=ext(_cachedParse('in_dnsz'),['value']);
   const allRecSets=ext(_cachedParse('in_dnsrecords'),['value']);
   const recsByZoneMap={};
   allRecSets.forEach(r=>{const zid=r.id?.split('/')[r.id.split('/').indexOf('dnszones')+1];if(zid)(recsByZoneMap[zid]=recsByZoneMap[zid]||[]).push(r)});
@@ -179,7 +179,14 @@ function _renderMapInner(){
   privateEndpoints.forEach(g=>{
     const subId=g.properties?.subnet?.id||'';
     const vnetId=subId?subId.split('/subnets/')[0]:'unk';
-    gwSet.set(g.id,{type:'pe',id:g.id,vnetId});
+    gwSet.set(g.id,{type:'pe',id:g.id,vnetId,subId});
+  });
+
+  // PE grouped by subnet for detail-level rendering
+  const peBySub={};
+  privateEndpoints.forEach(pe=>{
+    const subId=pe.properties?.subnet?.id||'';
+    if(subId)(peBySub[subId]=peBySub[subId]||[]).push(pe);
   });
 
   // NSG associations per subnet
@@ -352,7 +359,7 @@ function _renderMapInner(){
     // LANDING ZONE HUB-SPOKE LAYOUT
     renderLandingZoneMap({
       vnets,subnets,udrs,nsgs,nics,firewalls,bastions,natGateways,privateEndpoints,vms,appGateways,loadBalancers,peerings,vpnConnections,managedDisks,diskSnapshots,storageAccounts,dnsZones,
-      subByVnet,pubSubs,subUDR,gwSet,subNsg,nsgByVnet,vmBySub,nicBySub,agwBySub,lbBySub,diskByVm,diskBySub,pvGws,shGws,peByVnet,peIds,gwNames,
+      subByVnet,pubSubs,subUDR,gwSet,subNsg,nsgByVnet,vmBySub,nicBySub,agwBySub,lbBySub,diskByVm,diskBySub,pvGws,shGws,peByVnet,peIds,peBySub,gwNames,
       snapByDisk,wafByAgw,wafPolicies,
       sqlServers,containerInstances,functionApps,redisCaches,synapseWorkspaces,vwans,frontDoors,aksClusters,
       sqlBySub,containerBySub,fnBySub,aksBySub,redisByVnet,synapseByVnet,fdByAgw,_multiSubscription,_subscriptions,iamRoleResources
@@ -378,7 +385,7 @@ function _renderMapInner(){
   const RES_ICON=26,RES_CHILD_H=11,RES_GAP=4,RES_COLS=2,RES_TOP=36,RES_BOT=12;
   
   // Tree context for buildResTree
-  const treeCtx={vmBySub,agwBySub,lbBySub,sqlBySub,containerBySub,fnBySub,aksBySub,diskByVm,diskBySub,nics,nicByVm,wafByAgw,fdByAgw,snapByDisk,nicBySub};
+  const treeCtx={vmBySub,agwBySub,lbBySub,sqlBySub,containerBySub,fnBySub,aksBySub,diskByVm,diskBySub,nics,nicByVm,wafByAgw,fdByAgw,snapByDisk,nicBySub,peBySub};
 
   // Pre-calc resource tree per subnet for sizing
   const subTrees={};
@@ -1565,7 +1572,7 @@ function _renderMapInner(){
         }
         // state dot
         if(res.state){
-          const sc=res.state==='running'?'#10b981':'#ef4444';
+          const sc=res.stateDot||(res.state==='running'?'#10b981':'#ef4444');
           rG.append('circle').attr('cx',rx+iconW-6).attr('cy',ry+6).attr('r',2.5).attr('fill',sc);
         }
         // nested children
@@ -1710,34 +1717,146 @@ function _renderMapInner(){
     }
   }
 
-  // PE summary nodes - positioned at bottom-left of VNet
-  vL.forEach(vl=>{
-    const vnetPEs=peByVnet[vl.vnet.id]||[];
-    if(!vnetPEs.length)return;
-    const nw=70,nh=16;
-    // Position at bottom-left inside VNet
-    const gx=vl.x+nw/2+8;
-    const ny=vl.y+vl.h-nh-8;
-    const eG=ndL.append('g').attr('class','pe-summary').style('cursor','pointer');
-    eG.append('rect').attr('x',gx-nw/2).attr('y',ny).attr('width',nw).attr('height',nh).attr('rx',3)
-      .attr('fill','rgba(167,139,250,.2)').attr('stroke','var(--pe-color)').attr('stroke-width',1);
-    eG.append('text').attr('x',gx).attr('y',ny+12).attr('text-anchor','middle').attr('font-family','Segoe UI,system-ui,sans-serif')
-      .style('font-size','calc(8px * var(--txt-scale,1))').attr('font-weight','600').attr('fill','var(--pe-color)').text(vnetPEs.length+' PE');
-    // tooltip on hover
-    eG.on('mouseenter',function(){
-      let h='<div class="tt-title">Private Endpoints ('+vnetPEs.length+')</div>';
-      h+='<div class="tt-sub">'+gn(vl.vnet)+'</div>';
-      h+='<div class="tt-sec"><div class="tt-sh">Endpoints</div>';
-      vnetPEs.forEach(v=>{
-        const pe=peById.get(v.id);
-        const svc=pe?.properties?.privateLinkServiceConnections?.[0]?.properties?.groupIds?.[0]||'?';
-        const nm=gwNames[v.id];
-        h+='<div class="tt-r"><span class="i">'+(nm||sid(v.id))+'</span> '+svc+'</div>';
+  // PE: at detail level 0 show summary badge; at level >= 1 PEs render inside subnets via buildResTree
+  if(_detailLevel===0){
+    vL.forEach(vl=>{
+      const vnetPEs=peByVnet[vl.vnet.id]||[];
+      if(!vnetPEs.length)return;
+      const nw=70,nh=16;
+      const gx=vl.x+nw/2+8;
+      const ny=vl.y+vl.h-nh-8;
+      const eG=ndL.append('g').attr('class','pe-summary').style('cursor','pointer');
+      eG.append('rect').attr('x',gx-nw/2).attr('y',ny).attr('width',nw).attr('height',nh).attr('rx',3)
+        .attr('fill','rgba(167,139,250,.2)').attr('stroke','var(--pe-color)').attr('stroke-width',1);
+      eG.append('text').attr('x',gx).attr('y',ny+12).attr('text-anchor','middle').attr('font-family','Segoe UI,system-ui,sans-serif')
+        .style('font-size','calc(8px * var(--txt-scale,1))').attr('font-weight','600').attr('fill','var(--pe-color)').text(vnetPEs.length+' PE');
+      eG.on('mouseenter',function(){
+        const tip=document.createElement('div');
+        const title=document.createElement('div');title.className='tt-title';title.textContent='Private Endpoints ('+vnetPEs.length+')';tip.appendChild(title);
+        const sub=document.createElement('div');sub.className='tt-sub';sub.textContent=gn(vl.vnet);tip.appendChild(sub);
+        const sec=document.createElement('div');sec.className='tt-sec';
+        const sh=document.createElement('div');sh.className='tt-sh';sh.textContent='Endpoints';sec.appendChild(sh);
+        vnetPEs.forEach(v=>{
+          const pe=peById.get(v.id);
+          const conn=pe?.properties?.privateLinkServiceConnections?.[0];
+          const svc=(conn?.properties?.groupIds||[])[0]||'?';
+          const state=conn?.properties?.privateLinkServiceConnectionState?.status||'?';
+          const stCol=state==='Approved'?'#10b981':state==='Pending'?'#f59e0b':'#ef4444';
+          const r=document.createElement('div');r.className='tt-r';
+          const sp=document.createElement('span');sp.className='i';sp.textContent=gwNames[v.id]||sid(v.id);r.appendChild(sp);
+          r.appendChild(document.createTextNode(' '+svc+' '));
+          const stSp=document.createElement('span');stSp.style.color=stCol;stSp.textContent=state;r.appendChild(stSp);
+          sec.appendChild(r);
+        });
+        tip.appendChild(sec);
+        tt.textContent='';tt.appendChild(tip);tt.style.display='block';
+      }).on('mousemove',function(event){positionTooltip(event,tt)}).on('mouseleave',()=>{tt.style.display='none'})
+      .on('click',function(event){event.stopPropagation();tt.style.display='none';_lastRlType=null;_navStack=[];openResourceList('PE')});
+    });
+  }
+
+  // PE→Service connection lines (detail level >= 1)
+  if(_detailLevel>=1){
+    // Build a map of rendered resource positions from the subnet tree nodes
+    const peTargetPositions=new Map();
+    // Map target resource IDs to their rendered position
+    const renderedResPos=new Map();
+    ndL.selectAll('.res-node[data-id]').each(function(){
+      const el=d3.select(this);
+      const rid=el.attr('data-id');
+      if(!rid)return;
+      const rect=el.select('rect');
+      if(!rect.node())return;
+      const rx=parseFloat(rect.attr('x')),ry=parseFloat(rect.attr('y'));
+      const rw=parseFloat(rect.attr('width')),rh=parseFloat(rect.attr('height'));
+      renderedResPos.set(rid,{x:rx+rw/2,y:ry+rh/2,w:rw,h:rh});
+    });
+
+    privateEndpoints.forEach(pe=>{
+      const props=pe.properties||{};
+      const conn=(props.privateLinkServiceConnections||[])[0];
+      if(!conn)return;
+      const connProps=conn.properties||{};
+      const targetId=connProps.privateLinkServiceId||'';
+      const state=connProps.privateLinkServiceConnectionState?.status||'Approved';
+      const stCol=state==='Approved'?'#10b981':state==='Pending'?'#f59e0b':'#ef4444';
+      const groupId=(connProps.groupIds||[])[0]||'';
+
+      // Find this PE's rendered position (as a res-node inside a subnet)
+      const pePos=renderedResPos.get(pe.id);
+      if(!pePos)return;
+
+      // Check if target is rendered in-topology
+      const targetPos=renderedResPos.get(targetId);
+      if(targetPos){
+        // Draw dashed bezier from PE to target service node
+        const dx=targetPos.x-pePos.x;
+        const cpOff=Math.min(Math.abs(dx)*0.4,80);
+        const path=`M${pePos.x},${pePos.y} C${pePos.x+cpOff},${pePos.y} ${targetPos.x-cpOff},${targetPos.y} ${targetPos.x},${targetPos.y}`;
+        lnL.append('path').attr('class','pe-service-line')
+          .attr('d',path).attr('fill','none')
+          .attr('stroke',stCol).attr('stroke-width',1.5)
+          .attr('stroke-dasharray','6,3').attr('opacity',.6)
+          .attr('data-pe-id',pe.id).attr('data-target-id',targetId);
+      } else if(targetId){
+        // External target: render a small badge to the right of the PE node
+        const badgeX=pePos.x+pePos.w/2+4;
+        const badgeY=pePos.y-pePos.h/2;
+        const targetName=targetId.split('/').pop();
+        const shortName=targetName.length>12?targetName.slice(0,11)+'…':targetName;
+        const bG=ndL.append('g').attr('class','pe-ext-target').style('cursor','default');
+        bG.append('rect').attr('x',badgeX).attr('y',badgeY).attr('width',70).attr('height',12).attr('rx',2)
+          .attr('fill',stCol+'18').attr('stroke',stCol).attr('stroke-width',.6);
+        bG.append('text').attr('x',badgeX+35).attr('y',badgeY+9).attr('text-anchor','middle')
+          .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(6px * var(--txt-scale,1))')
+          .attr('fill',stCol).text(shortName);
+        // Connector line from PE to badge
+        lnL.append('line').attr('class','pe-service-line')
+          .attr('x1',pePos.x+pePos.w/2).attr('y1',pePos.y)
+          .attr('x2',badgeX).attr('y2',badgeY+6)
+          .attr('stroke',stCol).attr('stroke-width',1).attr('stroke-dasharray','3,2').attr('opacity',.5);
+      }
+    });
+  }
+
+  // Build PE→DNS match map for resolution visualization
+  const PE_GROUP_DNS_MAP={
+    sqlServer:'privatelink.database.windows.net',blob:'privatelink.blob.core.windows.net',
+    table:'privatelink.table.core.windows.net',queue:'privatelink.queue.core.windows.net',
+    file:'privatelink.file.core.windows.net',vault:'privatelink.vaultcore.azure.net',
+    redisCache:'privatelink.redis.cache.windows.net',namespace:'privatelink.servicebus.windows.net',
+    cosmosdb:'privatelink.documents.azure.com',registry:'privatelink.azurecr.io',
+    sites:'privatelink.azurewebsites.net',Sql:'privatelink.sql.azuresynapse.net',
+    searchService:'privatelink.search.windows.net',account:'privatelink.cognitiveservices.azure.com',
+    dfs:'privatelink.dfs.core.windows.net',web:'privatelink.web.core.windows.net',
+  };
+  const dnsZoneByName=new Map();
+  dnsZones.forEach(z=>{
+    const name=(z.name||z.Name||'').toLowerCase();
+    if(name) dnsZoneByName.set(name,z);
+  });
+  const peDnsMatch=new Map();
+  privateEndpoints.forEach(pe=>{
+    const props=pe.properties||{};
+    const conn=(props.privateLinkServiceConnections||[])[0];
+    const connProps=conn?.properties||{};
+    const groupId=(connProps.groupIds||[])[0]||'';
+    const expectedZone=PE_GROUP_DNS_MAP[groupId]||'';
+    const matchedZone=expectedZone?dnsZoneByName.get(expectedZone.toLowerCase()):null;
+    const subId=props.subnet?.id||'';
+    const vnetId=subId?subId.split('/subnets/')[0]:'';
+    let vnetLinked=false;
+    if(matchedZone){
+      const mzProps=matchedZone.properties||matchedZone._azure?.properties||{};
+      vnetLinked=(mzProps.virtualNetworkLinks||[]).some(l=>{
+        const lv=l.properties?.virtualNetwork?.id||l.id||'';
+        return lv.toLowerCase()===vnetId.toLowerCase();
       });
-      h+='</div>';
-      tt.innerHTML=h;tt.style.display='block';
-    }).on('mousemove',function(event){positionTooltip(event,tt)}).on('mouseleave',()=>{tt.style.display='none'})
-    .on('click',function(event){event.stopPropagation();tt.style.display='none';_lastRlType=null;_navStack=[];openResourceList('PE')});
+    }
+    const fqdn=(props.customDnsConfigs||[])[0]?.fqdn||'';
+    const ip=(props.customDnsConfigs||[])[0]?.ipAddresses?.[0]||'';
+    const broken=!matchedZone||(matchedZone&&!vnetLinked);
+    peDnsMatch.set(pe.id,{expectedZone,matchedZone,vnetLinked,broken,ip,fqdn,groupId});
   });
 
   // Private DNS zone badges - positioned at bottom-right of VNet
@@ -1786,6 +1905,72 @@ function _renderMapInner(){
       }).on('mousemove',function(event){positionTooltip(event,tt)}).on('mouseleave',()=>{tt.style.display='none'})
       .on('click',function(event){event.stopPropagation();tt.style.display='none';_lastRlType=null;_navStack=[];openResourceList('DNS')});
     });
+
+    // PE→DNS resolution lines + broken chain warnings (detail level >= 1)
+    if(_detailLevel>=1){
+      // Collect DNS badge positions from the rendered badges
+      const dnsBadgePos=new Map();
+      ndL.selectAll('.dns-summary').each(function(){
+        const g=d3.select(this);
+        const rect=g.select('rect');
+        if(!rect.node())return;
+        const bx=parseFloat(rect.attr('x')),by=parseFloat(rect.attr('y'));
+        const bw=parseFloat(rect.attr('width')),bh=parseFloat(rect.attr('height'));
+        const cx=bx+bw/2,cy=by+bh/2;
+        // Find which VNet this badge belongs to by checking vL positions
+        vL.forEach(vl=>{
+          if(cx>=vl.x&&cx<=vl.x+vl.w&&cy>=vl.y&&cy<=vl.y+vl.h){
+            // Map all DNS zones in this VNet to this badge position
+            const pzArr=privZonesByVnet[vl.vnet.id]||[];
+            pzArr.forEach(z=>{
+              const zName=(z.name||z.Name||'').toLowerCase();
+              if(zName&&!dnsBadgePos.has(zName)) dnsBadgePos.set(zName,{x:cx,y:cy,vnetId:vl.vnet.id});
+            });
+          }
+        });
+      });
+
+      privateEndpoints.forEach(pe=>{
+        const match=peDnsMatch.get(pe.id);
+        if(!match)return;
+        const pePos=renderedResPos.get(pe.id);
+        if(!pePos)return;
+
+        if(match.broken){
+          // Broken chain: draw orange warning triangle near PE node
+          const wx=pePos.x-pePos.w/2-8,wy=pePos.y-pePos.h/2-2;
+          const wG=ndL.append('g').attr('class','pe-dns-warn').style('cursor','default');
+          wG.append('text').attr('x',wx).attr('y',wy).attr('text-anchor','middle')
+            .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(10px * var(--txt-scale,1))')
+            .attr('fill','#f59e0b').text('\u26A0');
+          wG.on('mouseenter',function(){
+            const tip=document.createElement('div');
+            const t=document.createElement('div');t.className='tt-title';t.style.color='#f59e0b';
+            t.textContent='DNS Resolution Broken';tip.appendChild(t);
+            const sec=document.createElement('div');sec.className='tt-sec';
+            if(!match.matchedZone){
+              const r=document.createElement('div');r.className='tt-r';r.textContent='No DNS zone "'+match.expectedZone+'" found';sec.appendChild(r);
+            } else if(!match.vnetLinked){
+              const r=document.createElement('div');r.className='tt-r';r.textContent='Zone "'+match.expectedZone+'" not linked to PE VNet';sec.appendChild(r);
+            }
+            if(match.fqdn){const f=document.createElement('div');f.className='tt-r';f.textContent='FQDN: '+match.fqdn;sec.appendChild(f)}
+            tip.appendChild(sec);
+            tt.textContent='';tt.appendChild(tip);tt.style.display='block';
+          }).on('mousemove',function(event){positionTooltip(event,tt)}).on('mouseleave',()=>{tt.style.display='none'});
+        } else if(match.expectedZone){
+          // Working chain: draw thin dotted line from PE to DNS badge
+          const dnsPos=dnsBadgePos.get(match.expectedZone.toLowerCase());
+          if(dnsPos){
+            lnL.append('line').attr('class','pe-dns-line')
+              .attr('x1',pePos.x).attr('y1',pePos.y+pePos.h/2)
+              .attr('x2',dnsPos.x).attr('y2',dnsPos.y)
+              .attr('stroke','#0ea5e9').attr('stroke-width',.8)
+              .attr('stroke-dasharray','2,3').attr('opacity',.4)
+              .attr('data-pe-id',pe.id);
+          }
+        }
+      });
+    }
 
     // DNS Zone section - positioned below all routing elements
     const dnsY=routingBottomY+40;

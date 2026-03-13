@@ -5776,6 +5776,23 @@ function openResourceList(type, pushNav){
         items.push(row(gn(e,e.VpcEndpointId),'Service: '+(e.ServiceName||'?').split('.').pop()+' | Type: '+(e.VpcEndpointType||'?')+' | VPC: '+vpcName(e.VpcId),'#a78bfa',e.VpcId?{t:'vpc',id:e.VpcId}:null));
       });break;
     }
+    case 'PE':{
+      const d=ctx.privateEndpoints||ctx.vpces||[];title='Private Endpoints';sub=d.length+' total';
+      d.forEach(pe=>{
+        const props=pe.properties||pe._azure?.properties||{};
+        const conn=props.privateLinkServiceConnections?.[0];
+        const connProps=conn?.properties||{};
+        const targetId=connProps.privateLinkServiceId||'';
+        const targetName=targetId?targetId.split('/').pop():'?';
+        const groupId=(connProps.groupIds||[])[0]||'?';
+        const state=connProps.privateLinkServiceConnectionState?.status||'?';
+        const stCol=state==='Approved'?'#10b981':state==='Pending'?'#f59e0b':'#ef4444';
+        const ip=(props.customDnsConfigs||[])[0]?.ipAddresses?.[0]||'';
+        const subId=props.subnet?.id||'';
+        const detail='Service: '+esc(groupId)+' | Target: '+esc(targetName)+' | State: <span style="color:'+stCol+'">'+esc(state)+'</span>'+(ip?' | IP: '+esc(ip):'');
+        items.push(row(gn(pe,pe.id),detail,'#a78bfa',subId?{t:'sub',id:subId}:null));
+      });break;
+    }
     case 'Volumes':{
       const d=ctx.volumes||[];title='EBS Volumes';sub=d.length+' total';
       d.forEach(v=>{
@@ -6706,6 +6723,57 @@ function openGatewayPanel(gwId,gwType,lk){
         if(acc.CidrBlock) gi+='<div class="dp-kv"><span class="k">Accepter CIDR</span><span class="v">'+acc.CidrBlock+'</span></div>';
       }
     }
+  } else if(gwType==='PE'){
+    const peList=lk.vpces||lk.privateEndpoints||[];
+    const pe=peList.find(p=>p.id===gwId);
+    if(pe){
+      const props=pe.properties||pe._azure?.properties||{};
+      const conn=props.privateLinkServiceConnections?.[0];
+      const connProps=conn?.properties||{};
+      const targetId=connProps.privateLinkServiceId||'';
+      const groupIds=(connProps.groupIds||[]).join(', ');
+      const state=connProps.privateLinkServiceConnectionState?.status||'Unknown';
+      const stateDesc=connProps.privateLinkServiceConnectionState?.description||'';
+      const stCol=state==='Approved'?'#10b981':state==='Pending'?'#f59e0b':'#ef4444';
+      const stBg=state==='Approved'?'pub':state==='Pending'?'warn':'prv';
+      const subnetId=props.subnet?.id||'';
+      const vnetId=subnetId?subnetId.split('/subnets/')[0]:'';
+      const dnsConfigs=props.customDnsConfigs||[];
+      const fqdns=dnsConfigs.map(d=>d.fqdn).filter(Boolean);
+      const ips=dnsConfigs.flatMap(d=>d.ipAddresses||[]);
+      const nicIds=(props.networkInterfaces||[]).map(n=>n.id);
+      const networkPolicies=props.subnet?.properties?.privateEndpointNetworkPolicies||'';
+
+      gi+='<div class="dp-kv"><span class="k">Connection State</span><span class="v"><span class="dp-badge '+stBg+'" style="background:'+stCol+'22;color:'+stCol+';border:1px solid '+stCol+'44">'+esc(state)+'</span></span></div>';
+      if(stateDesc) gi+='<div class="dp-kv"><span class="k">State Description</span><span class="v">'+esc(stateDesc)+'</span></div>';
+      if(targetId){
+        const targetName=targetId.split('/').pop();
+        gi+='<div class="dp-kv"><span class="k">Target Service</span><span class="v copyable" data-copy="'+esc(targetId)+'">'+esc(targetName)+'</span></div>';
+        gi+='<div class="dp-kv"><span class="k">Target Resource ID</span><span class="v copyable" data-copy="'+esc(targetId)+'" style="font-size:0.85em;word-break:break-all">'+esc(targetId)+'</span></div>';
+      }
+      if(groupIds) gi+='<div class="dp-kv"><span class="k">Group IDs</span><span class="v">'+esc(groupIds)+'</span></div>';
+      ips.forEach((ip,i)=>{gi+='<div class="dp-kv"><span class="k">Private IP'+(ips.length>1?' '+(i+1):'')+'</span><span class="v">'+esc(ip)+'</span></div>'});
+      fqdns.forEach(f=>{gi+='<div class="dp-kv"><span class="k">FQDN</span><span class="v copyable" data-copy="'+esc(f)+'">'+esc(f)+'</span></div>'});
+      if(subnetId){
+        const subName=subnetId.split('/').pop();
+        gi+='<div class="dp-kv"><span class="k">Subnet</span><span class="v">'+esc(subName)+'</span></div>';
+      }
+      if(vnetId){
+        const vnetName=vnetId.split('/').pop();
+        gi+='<div class="dp-kv"><span class="k">VNet</span><span class="v">'+esc(vnetName)+'</span></div>';
+      }
+      nicIds.forEach(n=>{gi+='<div class="dp-kv"><span class="k">NIC</span><span class="v copyable" data-copy="'+esc(n)+'">'+esc(n.split('/').pop())+'</span></div>'});
+      if(networkPolicies) gi+='<div class="dp-kv"><span class="k">Network Policies</span><span class="v">'+esc(networkPolicies)+'</span></div>';
+      if(pe.location) gi+='<div class="dp-kv"><span class="k">Location</span><span class="v">'+esc(pe.location)+'</span></div>';
+      // Tags
+      const tags=pe.tags||{};
+      const tagEntries=Object.entries(tags).filter(([k])=>k!=='Name'&&k!=='name');
+      if(tagEntries.length){
+        gi+='<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">';
+        tagEntries.forEach(([k,v])=>{gi+='<div class="dp-kv"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span></div>'});
+        gi+='</div>';
+      }
+    }
   }
   h+=sec('Details','',gi,true);
 
@@ -6842,7 +6910,10 @@ function resTooltipHtml(res,subId,subRT){
   if(res.rid) h+='<div class="tt-sub">'+esc(res.rid)+'</div>';
   h+='<div class="tt-sec">';
   if(res.ip) h+='<div class="tt-r">IP: <span class="i">'+esc(res.ip)+'</span></div>';
-  if(res.state) h+='<div class="tt-r">State: <span class="'+(res.state==='running'?'a':'d')+'">'+esc(res.state)+'</span></div>';
+  if(res.state&&res.type==='PE'){
+    const stCol=res.stateDot||'#10b981';
+    h+='<div class="tt-r">State: <span style="color:'+stCol+'">'+esc(res.state)+'</span></div>';
+  } else if(res.state) h+='<div class="tt-r">State: <span class="'+(res.state==='running'?'a':'d')+'">'+esc(res.state)+'</span></div>';
   if(res.itype) h+='<div class="tt-r">Type: <span class="i">'+esc(res.itype)+'</span></div>';
   if(res.lbType) h+='<div class="tt-r">LB Type: <span class="i">'+esc(res.lbType)+'</span></div>';
   if(res.sgIds) h+='<div class="tt-r">SGs: <span class="s">'+esc(res.sgIds)+'</span></div>';
@@ -6923,6 +6994,17 @@ function buildResTree(subId, ctx){
     res.push({type:'VOL',name:v.Size+'GB '+(v.VolumeType||''),ip:att?att.InstanceId?.slice(-8)||'':'detached',
       col:'#f59e0b',bg:'rgba(245,158,11,.12)',children:[],
       rid:v.VolumeId,extra:(v.State||'')+(sc?' · '+sc+' snap':'')});
+  });
+  // Private Endpoints in this subnet (Azure)
+  ((ctx.peBySub||{})[subId]||[]).forEach(pe=>{
+    const nm=pe.name||pe.id;
+    const conn=pe.properties?.privateLinkServiceConnections?.[0];
+    const groupId=(conn?.properties?.groupIds||[])[0]||'';
+    const state=conn?.properties?.privateLinkServiceConnectionState?.status||'Approved';
+    const ip=(pe.properties?.customDnsConfigs||[])[0]?.ipAddresses?.[0]||'';
+    const stateCol=state==='Approved'?'#10b981':state==='Pending'?'#f59e0b':'#ef4444';
+    res.push({type:'PE',name:nm,ip:ip,col:'#a78bfa',bg:'rgba(167,139,250,.12)',children:[],
+      rid:pe.id,extra:groupId,state:state,stateDot:stateCol});
   });
   return res;
 }

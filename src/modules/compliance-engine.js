@@ -26,6 +26,11 @@ const CKV_MAP = {
   'SOC2-TLS':  'CKV_AZURE_44',   // TLS 1.2 minimum on storage
   'SOC2-DISK': 'CKV_AZURE_93',   // Managed disk encryption
   'PCI-WAF':   'CKV_AZURE_120',  // App GW without WAF
+  'PE-PENDING': 'CKV_AZURE_PE_1', // PE connection pending
+  'PE-NO-DNS':  'CKV_AZURE_PE_2', // No matching private DNS zone
+  'PE-DNS-UNLINKED': 'CKV_AZURE_PE_3', // DNS zone not linked to VNet
+  'PE-NSG-POLICY':   'CKV_AZURE_PE_4', // Subnet NSG policies disabled
+  'PE-ORPHAN':       'CKV_AZURE_PE_5', // PE connection failed/disconnected
 };
 
 // ============================================================================
@@ -446,6 +451,127 @@ function runCISAzureChecks(data) {
       }
     });
   }
+
+  // ── Private Endpoint checks ──
+  const privateEndpoints = data.privateEndpoints || data.vpces || [];
+  const dnsZones = data.dnsZones || data.zones || [];
+
+  // PE group ID → expected private DNS zone name
+  const PE_DNS_MAP = {
+    sqlServer: 'privatelink.database.windows.net',
+    blob: 'privatelink.blob.core.windows.net',
+    table: 'privatelink.table.core.windows.net',
+    queue: 'privatelink.queue.core.windows.net',
+    file: 'privatelink.file.core.windows.net',
+    web: 'privatelink.web.core.windows.net',
+    dfs: 'privatelink.dfs.core.windows.net',
+    vault: 'privatelink.vaultcore.azure.net',
+    redisCache: 'privatelink.redis.cache.windows.net',
+    namespace: 'privatelink.servicebus.windows.net',
+    cosmosdb: 'privatelink.documents.azure.com',
+    registry: 'privatelink.azurecr.io',
+    sites: 'privatelink.azurewebsites.net',
+    mysqlServer: 'privatelink.mysql.database.azure.com',
+    postgresqlServer: 'privatelink.postgres.database.azure.com',
+    Sql: 'privatelink.sql.azuresynapse.net',
+    Dev: 'privatelink.dev.azuresynapse.net',
+    searchService: 'privatelink.search.windows.net',
+    account: 'privatelink.cognitiveservices.azure.com',
+  };
+
+  // Build set of available private DNS zone names and their VNet links
+  const dnsZonesByName = {};
+  dnsZones.forEach(z => {
+    const props = z.properties || z._azure?.properties || {};
+    const name = z.name || z.Name || '';
+    if (name) dnsZonesByName[name.toLowerCase()] = { zone: z, links: props.virtualNetworkLinks || [] };
+  });
+
+  privateEndpoints.forEach(pe => {
+    const props = pe.properties || pe._azure?.properties || {};
+    const conn = (props.privateLinkServiceConnections || [])[0];
+    const connProps = conn?.properties || {};
+    const state = connProps.privateLinkServiceConnectionState?.status || '';
+    const groupId = (connProps.groupIds || [])[0] || '';
+    const subnetId = props.subnet?.id || '';
+    const vnetId = subnetId ? subnetId.split('/subnets/')[0] : '';
+    const peName = _rn(pe);
+
+    // PE-PENDING: Connection pending approval
+    if (state === 'Pending') {
+      f.push(_finding({
+        id: 'PE-PENDING', framework: 'CIS_AZURE', severity: 'HIGH',
+        title: 'Private Endpoint connection pending approval',
+        message: `PE "${peName}" has a pending connection — traffic will not flow until approved`,
+        resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
+        remediation: 'Approve the private endpoint connection on the target resource or remove the PE if not needed',
+      }));
+    }
+
+    // PE-ORPHAN: Connection failed or rejected
+    if (state === 'Rejected' || state === 'Disconnected' || state === 'Failed') {
+      f.push(_finding({
+        id: 'PE-ORPHAN', framework: 'CIS_AZURE', severity: 'MEDIUM',
+        title: 'Private Endpoint connection ' + state.toLowerCase(),
+        message: `PE "${peName}" has a ${state.toLowerCase()} connection — endpoint is orphaned and should be cleaned up`,
+        resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
+        remediation: 'Remove the orphaned private endpoint or re-create the connection to the target service',
+      }));
+    }
+
+    // PE-NO-DNS: No matching private DNS zone for this PE's group ID
+    if (groupId) {
+      const expectedZone = PE_DNS_MAP[groupId];
+      if (expectedZone && !dnsZonesByName[expectedZone.toLowerCase()]) {
+        f.push(_finding({
+          id: 'PE-NO-DNS', framework: 'CIS_AZURE', severity: 'HIGH',
+          title: 'No private DNS zone for Private Endpoint',
+          message: `PE "${peName}" (${groupId}) requires DNS zone "${expectedZone}" but none exists — DNS resolution will fail`,
+          resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
+          remediation: 'Create private DNS zone "' + expectedZone + '" and link it to the PE\'s VNet',
+        }));
+      }
+
+      // PE-DNS-UNLINKED: DNS zone exists but PE's VNet is not linked
+      if (expectedZone && vnetId) {
+        const zoneInfo = dnsZonesByName[expectedZone.toLowerCase()];
+        if (zoneInfo) {
+          const linked = zoneInfo.links.some(link => {
+            const linkVnet = link.properties?.virtualNetwork?.id || link.id || '';
+            return linkVnet.toLowerCase() === vnetId.toLowerCase();
+          });
+          if (!linked) {
+            f.push(_finding({
+              id: 'PE-DNS-UNLINKED', framework: 'CIS_AZURE', severity: 'HIGH',
+              title: 'Private DNS zone not linked to PE VNet',
+              message: `PE "${peName}" is in VNet "${vnetId.split('/').pop()}" but DNS zone "${expectedZone}" is not linked to that VNet — resolution will use public DNS`,
+              resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
+              remediation: 'Add a virtual network link from "' + expectedZone + '" to VNet "' + vnetId.split('/').pop() + '"',
+            }));
+          }
+        }
+      }
+    }
+
+    // PE-NSG-POLICY: Subnet has NSG but network policies disabled
+    if (subnetId) {
+      const subnet = (data.subnets || []).find(s => (s.id || s.SubnetId || '') === subnetId);
+      if (subnet) {
+        const subProps = subnet.properties || {};
+        const hasNsg = !!subProps.networkSecurityGroup;
+        const policyDisabled = subProps.privateEndpointNetworkPolicies === 'Disabled' || !subProps.privateEndpointNetworkPolicies;
+        if (hasNsg && policyDisabled) {
+          f.push(_finding({
+            id: 'PE-NSG-POLICY', framework: 'CIS_AZURE', severity: 'MEDIUM',
+            title: 'NSG cannot filter Private Endpoint traffic',
+            message: `Subnet "${_rn(subnet)}" has an NSG but PE network policies are disabled — NSG rules will not apply to PE "${peName}"`,
+            resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
+            remediation: 'Enable privateEndpointNetworkPolicies on the subnet to allow NSG filtering of PE traffic',
+          }));
+        }
+      }
+    }
+  });
 
   return f;
 }

@@ -113,3 +113,36 @@ export const NOTE_CATEGORIES = [
   'info',
   'warning'
 ];
+
+// Private Endpoint group ID → Private DNS zone name mapping
+export const PE_GROUP_DNS_MAP = {
+  sqlServer:    'privatelink.database.windows.net',
+  blob:         'privatelink.blob.core.windows.net',
+  table:        'privatelink.table.core.windows.net',
+  queue:        'privatelink.queue.core.windows.net',
+  file:         'privatelink.file.core.windows.net',
+  web:          'privatelink.web.core.windows.net',
+  dfs:          'privatelink.dfs.core.windows.net',
+  vault:        'privatelink.vaultcore.azure.net',
+  redisCache:   'privatelink.redis.cache.windows.net',
+  namespace:    'privatelink.servicebus.windows.net',
+  cosmosdb:     'privatelink.documents.azure.com',
+  registry:     'privatelink.azurecr.io',
+  sites:        'privatelink.azurewebsites.net',
+  mysqlServer:  'privatelink.mysql.database.azure.com',
+  postgresqlServer: 'privatelink.postgres.database.azure.com',
+  managedInstance:   'privatelink.sql.database.azure.net',
+  Sql:          'privatelink.sql.azuresynapse.net',
+  Dev:          'privatelink.dev.azuresynapse.net',
+  searchService:'privatelink.search.windows.net',
+  account:      'privatelink.cognitiveservices.azure.com',
+};
+
+// Private Endpoint connection state → color + label
+export const PE_STATE_COLORS = {
+  Approved:     { color: '#10b981', bg: 'rgba(16,185,129,.15)', label: 'Approved' },
+  Pending:      { color: '#f59e0b', bg: 'rgba(245,158,11,.15)', label: 'Pending' },
+  Rejected:     { color: '#ef4444', bg: 'rgba(239,68,68,.15)',  label: 'Rejected' },
+  Disconnected: { color: '#6b7280', bg: 'rgba(107,114,128,.15)', label: 'Disconnected' },
+  Failed:       { color: '#ef4444', bg: 'rgba(239,68,68,.15)',  label: 'Failed' },
+};

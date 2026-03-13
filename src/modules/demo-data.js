@@ -895,10 +895,13 @@ export function generateDemo() {
   // ─── Private Endpoints ───
   const privateEndpoints = [];
 
-  function makePe(name, rg, subnetKey, targetId, groupIds, ip) {
+  function makePe(name, rg, subnetKey, targetId, groupIds, ip, opts) {
     const peId = rid(rg, 'Microsoft.Network', 'privateEndpoints', name);
     const subnet = subnetMap[subnetKey];
     if (!subnet) return;
+    const state = (opts && opts.state) || 'Approved';
+    const stateDesc = (opts && opts.stateDesc) || 'Auto-approved';
+    const dnsZoneName = (opts && opts.dnsZone) || 'privatelink.database.windows.net';
 
     const peNicName = name + '-nic';
     const peNicId = rid(rg, 'Microsoft.Network', 'networkInterfaces', peNicName);
@@ -917,9 +920,9 @@ export function generateDemo() {
         subnet: { id: subnet.id },
         privateLinkServiceConnections: [{
           name: name + '-conn',
-          properties: { privateLinkServiceId: targetId, groupIds: groupIds, privateLinkServiceConnectionState: { status: 'Approved', description: 'Auto-approved' }, provisioningState: 'Succeeded' },
+          properties: { privateLinkServiceId: targetId, groupIds: groupIds, privateLinkServiceConnectionState: { status: state, description: stateDesc }, provisioningState: 'Succeeded' },
         }],
-        customDnsConfigs: [{ fqdn: name + '.privatelink.database.windows.net', ipAddresses: [ip] }],
+        customDnsConfigs: [{ fqdn: name + '.' + dnsZoneName, ipAddresses: [ip] }],
         networkInterfaces: [{ id: peNicId }],
         provisioningState: 'Succeeded',
       },
@@ -927,26 +930,38 @@ export function generateDemo() {
     });
   }
 
-  // SQL private endpoints
+  // SQL private endpoints (Approved)
   const sqlServerId = rid('rg-data-platform', 'Microsoft.Sql', 'servers', 'sql-data-prod');
-  makePe('pe-sql-data', 'rg-data-platform', 'SQL@vnet-data', sqlServerId, ['sqlServer'], '10.4.1.10');
-  makePe('pe-sql-prod', 'rg-prod-workloads', 'Data@vnet-prod', sqlServerId, ['sqlServer'], '10.1.3.10');
+  makePe('pe-sql-data', 'rg-data-platform', 'SQL@vnet-data', sqlServerId, ['sqlServer'], '10.4.1.10', { dnsZone: 'privatelink.database.windows.net' });
+  makePe('pe-sql-prod', 'rg-prod-workloads', 'Data@vnet-prod', sqlServerId, ['sqlServer'], '10.1.3.10', { dnsZone: 'privatelink.database.windows.net' });
 
-  // Redis private endpoint
+  // Redis private endpoint (Approved)
   const redisId = rid('rg-data-platform', 'Microsoft.Cache', 'redis', 'redis-data-prod');
-  makePe('pe-redis-data', 'rg-data-platform', 'Redis@vnet-data', redisId, ['redisCache'], '10.4.2.10');
+  makePe('pe-redis-data', 'rg-data-platform', 'Redis@vnet-data', redisId, ['redisCache'], '10.4.2.10', { dnsZone: 'privatelink.redis.cache.windows.net' });
 
-  // Storage private endpoint
+  // Storage private endpoint (Approved)
   const storageId = rid('rg-data-platform', 'Microsoft.Storage', 'storageAccounts', 'stdataprodblob');
-  makePe('pe-storage-blob', 'rg-data-platform', 'Storage@vnet-data', storageId, ['blob'], '10.4.3.10');
+  makePe('pe-storage-blob', 'rg-data-platform', 'Storage@vnet-data', storageId, ['blob'], '10.4.3.10', { dnsZone: 'privatelink.blob.core.windows.net' });
 
-  // Key Vault private endpoint
+  // Key Vault private endpoint (Approved)
   const kvId = rid('rg-hub-networking', 'Microsoft.KeyVault', 'vaults', 'kv-hub-shared');
-  makePe('pe-keyvault', 'rg-hub-networking', 'SharedServices@vnet-hub', kvId, ['vault'], '10.0.3.10');
+  makePe('pe-keyvault', 'rg-hub-networking', 'SharedServices@vnet-hub', kvId, ['vault'], '10.0.3.10', { dnsZone: 'privatelink.vaultcore.azure.net' });
 
-  // PCI SQL private endpoint
+  // PCI SQL private endpoint (Approved)
   const pciSqlId = rid('rg-pci-compliant', 'Microsoft.Sql', 'servers', 'sql-pci');
-  makePe('pe-sql-pci', 'rg-pci-compliant', 'PCI-Data@vnet-pci', pciSqlId, ['sqlServer'], '10.5.3.10');
+  makePe('pe-sql-pci', 'rg-pci-compliant', 'PCI-Data@vnet-pci', pciSqlId, ['sqlServer'], '10.5.3.10', { dnsZone: 'privatelink.database.windows.net' });
+
+  // Staging SQL PE — Pending approval (tests PE-PENDING compliance check)
+  const stagingSqlId = rid('rg-staging-workloads', 'Microsoft.Sql', 'servers', 'sql-staging');
+  makePe('pe-sql-staging', 'rg-staging-workloads', 'App@vnet-staging', stagingSqlId, ['sqlServer'], '172.17.0.0', { state: 'Pending', stateDesc: 'Awaiting approval', dnsZone: 'privatelink.database.windows.net' });
+
+  // Dev Cosmos DB PE — Rejected (tests PE-ORPHAN compliance check)
+  const devCosmosId = rid('rg-dev-workloads', 'Microsoft.DocumentDB', 'databaseAccounts', 'cosmos-dev');
+  makePe('pe-cosmos-dev', 'rg-dev-workloads', 'App@vnet-dev', devCosmosId, ['cosmosdb'], '169.254.168.0', { state: 'Rejected', stateDesc: 'Access denied by resource owner', dnsZone: 'privatelink.documents.azure.com' });
+
+  // Synapse PE — no matching DNS zone (tests PE-NO-DNS compliance check)
+  const synapseId = rid('rg-data-platform', 'Microsoft.Synapse', 'workspaces', 'synapse-data-prod');
+  makePe('pe-synapse-sql', 'rg-data-platform', 'SQL@vnet-data', synapseId, ['Sql'], '10.0.0.2', { dnsZone: 'privatelink.sql.azuresynapse.net' });
 
   // ─── AKS Cluster ───
   const aksCluster = {
@@ -1484,12 +1499,23 @@ export function generateDemo() {
   });
 
   // ─── DNS Zones ───
+  // VNet IDs for DNS zone links
+  const vnetHubId = rid('rg-hub-networking', 'Microsoft.Network', 'virtualNetworks', 'vnet-hub');
+  const vnetProdId = rid('rg-prod-workloads', 'Microsoft.Network', 'virtualNetworks', 'vnet-prod');
+  const vnetDataId = rid('rg-data-platform', 'Microsoft.Network', 'virtualNetworks', 'vnet-data');
+  const vnetPciId = rid('rg-pci-compliant', 'Microsoft.Network', 'virtualNetworks', 'vnet-pci');
+  const vnetStagingId = rid('rg-staging-workloads', 'Microsoft.Network', 'virtualNetworks', 'vnet-staging');
+
+  function dnsVnetLink(vnetId) {
+    return { properties: { virtualNetwork: { id: vnetId }, registrationEnabled: false, provisioningState: 'Succeeded' } };
+  }
+
   const dnsZones = [
-    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'contoso.internal'), name: 'contoso.internal', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { numberOfRecordSets: 45, maxNumberOfRecordSets: 25000, provisioningState: 'Succeeded' }, tags: { environment: 'shared' } },
-    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.database.windows.net'), name: 'privatelink.database.windows.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { numberOfRecordSets: 8, provisioningState: 'Succeeded' }, tags: { environment: 'shared' } },
-    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.redis.cache.windows.net'), name: 'privatelink.redis.cache.windows.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { numberOfRecordSets: 3, provisioningState: 'Succeeded' }, tags: { environment: 'shared' } },
-    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.blob.core.windows.net'), name: 'privatelink.blob.core.windows.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { numberOfRecordSets: 5, provisioningState: 'Succeeded' }, tags: { environment: 'shared' } },
-    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.vaultcore.azure.net'), name: 'privatelink.vaultcore.azure.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { numberOfRecordSets: 2, provisioningState: 'Succeeded' }, tags: { environment: 'shared' } },
+    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'contoso.internal'), name: 'contoso.internal', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { zoneType: 'Private', numberOfRecordSets: 45, maxNumberOfRecordSets: 25000, provisioningState: 'Succeeded', virtualNetworkLinks: [dnsVnetLink(vnetHubId), dnsVnetLink(vnetProdId), dnsVnetLink(vnetDataId)] }, tags: { environment: 'shared' } },
+    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.database.windows.net'), name: 'privatelink.database.windows.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { zoneType: 'Private', numberOfRecordSets: 8, provisioningState: 'Succeeded', virtualNetworkLinks: [dnsVnetLink(vnetHubId), dnsVnetLink(vnetProdId), dnsVnetLink(vnetDataId), dnsVnetLink(vnetPciId)] }, tags: { environment: 'shared' } },
+    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.redis.cache.windows.net'), name: 'privatelink.redis.cache.windows.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { zoneType: 'Private', numberOfRecordSets: 3, provisioningState: 'Succeeded', virtualNetworkLinks: [dnsVnetLink(vnetHubId), dnsVnetLink(vnetDataId)] }, tags: { environment: 'shared' } },
+    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.blob.core.windows.net'), name: 'privatelink.blob.core.windows.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { zoneType: 'Private', numberOfRecordSets: 5, provisioningState: 'Succeeded', virtualNetworkLinks: [dnsVnetLink(vnetHubId), dnsVnetLink(vnetProdId), dnsVnetLink(vnetDataId)] }, tags: { environment: 'shared' } },
+    { id: rid('rg-hub-networking', 'Microsoft.Network', 'privateDnsZones', 'privatelink.vaultcore.azure.net'), name: 'privatelink.vaultcore.azure.net', type: 'Microsoft.Network/privateDnsZones', location: 'global', properties: { zoneType: 'Private', numberOfRecordSets: 2, provisioningState: 'Succeeded', virtualNetworkLinks: [dnsVnetLink(vnetHubId)] }, tags: { environment: 'shared' } },
   ];
 
   // ─── Key Vault ───
@@ -1684,6 +1710,7 @@ export function generateDemo() {
       State: 'available',
       SubnetIds: [pe.properties.subnet.id],
       Tags: [{ Key: 'Name', Value: pe.name }],
+      properties: pe.properties,
       _azure: pe,
     }))},
     peer: { value: peerings.map(p => ({
@@ -1716,10 +1743,13 @@ export function generateDemo() {
       _azure: sa,
     }))},
     dnsz: { value: dnsZones.map(dz => ({
+      id: dz.id,
       Id: dz.id,
+      name: dz.name,
       Name: dz.name,
       Config: { PrivateZone: true },
       ResourceRecordSetCount: dz.properties.numberOfRecordSets || 0,
+      properties: dz.properties,
       _azure: dz,
     }))},
     r53records: { value: [] },

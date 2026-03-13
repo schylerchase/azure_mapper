@@ -340,20 +340,39 @@ function _gatherResourceInfo(rid){
       var sqlFqdn=sql.properties&&sql.properties.fullyQualifiedDomainName||'—';
       info.details=[['Server Name',sql.name],['State',sqlState],['Version',sqlVersion],['FQDN',sqlFqdn],['Location',sql.location||'—']];
     } else {
-      var func=(_rlCtx.functionApps||[]).find(function(f){return f.name===rid||f.id===rid});
-      if(func){
-        info.type='Function App';info.name=func.name;
-        var fnState=func.properties&&func.properties.state||'—';
-        var fnKind=func.kind||'—';
-        var fnUrl=func.properties&&func.properties.defaultHostName||'—';
-        info.details=[['Name',func.name],['Kind',fnKind],['State',fnState],['URL',fnUrl],['Location',func.location||'—']];
-        var funcVnetId=func.properties&&func.properties.virtualNetworkSubnetId;
-        if(funcVnetId){
-          var fnVnet=_vnetIdFromSubnetId(funcVnetId);
-          if(fnVnet) info.related.push({id:fnVnet,name:fnVnet,type:'VNet'});
-        }
+      var pe=(_rlCtx.privateEndpoints||[]).find(function(p){return p.id===rid||p.name===rid});
+      if(pe){
+        info.type='PE';info.name=pe.name||rid;
+        var peProps=pe.properties||pe._azure&&pe._azure.properties||{};
+        var peConn=peProps.privateLinkServiceConnections&&peProps.privateLinkServiceConnections[0];
+        var peConnProps=peConn&&peConn.properties||{};
+        var peTarget=peConnProps.privateLinkServiceId||'—';
+        var peGroupIds=(peConnProps.groupIds||[]).join(', ')||'—';
+        var peState=peConnProps.privateLinkServiceConnectionState&&peConnProps.privateLinkServiceConnectionState.status||'—';
+        var peSubId=peProps.subnet&&peProps.subnet.id||'';
+        var peVnetId=_vnetIdFromSubnetId(peSubId);
+        var peDns=peProps.customDnsConfigs&&peProps.customDnsConfigs[0];
+        var peFqdn=peDns&&peDns.fqdn||'—';
+        var peIp=peDns&&peDns.ipAddresses&&peDns.ipAddresses[0]||'—';
+        info.details=[['Target Service',peTarget.split('/').pop()],['Group IDs',peGroupIds],['State',peState],['Private IP',peIp],['FQDN',peFqdn],['Subnet',peSubId?peSubId.split('/').pop():'—'],['VNet',peVnetId?peVnetId.split('/').pop():'—'],['Location',pe.location||'—']];
+        if(peSubId) info.related.push({id:peSubId,name:peSubId.split('/').pop(),type:'Subnet'});
+        if(peVnetId) info.related.push({id:peVnetId,name:peVnetId.split('/').pop(),type:'VNet'});
       } else {
-        return null;
+        var func=(_rlCtx.functionApps||[]).find(function(f){return f.name===rid||f.id===rid});
+        if(func){
+          info.type='Function App';info.name=func.name;
+          var fnState=func.properties&&func.properties.state||'—';
+          var fnKind=func.kind||'—';
+          var fnUrl=func.properties&&func.properties.defaultHostName||'—';
+          info.details=[['Name',func.name],['Kind',fnKind],['State',fnState],['URL',fnUrl],['Location',func.location||'—']];
+          var funcVnetId=func.properties&&func.properties.virtualNetworkSubnetId;
+          if(funcVnetId){
+            var fnVnet=_vnetIdFromSubnetId(funcVnetId);
+            if(fnVnet) info.related.push({id:fnVnet,name:fnVnet,type:'VNet'});
+          }
+        } else {
+          return null;
+        }
       }
     }
   }
@@ -379,7 +398,7 @@ function _dpBackBtnHtml(){
   return _navStack.length>0?'<span id="dpBack" style="cursor:pointer;color:var(--accent-blue);font-size:calc(10px * var(--txt-scale,1) * var(--dp-txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;margin-right:8px" title="Back">&lt; Back</span>':'';
 }
 // Type badge colors for detail panel headers
-var _dpTypeColors={VM:'#f97316',SQL:'#a78bfa','Function App':'#10b981',VNet:'#60a5fa',NSG:'#f59e0b'};
+var _dpTypeColors={VM:'#f97316',SQL:'#a78bfa','Function App':'#10b981',VNet:'#60a5fa',NSG:'#f59e0b',PE:'#a78bfa'};
 function _dpTypeBadge(type){
   var tc=_dpTypeColors[type]||'#22d3ee';
   return '<span style="display:inline-block;font-size:9px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:8px;background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44;vertical-align:middle">'+esc(type)+'</span>';
@@ -413,9 +432,9 @@ function _openDetailForSearch(type,id){
       return;
     }
   }
-  if(type==='FW'||type==='NAT'||type==='VGW'||type==='PE'||type==='VHUB'){
-    const gwType=type;
-    openGatewayPanel(id,gwType,{gwNames:gwNames,firewalls:_rlCtx.firewalls,nats:_rlCtx.nats,vpns:_rlCtx.vpns,privateEndpoints:_rlCtx.privateEndpoints,peerings:_rlCtx.peerings,udrs:_rlCtx.udrs,subnets:_rlCtx.subnets,subRT:_rlCtx.subRT,pubSubs:_rlCtx.pubSubs,vnets:_rlCtx.vnets,vhubs:_rlCtx.vhubs||[],vhubConnections:_rlCtx.vhubConnections||[]});
+  if(type==='FW'||type==='NAT'||type==='VGW'||type==='PE'||type==='Private Endpoint'||type==='VHUB'){
+    const gwType=(type==='Private Endpoint')?'PE':type;
+    openGatewayPanel(id,gwType,{gwNames:gwNames,firewalls:_rlCtx.firewalls,nats:_rlCtx.nats,vpns:_rlCtx.vpns,vpces:_rlCtx.privateEndpoints,privateEndpoints:_rlCtx.privateEndpoints,peerings:_rlCtx.peerings,udrs:_rlCtx.udrs,subnets:_rlCtx.subnets,subRT:_rlCtx.subRT,pubSubs:_rlCtx.pubSubs,vnets:_rlCtx.vnets,vhubs:_rlCtx.vhubs||[],vhubConnections:_rlCtx.vhubConnections||[]});
     return;
   }
 

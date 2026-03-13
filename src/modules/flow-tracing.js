@@ -178,6 +178,7 @@ const HOP_TYPE_LABELS = {
   'cross-vnet': 'Cross-VNet',
   'error': 'Error',
   'internet-check': 'Internet Route Check',
+  'pe-redirect': 'Private Endpoint',
 };
 
 export function hopTypeLabel(type) {
@@ -304,7 +305,57 @@ export function resolveNetworkPosition(type, id, ctx) {
     return { subnetId: redisSid, vnetId: redisVnet, cidr: redisSubCidr, nicNsg: null, subnetNsg: redisSubnetNsg, name: azureName(redis, id) };
   }
 
+  if (type === 'pe') {
+    var pe = null;
+    (ctx.privateEndpoints || []).forEach(function (p) { if (p.id === id || p.name === id) pe = p; });
+    if (!pe) return null;
+    var peProps = pe.properties || {};
+    var peSubId = peProps.subnet && peProps.subnet.id || null;
+    var peVnetId = peSubId ? peSubId.split('/subnets/')[0] : null;
+    var peSubCidr = peSubId ? ((ctx.subnets || []).find(function (s) { return s.id === peSubId; }) || {}).addressPrefix : null;
+    var peSubnetNsg = getSubnetNsg(peSubId, ctx);
+    var peIp = peProps.customDnsConfigs && peProps.customDnsConfigs[0] && peProps.customDnsConfigs[0].ipAddresses && peProps.customDnsConfigs[0].ipAddresses[0] || null;
+    return { subnetId: peSubId, vnetId: peVnetId, cidr: peIp ? peIp + '/32' : peSubCidr, nicNsg: null, subnetNsg: peSubnetNsg, name: azureName(pe, id), ip: peIp, isPe: true };
+  }
+
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// findPeForTarget — find a PE that connects to a given PaaS target resource
+// Returns {pe, pePos} if found, null otherwise
+// ---------------------------------------------------------------------------
+export function findPeForTarget(targetId, ctx) {
+  if (!targetId || !ctx) return null;
+  var pes = ctx.privateEndpoints || [];
+  for (var i = 0; i < pes.length; i++) {
+    var pe = pes[i];
+    var props = pe.properties || {};
+    var conn = (props.privateLinkServiceConnections || [])[0];
+    if (!conn) continue;
+    var connProps = conn.properties || {};
+    if (connProps.privateLinkServiceId === targetId) {
+      var state = (connProps.privateLinkServiceConnectionState || {}).status || 'Unknown';
+      return { pe: pe, state: state };
+    }
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// buildPeRedirectHop — creates a pe-redirect hop for flow path injection
+// ---------------------------------------------------------------------------
+export function buildPeRedirectHop(hopN, pe, state) {
+  var peName = pe.name || pe.id || 'PE';
+  var peProps = pe.properties || {};
+  var ip = peProps.customDnsConfigs && peProps.customDnsConfigs[0] && peProps.customDnsConfigs[0].ipAddresses && peProps.customDnsConfigs[0].ipAddresses[0] || '';
+  var fqdn = peProps.customDnsConfigs && peProps.customDnsConfigs[0] && peProps.customDnsConfigs[0].fqdn || '';
+  var action = state === 'Approved' ? 'allow' : 'block';
+  var detail = 'Traffic redirected via Private Endpoint "' + peName + '"';
+  if (ip) detail += ' (IP: ' + ip + ')';
+  if (fqdn) detail += ' FQDN: ' + fqdn;
+  if (state !== 'Approved') detail += ' [Connection ' + state + ']';
+  return { hop: hopN, type: 'pe-redirect', id: peName, action: action, detail: detail, peId: pe.id };
 }
 
 // ---------------------------------------------------------------------------
@@ -537,6 +588,23 @@ export function traceFlow(source, target, config, ctx) {
   var tgtIp = tgtPos.ip || ipFromCidr(tgtPos.cidr) || '10.0.0.2';
 
   path.push({ hop: hopN++, type: 'source', id: srcPos.name || source.id, action: 'allow', detail: 'Source: ' + (srcPos.name || source.id) + ' (' + source.type + ') in subnet ' + (srcPos.subnetId || 'unknown'), subnetId: srcPos.subnetId });
+
+  // Check if target has a Private Endpoint — if so, insert PE redirect hop
+  if (tgtPos.isPe) {
+    path.push(buildPeRedirectHop(hopN++, { id: target.id, name: tgtPos.name, properties: {} }, 'Approved'));
+  } else {
+    var peMatch = findPeForTarget(target.id, ctx);
+    if (peMatch) {
+      path.push(buildPeRedirectHop(hopN++, peMatch.pe, peMatch.state));
+      if (peMatch.state !== 'Approved') {
+        path.push({ hop: hopN++, type: 'target', id: tgtPos.name || target.id, action: 'block', detail: 'PE connection is ' + peMatch.state + ' — traffic cannot reach target', subnetId: tgtPos.subnetId });
+        return { path: path, blocked: { hop: hopN - 2, reason: 'Private Endpoint connection is ' + peMatch.state, suggestion: 'Approve the PE connection on the target resource' } };
+      }
+      // Re-resolve target position through PE's subnet
+      var pePos = resolveNetworkPosition('pe', peMatch.pe.id, ctx);
+      if (pePos) { tgtPos = pePos; tgtIp = pePos.ip || tgtIp; }
+    }
+  }
 
   // Same-subnet path: only NIC NSG checks
   if (srcPos.subnetId && srcPos.subnetId === tgtPos.subnetId) {
