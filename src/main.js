@@ -48,7 +48,8 @@ import {
 import {
   analyzeRoleAssignments, findOverPrivileged, findOrphanedAssignments,
   countOwnersPerScope, findGuestPrivileges, findServicePrincipalRisks,
-  classifyPermission, getScopeLevel
+  classifyPermission, getScopeLevel,
+  parseRBACData, getRBACForScope
 } from './modules/iam-engine.js';
 
 // Timeline & Annotations (state + pure logic — DOM rendering remains inline)
@@ -150,6 +151,7 @@ window.AppModules = {
   analyzeRoleAssignments, findOverPrivileged, findOrphanedAssignments,
   countOwnersPerScope, findGuestPrivileges, findServicePrincipalRisks,
   classifyPermission, getScopeLevel,
+  parseRBACData, getRBACForScope,
 
   // Timeline & Annotations
   Timeline,

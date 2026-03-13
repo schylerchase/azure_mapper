@@ -79,7 +79,8 @@ export const PRIORITY_META = {
   }
 };
 
-// Alias for backward compatibility
+// Alias for backward compatibility — widely used across app-core.js, report-builder.js, etc.
+// TODO: Consolidate to PRIORITY_META once all inline references are migrated
 export const TIER_META = PRIORITY_META;
 
 // Priority ordering for sorting

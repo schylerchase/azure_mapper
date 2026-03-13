@@ -1,47 +1,45 @@
-// Annotations and notes system
-// Allows users to add notes, tags, and annotations to resources
-// Extracted from index.html for modularization
+// ============================================================================
+// DEPRECATED — DOM rendering only.
+//
+// Pure annotation logic (addAnnotation, updateAnnotation, deleteAnnotation,
+// getAllNotes, saveAnnotations, etc.) now lives in timeline.js and is the
+// single source of truth for annotation state.
+//
+// This file ONLY contains DOM rendering functions (_renderNotesPanel,
+// _renderNoteBadges, _renderComplianceBadges, etc.) that are coupled to
+// globals in app-core.js (_rlCtx, _mapG, _complianceFindings).
+//
+// These DOM functions should be extracted to a proper module in Phase 5.
+// Until then, this file delegates all data operations to window.Timeline.
+// ============================================================================
 
-// === ANNOTATIONS / NOTES SYSTEM ===
-const _NOTES_KEY='azureMapper_annotations';
-let _annotations={};// {resourceId: [{text,category,author,created,updated,pinned}]}
-let _annotationAuthor='';
-try{const s=localStorage.getItem(_NOTES_KEY);if(s)_annotations=JSON.parse(s)}catch(e){}
-try{_annotationAuthor=localStorage.getItem('azureMapper_note_author')||''}catch(e){}
+// === Delegate data access to timeline.js via window.Timeline ===
 const _NOTE_CATEGORIES=['owner','status','incident','todo','info','warning'];
-function _saveAnnotations(){try{localStorage.setItem(_NOTES_KEY,JSON.stringify(_annotations))}catch(e){}}
-function _noteKey(resourceId,accountId){return accountId&&accountId!=='default'?accountId+':'+resourceId:resourceId}
-function _getAllNotes(){
-  const all=[];
-  Object.entries(_annotations).forEach(([rid,notes])=>{
-    (Array.isArray(notes)?notes:[notes]).forEach((n,i)=>{if(n&&n.text)all.push({...n,resourceId:rid,noteIndex:i})});
-  });
-  return all.sort((a,b)=>new Date(b.updated||b.created||0)-new Date(a.updated||a.created||0));
-}
+function _getAnnotations(){return window.Timeline?window.Timeline.getAnnotations():{}}
+function _getAnnotationAuthor(){return window.Timeline?window.Timeline.getAnnotationAuthor():''}
+function _getAllNotes(){return window.Timeline?window.Timeline.getAllNotes():[]}
+function _saveAnnotations(){if(window.Timeline)window.Timeline.saveAnnotations()}
+function _escHtml(s){return (window.esc||function(v){return String(v||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')})(s)}
+function _relTime(iso){return window.Timeline?window.Timeline.relTime(iso):''}
 function addAnnotation(resourceId,text,category,pinned){
-  if(!text||!text.trim())return;
-  const note={text:text.trim(),category:category||'info',author:_annotationAuthor||'',created:new Date().toISOString(),updated:new Date().toISOString(),pinned:!!pinned};
-  if(!_annotations[resourceId])_annotations[resourceId]=[];
-  if(!Array.isArray(_annotations[resourceId]))_annotations[resourceId]=[_annotations[resourceId]];
-  _annotations[resourceId].push(note);
-  _saveAnnotations();_renderNoteBadges();_renderNotesPanel();
+  if(!window.Timeline)return;
+  const note=window.Timeline.addAnnotation(resourceId,text,category,pinned);
+  _renderNoteBadges();_renderNotesPanel();
   return note;
 }
 function updateAnnotation(resourceId,noteIndex,text,category,pinned){
-  if(!_annotations[resourceId]||!_annotations[resourceId][noteIndex])return;
-  const n=_annotations[resourceId][noteIndex];
-  if(text!==undefined)n.text=text;
-  if(category!==undefined)n.category=category;
-  if(pinned!==undefined)n.pinned=pinned;
-  n.updated=new Date().toISOString();
-  _saveAnnotations();_renderNoteBadges();_renderNotesPanel();
+  if(!window.Timeline)return;
+  window.Timeline.updateAnnotation(resourceId,noteIndex,text,category,pinned);
+  _renderNoteBadges();_renderNotesPanel();
 }
 function deleteAnnotation(resourceId,noteIndex){
-  if(!_annotations[resourceId])return;
-  _annotations[resourceId].splice(noteIndex,1);
-  if(_annotations[resourceId].length===0)delete _annotations[resourceId];
-  _saveAnnotations();_renderNoteBadges();_renderNotesPanel();
+  if(!window.Timeline)return;
+  window.Timeline.deleteAnnotation(resourceId,noteIndex);
+  _renderNoteBadges();_renderNotesPanel();
 }
+
+// === DOM rendering functions (kept — coupled to app-core.js globals) ===
+
 function _getResourceName(rid){
   if(!_rlCtx)return rid;
   // Lazy-build name map for O(1) lookups
@@ -72,20 +70,16 @@ function _isOrphaned(rid){
     (_rlCtx.sqlServers||[]).forEach(x=>s.add(x.id||x.name));
     (_rlCtx.functionApps||[]).forEach(x=>s.add(x.id||x.name));
     (_rlCtx.nsgs||[]).forEach(x=>s.add(x.id));
-    (_rlCtx.albs||[]).forEach(x=>s.add(x.id||x.name));
-    (_rlCtx.ecacheClusters||[]).forEach(x=>s.add(x.id||x.name));
-    (_rlCtx.redshiftClusters||[]).forEach(x=>s.add(x.id||x.name));
+    (_rlCtx.loadBalancers||[]).forEach(x=>s.add(x.id||x.name));
+    (_rlCtx.redisCaches||[]).forEach(x=>s.add(x.id||x.name));
+    (_rlCtx.synapseWorkspaces||[]).forEach(x=>s.add(x.id||x.name));
     _rlCtx._allResourceIds=s;
   }
   return !_rlCtx._allResourceIds.has(rid);
 }
-function _relTime(iso){
-  if(!iso)return '';
-  const ms=Date.now()-new Date(iso).getTime();
-  const s=Math.floor(ms/1000),m=Math.floor(s/60),h=Math.floor(m/60),d=Math.floor(h/24);
-  if(d>30)return Math.floor(d/30)+'mo ago';if(d>0)return d+'d ago';if(h>0)return h+'h ago';if(m>0)return m+'m ago';return 'just now';
-}
 function _renderNotesPanel(){
+  const _annotations=_getAnnotations();
+  const _annotationAuthor=_getAnnotationAuthor();
   const body=document.getElementById('notesPanelBody');if(!body)return;
   const catFilter=document.getElementById('notesCatFilter').value;
   const searchQ=(document.getElementById('notesSearch').value||'').toLowerCase().trim();
@@ -101,7 +95,7 @@ function _renderNotesPanel(){
       const orphaned=_isOrphaned(n.resourceId);
       const rName=_getResourceName(n.resourceId);
       h+='<div class="note-card'+(orphaned?' note-orphaned':'')+'" data-rid="'+_escHtml(n.resourceId)+'" data-ni="'+n.noteIndex+'">';
-      h+='<div class="note-card-hdr"><span class="note-cat-badge cat-'+n.category+'">'+n.category+'</span>';
+      h+='<div class="note-card-hdr"><span class="note-cat-badge cat-'+_escHtml(n.category)+'">'+_escHtml(n.category)+'</span>';
       if(n.pinned)h+='<span style="font-size:8px;color:var(--accent-orange)">PINNED</span>';
       if(orphaned)h+='<span style="font-size:8px;color:var(--accent-orange)">ORPHANED</span>';
       h+='<span class="note-resource" title="'+_escHtml(n.resourceId)+'">'+_escHtml(rName)+'</span></div>';
@@ -123,7 +117,7 @@ function _renderNotesPanel(){
     const author=document.getElementById('noteNewAuthor').value.trim();
     const rid=document.getElementById('noteNewResource').value;
     if(!text.trim()||!rid){_showToast('Select a resource and enter note text');return}
-    if(author){_annotationAuthor=author;try{localStorage.setItem('azureMapper_note_author',author)}catch(e){}}
+    if(author&&window.Timeline){window.Timeline.setAnnotationAuthor(author)}
     addAnnotation(rid,text,cat,pinned);
     document.getElementById('noteAddForm').style.display='none';
   })}
@@ -143,6 +137,7 @@ function _populateResourceSelect(){
   sel.innerHTML=opts;
 }
 function _showEditNote(rid,ni){
+  const _annotations=_getAnnotations();
   const notes=_annotations[rid];if(!notes||!notes[ni])return;
   const n=notes[ni];
   const card=document.querySelector('.note-card[data-rid="'+rid+'"][data-ni="'+ni+'"]');if(!card)return;
@@ -150,8 +145,8 @@ function _showEditNote(rid,ni){
   document.getElementById('noteEditSave').addEventListener('click',()=>{updateAnnotation(rid,ni,document.getElementById('noteEditText').value,document.getElementById('noteEditCat').value,document.getElementById('noteEditPinned').checked)});
   document.getElementById('noteEditCancel').addEventListener('click',()=>{_renderNotesPanel()});
 }
-function _escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function _renderNoteBadges(){
+  const _annotations=_getAnnotations();
   if(!_mapG)return;
   _mapG.selectAll('.note-badge').remove();
   const nodesLayer=_mapG.select('.nodes-layer');if(nodesLayer.empty())return;

@@ -60,7 +60,7 @@ export let complianceFindings = [];
 export let sb = null;
 
 // Azure environment context — populated during session load / ingestion
-export let cloudEnv = '';         // e.g. 'AzureCloud', 'AzureUSGovernment', 'AzureChinaCloud'
+// NOTE: cloudEnv is managed by cloud-env.js (with validation). Use setCloudEnv/getCloudEnv from cloud-env.js.
 export let tenantId = '';         // Azure Active Directory tenant GUID
 export let subscriptionId = '';   // Active subscription GUID
 
@@ -75,6 +75,5 @@ export function setShowNested(v)         { showNested = v; }
 export function setGTxtScale(v)          { gTxtScale = v; }
 export function setComplianceFindings(v) { complianceFindings = v; }
 export function setSb(v)                 { sb = v; }
-export function setCloudEnv(v)           { cloudEnv = v; }
 export function setTenantId(v)           { tenantId = v; }
 export function setSubscriptionId(v)     { subscriptionId = v; }

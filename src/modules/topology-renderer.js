@@ -200,12 +200,15 @@ function _renderMapInner(){
     (containerInstances||[]).forEach(svc=>{const mid=svc.identity?.principalId;if(mid){if(!iamRoleResources[mid])iamRoleResources[mid]={vms:[],functions:[],containers:[]};iamRoleResources[mid].containers.push(svc)}});
   }
   // VMs by subnet (via NIC -> subnet mapping)
+  const vmById = new Map(vms.map(v => [v.id, v]));
+  const nicById = new Map(nics.map(n => [n.id, n]));
   const vmBySub={};const nicByVm={};
   nics.forEach(nic=>{
     const vmId=nic.properties?.virtualMachine?.id;
     const subId=nic.properties?.ipConfigurations?.[0]?.properties?.subnet?.id;
     if(vmId&&subId){
-      (vmBySub[subId]=vmBySub[subId]||[]).push(...vms.filter(v=>v.id===vmId));
+      const vm=vmById.get(vmId);
+      if(vm)(vmBySub[subId]=vmBySub[subId]||[]).push(vm);
       (nicByVm[vmId]=nicByVm[vmId]||[]).push(nic);
     }
   });
@@ -213,7 +216,7 @@ function _renderMapInner(){
   vms.forEach(vm=>{
     const nicRefs=vm.properties?.networkProfile?.networkInterfaces||[];
     nicRefs.forEach(nr=>{
-      const nic=nics.find(n=>n.id===nr.id);
+      const nic=nicById.get(nr.id);
       if(nic){
         const subId=nic.properties?.ipConfigurations?.[0]?.properties?.subnet?.id;
         if(subId&&!vmBySub[subId]?.some(v=>v.id===vm.id)){
@@ -278,10 +281,11 @@ function _renderMapInner(){
   });
 
   // SQL Servers by subnet (via private endpoint or VNet rule)
+  const peById = new Map((privateEndpoints || []).map(p => [p.id, p]));
   const sqlBySub={};sqlServers.forEach(db=>{
     (db.properties?.privateEndpointConnections||[]).forEach(pec=>{
       const peId=pec.properties?.privateEndpoint?.id;
-      const pe=privateEndpoints.find(p=>p.id===peId);
+      const pe=peById.get(peId);
       if(pe){
         const subId=pe.properties?.subnet?.id;
         if(subId)(sqlBySub[subId]=sqlBySub[subId]||[]).push(db);
@@ -322,10 +326,12 @@ function _renderMapInner(){
   });
 
   // Front Door origins mapped to App Gateway IDs
+  const agwByName = new Map((appGateways || []).map(a => [a.name, a]));
   const fdByAgw={};frontDoors.forEach(d=>{
     (d.properties?.backendPools||d.properties?.originGroups||[]).forEach(pool=>{
       (pool.properties?.backends||pool.properties?.origins||[]).forEach(o=>{
-        const matchAgw=appGateways.find(a=>a.properties?.frontendIPConfigurations?.[0]?.properties?.publicIPAddress?.id&&o.address&&o.address.includes(a.name));
+        let matchAgw=null;
+        if(o.address){for(const [name,a] of agwByName){if(a.properties?.frontendIPConfigurations?.[0]?.properties?.publicIPAddress?.id&&o.address.includes(name)){matchAgw=a;break;}}}
         if(matchAgw)(fdByAgw[matchAgw.id]=fdByAgw[matchAgw.id]||[]).push(d);
       });
     });
@@ -485,7 +491,7 @@ function _renderMapInner(){
   });
   
   // Calculate row 2 Y position for unknown VNets (below all known VNets + shared gateways area)
-  const maxKnownH=vL.length>0?Math.max(...vL.map(v=>v.h)):0;
+  const maxKnownH=vL.length>0?vL.reduce((max,v)=>Math.max(max,v.h),0):0;
   const unknownRowY=80+maxKnownH+320;
   let ux=60;
 
@@ -593,7 +599,7 @@ function _renderMapInner(){
   });
 
   // shared gateways below KNOWN VNets only (not disconnected)
-  const knownVnetBot=knownVL.length>0?Math.max(...knownVL.map(v=>v.y+v.h)):80;
+  const knownVnetBot=knownVL.length>0?knownVL.reduce((max,v)=>Math.max(max,v.y+v.h),0):80;
   const lE=knownVL[0]?.x||0,rE=knownVL.length?knownVL[knownVL.length-1].x+knownVL[knownVL.length-1].w:W;
   const sCX=(lE+rE)/2,sY=knownVnetBot+80;
   const ssX=sCX-((shGws.length-1)*80)/2;
@@ -607,10 +613,10 @@ function _renderMapInner(){
   // internet node positioned far left, anchoring the NET bus bar
   // Firewalls connect to NET bus bar; NAT Gateways have their own subnet route lines
   const fwGwList=[...gwP.values()].filter(p=>p.gw.type==='fw');
-  const allVnetRight=Math.max(...vL.map(v=>v.gwSide==='left'?(v.x+v.w):(v.x+v.w+v.chanW)));
-  const allVnetLeft=Math.min(...vL.map(v=>v.x));
-  const allVnetTop=Math.min(...vL.map(v=>v.y));
-  const allVnetBottom=Math.max(...vL.map(v=>v.y+v.h));
+  const allVnetRight=vL.reduce((max,v)=>Math.max(max,v.gwSide==='left'?(v.x+v.w):(v.x+v.w+v.chanW)),0);
+  const allVnetLeft=vL.reduce((min,v)=>Math.min(min,v.x),Infinity);
+  const allVnetTop=vL.reduce((min,v)=>Math.min(min,v.y),Infinity);
+  const allVnetBottom=vL.reduce((max,v)=>Math.max(max,v.y+v.h),0);
   // Position NET node left of all VNets
   const iX=allVnetLeft-80;
   const iY=allVnetTop-100;
@@ -1723,7 +1729,7 @@ function _renderMapInner(){
       h+='<div class="tt-sub">'+gn(vl.vnet)+'</div>';
       h+='<div class="tt-sec"><div class="tt-sh">Endpoints</div>';
       vnetPEs.forEach(v=>{
-        const pe=privateEndpoints.find(x=>x.id===v.id);
+        const pe=peById.get(v.id);
         const svc=pe?.properties?.privateLinkServiceConnections?.[0]?.properties?.groupIds?.[0]||'?';
         const nm=gwNames[v.id];
         h+='<div class="tt-r"><span class="i">'+(nm||sid(v.id))+'</span> '+svc+'</div>';
@@ -1735,6 +1741,7 @@ function _renderMapInner(){
   });
 
   // Private DNS zone badges - positioned at bottom-right of VNet
+  const vnetById = new Map((vnets || []).map(v => [v.id, v]));
   let dnsBoxH=0;
   if(dnsZones.length>0){
     const privZonesByVnet={};
@@ -1798,7 +1805,7 @@ function _renderMapInner(){
         const zName=z.name||'';
         const isPub=z.properties?.zoneType!=='Private';
         const zRecs=recsByZoneMap[zName]||[];
-        const assocVnets=(!isPub&&z.properties?.virtualNetworkLinks)?z.properties.virtualNetworkLinks.map(v=>{const vid=v.properties?.virtualNetwork?.id||'';const vnet=vnets.find(vp=>vp.id===vid);return gn(vnet||{})}).join(', '):'';
+        const assocVnets=(!isPub&&z.properties?.virtualNetworkLinks)?z.properties.virtualNetworkLinks.map(v=>{const vid=v.properties?.virtualNetwork?.id||'';const vnet=vnetById.get(vid);return gn(vnet||{})}).join(', '):'';
         let metaLines=2;
         if(assocVnets)metaLines++;
         const headerH=18+metaLines*14+4;
@@ -1945,7 +1952,7 @@ function _renderMapInner(){
           h+='<div class="tt-sh" style="margin-top:6px">Associated VNets</div>';
           z.properties.virtualNetworkLinks.forEach(v=>{
             const vid=v.properties?.virtualNetwork?.id||'';
-            const vnet=vnets.find(vp=>vp.id===vid);
+            const vnet=vnetById.get(vid);
             h+='<div class="tt-r"><span class="i">'+gn(vnet||{})+'</span> '+esc(sid(vid))+'</div>';
           });
         }

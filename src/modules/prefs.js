@@ -13,16 +13,15 @@ function loadPrefs() {
   }
 }
 
-// Global preferences object - loaded once at startup
-const _prefs = loadPrefs();
+// Global preferences object - prototype-free to prevent pollution (Object.create(null))
+const _prefs = Object.assign(Object.create(null), loadPrefs());
 
 // Save preferences - OPTIMIZED: no longer re-reads localStorage
 // Old: called loadPrefs() every time (getItem + JSON.parse)
 // New: merges into in-memory _prefs, writes once
 function savePrefs(p) {
   for (const k of Object.keys(p)) {
-    // Prototype pollution protection
-    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    if (!Object.hasOwn(p, k)) continue;
     _prefs[k] = p[k];
   }
   try {

@@ -16,8 +16,8 @@ let annotationAuthor = '';
 
 // Initialize from localStorage
 try { const s = localStorage.getItem(SNAP_KEY); if (s) snapshots = JSON.parse(s); } catch (e) { snapshots = []; }
-try { const s = localStorage.getItem(NOTES_KEY); if (s) annotations = JSON.parse(s); } catch (e) {}
-try { annotationAuthor = localStorage.getItem('azureMapper_note_author') || ''; } catch (e) {}
+try { const s = localStorage.getItem(NOTES_KEY); if (s) annotations = JSON.parse(s); } catch (e) { /* Silent OK — localStorage may be disabled */ }
+try { annotationAuthor = localStorage.getItem('azureMapper_note_author') || ''; } catch (e) { /* Silent OK — localStorage may be disabled */ }
 
 // Max snapshots (Electron gets 5, web gets constant)
 const maxSnapshots = (typeof window !== 'undefined' && window.electronAPI) ? 5 : MAX_SNAPSHOTS;
@@ -95,41 +95,38 @@ export function relTime(iso) {
   return 'just now';
 }
 
-/** HTML-escape a string. */
-export function escHtml(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+/** HTML-escape a string. Re-exports esc from utils.js for backward compat. */
+export const escHtml = esc;
 
 /** Check if a resource ID is orphaned (no longer in current context). */
 export function isOrphaned(rid, ctx) {
   if (!ctx) return false;
   if (rid.startsWith('canvas:')) return false;
-  const all = [
-    ...(ctx.vnets || []).map(x => x.VnetId),
-    ...(ctx.subnets || []).map(x => x.SubnetId),
-    ...(ctx.vms || []).map(x => x.VmId),
-    ...(ctx.gateways || []).map(x => x.GatewayId),
-    ...(ctx.nats || []).map(x => x.NatGatewayId),
-    ...(ctx.vpces || []).map(x => x.VpcEndpointId),
-    ...(ctx.sqlInstances || []).map(x => x.DBInstanceIdentifier),
-    ...(ctx.functionApps || []).map(x => x.FunctionName),
-    ...(ctx.nsgs || []).map(x => x.GroupId),
-    ...(ctx.loadBalancers || []).map(x => x.LoadBalancerName),
-    ...(ctx.redisClusters || []).map(x => x.CacheClusterId),
-    ...(ctx.synapseClusters || []).map(x => x.ClusterIdentifier)
-  ];
-  return !all.includes(rid);
+  const all = new Set();
+  (ctx.vnets || []).forEach(x => all.add(x.id));
+  (ctx.subnets || []).forEach(x => all.add(x.id));
+  (ctx.vms || []).forEach(x => all.add(x.id));
+  (ctx.firewalls || []).forEach(x => all.add(x.id));
+  (ctx.nats || []).forEach(x => all.add(x.id));
+  (ctx.privateEndpoints || []).forEach(x => all.add(x.id));
+  (ctx.sqlServers || []).forEach(x => all.add(x.id || x.name));
+  (ctx.functionApps || []).forEach(x => all.add(x.id || x.name));
+  (ctx.nsgs || []).forEach(x => all.add(x.id));
+  (ctx.loadBalancers || []).forEach(x => all.add(x.id || x.name));
+  (ctx.redisCaches || []).forEach(x => all.add(x.id || x.name));
+  (ctx.synapseWorkspaces || []).forEach(x => all.add(x.id || x.name));
+  return !all.has(rid);
 }
 
 /** Look up a human-readable name for a resource ID. */
 export function getResourceName(rid, ctx) {
   if (!ctx) return rid;
-  const v = (ctx.vnets || []).find(x => x.VnetId === rid); if (v) return gn(v, rid);
-  const s = (ctx.subnets || []).find(x => x.SubnetId === rid); if (s) return gn(s, rid);
-  const i = (ctx.vms || []).find(x => x.VmId === rid); if (i) return gn(i, rid);
-  const r = (ctx.sqlInstances || []).find(x => x.DBInstanceIdentifier === rid); if (r) return rid;
-  const l = (ctx.functionApps || []).find(x => x.FunctionName === rid); if (l) return rid;
-  const sg = (ctx.nsgs || []).find(x => x.GroupId === rid); if (sg) return sg.GroupName || rid;
+  const v = (ctx.vnets || []).find(x => x.id === rid); if (v) return gn(v, rid);
+  const s = (ctx.subnets || []).find(x => x.id === rid); if (s) return gn(s, rid);
+  const i = (ctx.vms || []).find(x => x.id === rid); if (i) return gn(i, rid);
+  const r = (ctx.sqlServers || []).find(x => x.id === rid); if (r) return r.name || rid;
+  const l = (ctx.functionApps || []).find(x => x.id === rid); if (l) return l.name || rid;
+  const sg = (ctx.nsgs || []).find(x => x.id === rid); if (sg) return sg.name || rid;
   return rid;
 }
 

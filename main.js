@@ -22,6 +22,19 @@ function createWindow() {
     });
 
     mainWindow.loadFile('index.html');
+
+    // Prevent navigation to non-file:// URLs
+    mainWindow.webContents.on('will-navigate', (event, url) => {
+        if (!url.startsWith('file://')) {
+            event.preventDefault();
+        }
+    });
+
+    // Deny all new window requests
+    mainWindow.webContents.setWindowOpenHandler(() => {
+        return { action: 'deny' };
+    });
+
     buildMenu();
 }
 
@@ -244,9 +257,10 @@ ipcMain.handle('dialog:openFolder', async () => {
 });
 
 ipcMain.handle('file:export', async (event, { data, name, filters }) => {
+    const safeName = path.basename(name || 'export');
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: 'Export',
-        defaultPath: name,
+        defaultPath: safeName,
         filters: filters || [{ name: 'All Files', extensions: ['*'] }]
     });
     if (!canceled && filePath) {

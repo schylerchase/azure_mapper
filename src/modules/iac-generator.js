@@ -530,9 +530,9 @@ export function generateTerraform(data, options) {
     lines.push('  size                = "' + (vmp.hardwareProfile?.vmSize || 'Standard_B2s') + '"');
     lines.push('  admin_username      = ' + (includeVars ? 'var.admin_username' : '"azureadmin"'));
     if (isWindows) {
-      lines.push('  admin_password      = ' + (includeVars ? 'var.admin_password' : '"CHANGE_ME_P@ssw0rd!"'));
+      lines.push('  admin_password      = var.admin_password');
     } else {
-      lines.push('  admin_password                  = ' + (includeVars ? 'var.admin_password' : '"CHANGE_ME_P@ssw0rd!"'));
+      lines.push('  admin_password                  = var.admin_password');
       lines.push('  disable_password_authentication = false');
     }
 
@@ -928,7 +928,7 @@ export function generateARM(data, options) {
       const nicName = n.id ? n.id.split('/').pop() : 'nic';
       return { id: '[resourceId(\'Microsoft.Network/networkInterfaces\', \'' + nicName + '\')]' };
     });
-    const vmDeps = nicRefs.map(n => n.id.replace('[', '').replace(']', '').replace('resourceId', '[resourceId'));
+    const vmDeps = nicRefs.map(n => n.id.replaceAll('[', '').replaceAll(']', '').replace('resourceId', '[resourceId'));
 
     const vmResource = {
       type: 'Microsoft.Compute/virtualMachines',

@@ -190,7 +190,7 @@ function runBUDRChecks(ctx){
   (ctx.synapseWorkspaces||[]).forEach(sw=>{
     const id=sw.id;const name=gn(sw);
     const hasSnap=!!(sw.properties&&sw.properties.managedResourceGroupName);
-    const multiZone=!!(sw.properties&&sw.properties.encryption);
+    const multiZone=!!(sw.properties&&(sw.properties.managedVirtualNetworkSettings||sw.properties.workspaceRepositoryConfiguration));
     let profile;
     if(multiZone&&hasSnap){profile=_BUDR_RTO_RPO.synapse_multi}
     else if(hasSnap){profile=_BUDR_RTO_RPO.synapse_snap;

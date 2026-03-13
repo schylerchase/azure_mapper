@@ -39,8 +39,10 @@ export function closeAllDashboards(except) {
     }
   });
   // Reset unified dashboard tab if closing it
-  if (except !== 'udash' && window._udashTab !== undefined) {
-    window._udashTab = null;
+  if (except !== 'udash' && typeof window.setUdashTab === 'function') {
+    window.setUdashTab(null);
+  } else if (except !== 'udash' && window._udashTab !== undefined) {
+    window._udashTab = null; // Fallback until setUdashTab is wired
   }
 }
 

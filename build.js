@@ -19,7 +19,7 @@ const buildConfig = {
   globalName: 'AppBundle',
   minify: !isDev,
   sourcemap: isDev,
-  target: 'es2020',
+  target: 'es2022',
   platform: 'browser',
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
@@ -36,7 +36,7 @@ async function buildD3() {
     format: 'iife',
     globalName: 'd3',
     minify: true,
-    target: 'es2020',
+    target: 'es2022',
     platform: 'browser',
     logLevel: 'silent'
   });
@@ -48,7 +48,7 @@ async function buildD3() {
 async function buildCore() {
   const src = fs.readFileSync('src/app-core.js', 'utf8');
   if (isProd) {
-    const result = await esbuild.transform(src, { minify: true, target: 'es2020' });
+    const result = await esbuild.transform(src, { minify: true, target: 'es2022' });
     fs.writeFileSync('dist/app-core.js', result.code);
   } else {
     fs.copyFileSync('src/app-core.js', 'dist/app-core.js');
@@ -71,6 +71,12 @@ if (watch) {
   esbuild.build(buildConfig).then(async () => {
     await buildCore();
     await buildD3();
+
+    // Log bundle sizes
+    const bundleSize = (fs.statSync('dist/app.bundle.js').size / 1024).toFixed(1);
+    console.log(`  dist/app.bundle.js  ${bundleSize}kb`);
+    const coreSize = (fs.statSync('dist/app-core.js').size / 1024).toFixed(1);
+    console.log(`  dist/app-core.js    ${coreSize}kb`);
 
     if (!isProd) return;
     // Auto-inject content hashes into index.html for cache busting

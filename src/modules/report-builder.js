@@ -4519,7 +4519,7 @@ document.getElementById('btnCollapse').addEventListener('click',function(){
 updateDetailBtns();
 
 // === TERRAFORM / CLOUDFORMATION EXPORT ===
-let _iacType='terraform'; // 'terraform' | 'cloudformation'
+let _iacType='terraform'; // 'terraform' | 'arm'
 let _iacOutput=''; // raw generated text
 
 // TODO: deduplicate — canonical version in export-utils.js
@@ -5187,8 +5187,8 @@ function _writeSGRuleFlat(lines,rule){
   if(sgRefs.length&&sgRefs[0])lines.push('  source_security_group_id = '+_tfRef(sgRefs[0],'id'));
 }
 
-// --- CloudFormation Generation ---
-function generateCloudFormation(ctx,opts){
+// --- ARM Template Generation ---
+function generateArmTemplate(ctx,opts){
   if(!ctx||!ctx.vpcs)return '# No data loaded';
   const scopeVpc=opts.scopeVpcId||null;
   const vpcs=scopeVpc?ctx.vpcs.filter(v=>v.VpcId===scopeVpc):ctx.vpcs;
@@ -5205,7 +5205,7 @@ function generateCloudFormation(ctx,opts){
 
   const warnings=[];
   const totalResources=vpcs.length+subnets.length+sgs.length+igws.length+nats.length+instances.length+rts.length+rdsInstances.length+albs.length;
-  if(totalResources>450)warnings.push('Resource count ('+totalResources+') approaches CloudFormation 500-resource limit. Consider nested stacks.');
+  if(totalResources>750)warnings.push('Resource count ('+totalResources+') approaches ARM 800-resource limit. Consider nested stacks.');
 
   const template={
     $schema:'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#',contentVersion:'1.0.0.0',
@@ -5310,7 +5310,7 @@ function generateCloudFormation(ctx,opts){
     const ln=cfnName(sg,'SG');
     cfnIdMap[sg.GroupId]=ln;
     const isCyclic=cyclicSgIds.has(sg.GroupId);
-    const props={GroupDescription:sg.Description||'Managed by CloudFormation',VpcId:cfnRef(sg.VpcId),Tags:_cfnTags(sg)};
+    const props={GroupDescription:sg.Description||'Managed by ARM Template',VpcId:cfnRef(sg.VpcId),Tags:_cfnTags(sg)};
     if(!isCyclic){
       if(sg.IpPermissions&&sg.IpPermissions.length)props.SecurityGroupIngress=sg.IpPermissions.map(_cfnSGRule);
       if(sg.IpPermissionsEgress&&sg.IpPermissionsEgress.length)props.SecurityGroupEgress=sg.IpPermissionsEgress.map(_cfnSGRule);
@@ -5422,7 +5422,7 @@ function _cfnSGRuleProps(rule){
 }
 
 // === CHECKOV CFN GENERATOR ===
-// Generates a security-property-rich CloudFormation template for Checkov scanning
+// Generates a security-property-rich ARM template for Checkov scanning
 function _ckId(name,prefix,seen){
   var base=(name||prefix||'Res').replace(/[^a-zA-Z0-9]/g,'');
   if(!base||/^\d/.test(base)) base=(prefix||'R')+base;
@@ -5776,7 +5776,7 @@ function openIacModal(type){
   _iacType=type;
   const modal=document.getElementById('iacModal');
   const title=document.getElementById('iacTitle');
-  title.textContent=type==='terraform'?'Export as Terraform HCL':'Export as CloudFormation';
+  title.textContent=type==='terraform'?'Export as Terraform HCL':'Export as ARM Template';
 
   // Populate VNet scope dropdown
   const scopeSel=document.getElementById('iacScope');
@@ -5792,7 +5792,7 @@ function openIacModal(type){
   // Toggle TF-only options
   const modularLabel=document.getElementById('iacModular').parentElement;
   const formatSel=document.getElementById('iacFormat');
-  if(type==='cloudformation'){
+  if(type==='arm'||type==='bicep'){
     modularLabel.style.display='none';
     formatSel.innerHTML='<option value="yaml">YAML</option><option value="json">JSON</option>';
   }else{
@@ -5836,7 +5836,7 @@ function generateIacPreview(){
       result=generateTerraform(ctx,opts);
     }
   }else{
-    result=generateCloudFormation(ctx,opts);
+    result=generateArmTemplate(ctx,opts);
   }
 
   const preview=document.getElementById('iacPreview');
@@ -5870,7 +5870,8 @@ function generateIacPreview(){
 
 // --- Event listeners ---
 document.getElementById('expTerraform').addEventListener('click',()=>openIacModal('terraform'));
-document.getElementById('expCloudformation').addEventListener('click',()=>openIacModal('cloudformation'));
+document.getElementById('expArmTemplate').addEventListener('click',()=>openIacModal('arm'));
+document.getElementById('expBicep').addEventListener('click',()=>openIacModal('bicep'));
 document.getElementById('iacClose').addEventListener('click',closeIacModal);
 document.getElementById('iacModal').addEventListener('click',function(e){if(e.target===this)closeIacModal()});
 document.getElementById('iacGenerate').addEventListener('click',generateIacPreview);
@@ -6449,7 +6450,7 @@ window._edgeCaseTests.iacExport = function(){
   const T = (name, fn) => { try { const r = fn(); results.push({name, pass:r.pass, detail:r.detail}); } catch(e){ results.push({name, pass:false, detail:'Exception: '+e.message}); }};
 
   const d = generateDemo();
-  // Build a minimal rlCtx-like object for generateTerraform / generateCloudFormation
+  // Build a minimal rlCtx-like object for generateTerraform / generateArmTemplate
   const ctx = {
     vpcs: d.vpcs.Vpcs,
     subnets: d.subnets.Subnets,
@@ -6529,10 +6530,10 @@ window._edgeCaseTests.iacExport = function(){
       detail: 'Import in code: '+hasImport+', import data: '+hasImportData};
   });
 
-  // 5. CloudFormation 500-resource limit warning
-  T('CloudFormation 500-resource limit warning', () => {
+  // 5. ARM Template resource limit warning
+  T('ARM 800-resource limit warning', () => {
     // The existing ctx has many resources, check if warning appears
-    const cfn = generateCloudFormation(ctx, {format:'json'});
+    const cfn = generateArmTemplate(ctx, {format:'json'});
     const warnings = cfn.warnings || [];
     const stats = cfn.stats || {};
     const warnAt450 = warnings.some(w => w.includes('500') || w.includes('resource'));

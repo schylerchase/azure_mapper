@@ -125,9 +125,9 @@ function detectRegion(resource){
   if(resource.Location)return resource.Location;
   // 2. Parse location from resource group or ID tags
   if(resource.resourceGroup)return resource.resourceGroup;
-  // 3. AvailabilityZone fallback
+  // 3. AvailabilityZone fallback (Azure regions like 'eastus2' passed through as-is)
   const az=resource.AvailabilityZone||(resource.Placement&&resource.Placement.AvailabilityZone)||null;
-  if(az&&typeof az==='string')return az.replace(/[a-z]$/,'');
+  if(az&&typeof az==='string')return az;
   return null;
 }
 
@@ -163,11 +163,11 @@ inputSections.forEach(sec=>{
   const dotColor=sec.t.includes('Network')?'var(--accent-blue)':sec.t.includes('Gateway')?'var(--accent-green)':sec.t.includes('Compute')?'var(--accent-cyan)':sec.t.includes('Load')?'var(--accent-cyan)':sec.t.includes('Connectivity')?'var(--accent-purple)':sec.t.includes('Edge')?'var(--accent-orange)':sec.t.includes('Security')?'var(--accent-red)':sec.t.includes('DNS')?'var(--accent-purple)':sec.t.includes('Storage')?'var(--accent-green)':sec.t.includes('Database')?'var(--accent-orange)':sec.t.includes('IAM')?'var(--accent-orange)':'var(--text-muted)';
   h.innerHTML=`<span class="sec-dot" style="background:${dotColor}"></span><span>${sec.t}</span><span class="arr">&#9660;</span>`;
   const b=document.createElement('div');b.className='sec-body'+(openByDefault?'':' hidden');
-  sec.inputs.forEach(inp=>{b.innerHTML+=`<div class="ig"><div class="ig-lbl"><span>${inp.l}</span><code>${inp.c}</code></div><textarea id="${inp.id}" class="ji" placeholder="Paste ${inp.c} JSON..."></textarea></div>`});
+  let html='';sec.inputs.forEach(inp=>{html+=`<div class="ig"><div class="ig-lbl"><span>${inp.l}</span><code>${inp.c}</code></div><textarea id="${inp.id}" class="ji" placeholder="Paste ${inp.c} JSON..."></textarea></div>`});b.innerHTML=html;
   h.addEventListener('click',()=>{h.classList.toggle('collapsed');b.classList.toggle('hidden')});
   sb.appendChild(h);sb.appendChild(b);
 });
-document.querySelectorAll('.ji').forEach(el=>{el.addEventListener('input',function(){_sessionDirty=true;if(!this.value.trim()){this.className='ji';return}try{JSON.parse(this.value);this.className='ji valid'}catch(e){this.className='ji invalid'}})});
+document.querySelectorAll('.ji').forEach(el=>{el.addEventListener('input',function(){_sessionDirty=true;_dirtyInputs.add(this.id);if(!this.value.trim()){this.className='ji';return}try{JSON.parse(this.value);this.className='ji valid'}catch(e){this.className='ji invalid'}})});
 
 // Utility functions and constants now loaded from bundle:
 // - constants.js: SEV_ORDER, FW_LABELS, EOL_RUNTIMES, etc.
@@ -245,32 +245,30 @@ function _runComplianceWithCache(ctx){
   // Enrich findings with account/region/vpc from tagged resources
   const _fResLookup={};
   const _fAdd=function(id,r,v){if(id)_fResLookup[id]={a:r._subscriptionId||'',r:r._region||'',v:v||''}};
-  (ctx.sgs||[]).forEach(r=>{_fAdd(r.GroupId,r,r.VpcId)});
-  (ctx.nacls||[]).forEach(r=>{_fAdd(r.NetworkAclId,r,r.VpcId)});
-  (ctx.rts||[]).forEach(r=>{_fAdd(r.RouteTableId,r,r.VpcId)});
-  (ctx.instances||[]).forEach(r=>{_fAdd(r.InstanceId,r,r.VpcId)});
-  (ctx.vpcs||[]).forEach(r=>{_fAdd(r.VpcId,r,r.VpcId)});
-  (ctx.subnets||[]).forEach(r=>{_fAdd(r.SubnetId,r,r.VpcId)});
-  (ctx.rdsInstances||[]).forEach(r=>{_fAdd(r.DBInstanceIdentifier,r,(r.DBSubnetGroup&&r.DBSubnetGroup.VpcId))});
-  (ctx.lambdaFns||[]).forEach(r=>{_fAdd(r.FunctionName,r,(r.VpcConfig&&r.VpcConfig.VpcId));_fAdd(r.FunctionArn,r,(r.VpcConfig&&r.VpcConfig.VpcId))});
-  (ctx.albs||[]).forEach(r=>{_fAdd(r.LoadBalancerName,r,r.VpcId);_fAdd(r.LoadBalancerArn,r,r.VpcId)});
-  (ctx.s3bk||[]).forEach(r=>{_fAdd(r.Name,r,'')});
-  (ctx.ecacheClusters||[]).forEach(r=>{_fAdd(r.CacheClusterId,r,r.VpcId)});
-  (ctx.redshiftClusters||[]).forEach(r=>{_fAdd(r.ClusterIdentifier,r,r.VpcId)});
-  (ctx.volumes||[]).forEach(r=>{_fAdd(r.VolumeId,r,'')});
-  (ctx.snapshots||[]).forEach(r=>{_fAdd(r.SnapshotId,r,'')});
-  (ctx.ecsServices||[]).forEach(r=>{_fAdd(r.serviceName||r.ServiceName,r,r.VpcId||'');_fAdd(r.serviceArn||r.ServiceArn,r,r.VpcId||'')});
-  (ctx.enis||[]).forEach(r=>{_fAdd(r.NetworkInterfaceId,r,r.VpcId)});
-  (ctx.igws||[]).forEach(r=>{_fAdd(r.InternetGatewayId,r,'')});
-  (ctx.nats||[]).forEach(r=>{_fAdd(r.NatGatewayId,r,r.VpcId)});
-  (ctx.vpces||[]).forEach(r=>{_fAdd(r.VpcEndpointId,r,r.VpcId)});
-  (ctx.tgs||[]).forEach(r=>{_fAdd(r.TargetGroupName,r,r.VpcId);_fAdd(r.TargetGroupArn,r,r.VpcId)});
-  (ctx.vpns||[]).forEach(r=>{_fAdd(r.VpnConnectionId,r,'')});
-  (ctx.wafAcls||[]).forEach(r=>{_fAdd(r.WebACLId||r.Name,r,'');_fAdd(r.WebACLArn,r,'')});
-  (ctx.peerings||[]).forEach(r=>{_fAdd(r.VpcPeeringConnectionId,r,'')});
+  (ctx.nsgs||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.udrs||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.vms||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.vnets||[]).forEach(r=>{_fAdd(r.id,r,r.id)});
+  (ctx.subnets||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.sqlServers||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.functionApps||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.appGateways||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.storageAccounts||[]).forEach(r=>{_fAdd(r.id,r,'')});
+  (ctx.redisCaches||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.synapseWorkspaces||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.volumes||[]).forEach(r=>{_fAdd(r.id,r,'')});
+  (ctx.snapshots||[]).forEach(r=>{_fAdd(r.id,r,'')});
+  (ctx.containerInstances||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId||'')});
+  (ctx.nics||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.firewalls||[]).forEach(r=>{_fAdd(r.id,r,'')});
+  (ctx.nats||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.privateEndpoints||[]).forEach(r=>{_fAdd(r.id,r,r.vnetId)});
+  (ctx.vpnGateways||[]).forEach(r=>{_fAdd(r.id,r,'')});
+  (ctx.wafPolicies||[]).forEach(r=>{_fAdd(r.id,r,'')});
+  (ctx.peerings||[]).forEach(r=>{_fAdd(r.id,r,'')});
   findings.forEach(f=>{const info=_fResLookup[f.resource];if(info){f._subscriptionId=info.a;f._region=info.r;f._vpcId=info.v}});
   // Fallback: any finding still missing _subscriptionId gets the primary account
-  var _accts=new Set();(ctx.vpcs||[]).forEach(r=>{if(r._subscriptionId&&r._subscriptionId!=='default')_accts.add(r._subscriptionId)});
+  var _accts=new Set();(ctx.vnets||[]).forEach(r=>{if(r._subscriptionId&&r._subscriptionId!=='default')_accts.add(r._subscriptionId)});
   if(_accts.size>=1){var _pAcct=[..._accts][0];findings.forEach(f=>{if(!f._subscriptionId)f._subscriptionId=_pAcct})};
   _complianceDataFP=fp;
   _complianceCachedFindings=findings;
@@ -1271,10 +1269,10 @@ function _rptExecSummary(ctx, opts){
     return h;
   }
   var counts=[
-    {key:'vpcs',label:'VPCs'},{key:'subnets',label:'Subnets'},
+    {key:'vpcs',label:'VNets'},{key:'subnets',label:'Subnets'},
     {key:'instances',label:'VMs'},{key:'rdsInstances',label:'SQL'},
     {key:'albs',label:'AppGWs'},{key:'ecsServices',label:'Containers'},
-    {key:'lambdaFns',label:'Lambda'},{key:'sgs',label:'Sec Groups'}
+    {key:'lambdaFns',label:'FuncApps'},{key:'sgs',label:'NSGs'}
   ];
   var h='<section class="rpt-section" id="s-exec-summary"><h2>Executive Summary</h2>';
   h+='<div class="stat-grid">';
@@ -1404,7 +1402,9 @@ function _rptBuildSvgUri(svgEl,root){
   return 'data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(xml)));
 }
 
+var _cachedStyleCss=null;
 function _rptCollectStyles(){
+  if(_cachedStyleCss!==null) return _cachedStyleCss;
   var css='';
   for(let i=0;i<document.styleSheets.length;i++){
     try{
@@ -1413,8 +1413,11 @@ function _rptCollectStyles(){
       for(let j=0;j<rules.length;j++) css+=rules[j].cssText+'\n';
     }catch(e){/* cross-origin */}
   }
+  _cachedStyleCss=css;
   return css;
 }
+// Invalidate style cache on theme change
+(function(){var tb=document.getElementById('themeToggle');if(tb)tb.addEventListener('click',function(){_cachedStyleCss=null})})();
 
 function _rptCompliance(ctx, opts){
   var f=_rptFilterByAccount(_complianceFindings||[], _rptGetAccountFilter());
@@ -1912,7 +1915,7 @@ function _rptInvECS(c){
   h+='<table><thead class="rpt-sticky"><tr><th>Service</th><th>Desired</th>';
   h+='<th>Running</th><th>Launch Type</th></tr></thead><tbody>';
   items.forEach(function(s){
-    h+='<tr id="res-'+esc(s.serviceName||s.serviceArn)+'"><td>'+_rptLink('ECS',s.serviceName,s._region,s.serviceName)+'</td>';
+    h+='<tr id="res-'+esc(s.serviceName||s.serviceArn)+'"><td>'+_rptLink('Container',s.serviceName,s._region,s.serviceName)+'</td>';
     h+='<td>'+esc(s.desiredCount)+'</td>';
     h+='<td>'+esc(s.runningCount)+'</td>';
     h+='<td>'+esc(s.launchType||'')+'</td></tr>';
@@ -1930,7 +1933,7 @@ function _rptInvLambda(c){
   h+='<table><thead class="rpt-sticky"><tr><th>Function</th><th>Runtime</th>';
   h+='<th>Memory (MB)</th><th>Timeout (s)</th></tr></thead><tbody>';
   items.forEach(function(fn){
-    h+='<tr id="res-'+esc(fn.FunctionName)+'"><td>'+_rptLink('Lambda',fn.FunctionName,fn._region,fn.FunctionName)+'</td>';
+    h+='<tr id="res-'+esc(fn.FunctionName)+'"><td>'+_rptLink('FuncApp',fn.FunctionName,fn._region,fn.FunctionName)+'</td>';
     h+='<td>'+esc(fn.Runtime)+'</td>';
     h+='<td>'+esc(fn.MemorySize)+'</td>';
     h+='<td>'+esc(fn.Timeout)+'</td></tr>';
@@ -4223,14 +4226,14 @@ function _buildInventoryData(){
   // 4. RDS
   (ctx.rdsInstances||[]).forEach(function(db){
     var vpcId=(db.DBSubnetGroup&&db.DBSubnetGroup.VpcId)||'';
-    rows.push(mkRow(db.DBInstanceIdentifier,'RDS',db.DBInstanceIdentifier,db,{vpcId:vpcId,az:db.AvailabilityZone||'',config:(db.Engine||'')+' '+(db.DBInstanceClass||''),state:db.DBInstanceStatus||'',encrypted:!!db.StorageEncrypted}));
+    rows.push(mkRow(db.DBInstanceIdentifier,'SQL',db.DBInstanceIdentifier,db,{vpcId:vpcId,az:db.AvailabilityZone||'',config:(db.Engine||'')+' '+(db.DBInstanceClass||''),state:db.DBInstanceStatus||'',encrypted:!!db.StorageEncrypted}));
   });
   // 5. Lambda
   (ctx.lambdaFns||[]).forEach(function(fn){
     var vc=fn.VpcConfig||{};
     var vpcId=vc.VpcId||'';
     var subId=(vc.SubnetIds&&vc.SubnetIds[0])||'';
-    rows.push(mkRow(fn.FunctionName,'Lambda',fn.FunctionName,fn,{vpcId:vpcId,subnetId:subId,config:(fn.Runtime||'')+(fn.MemorySize?' '+fn.MemorySize+'MB':''),state:fn.State||'Active'}));
+    rows.push(mkRow(fn.FunctionName,'FuncApp',fn.FunctionName,fn,{vpcId:vpcId,subnetId:subId,config:(fn.Runtime||'')+(fn.MemorySize?' '+fn.MemorySize+'MB':''),state:fn.State||'Active'}));
   });
   // 6. ECS — use serviceName as ID
   (ctx.ecsServices||[]).forEach(function(svc){
@@ -4239,7 +4242,7 @@ function _buildInventoryData(){
     var vpcId='';
     if(subId){var subObj=(ctx.subnets||[]).find(function(s){return s.SubnetId===subId});if(subObj)vpcId=subObj.VpcId||''}
     var cpu=svc.cpu||'';var mem=svc.memory||'';
-    rows.push(mkRow(svc.serviceName,'ECS',svc.serviceName,svc,{vpcId:vpcId,subnetId:subId,config:(svc.launchType||'')+' '+(cpu?cpu+'/':'')+(mem||''),state:svc.status||''}));
+    rows.push(mkRow(svc.serviceName,'Container',svc.serviceName,svc,{vpcId:vpcId,subnetId:subId,config:(svc.launchType||'')+' '+(cpu?cpu+'/':'')+(mem||''),state:svc.status||''}));
   });
   // 7. ALB — use LoadBalancerName as ID
   (ctx.albs||[]).forEach(function(a){
@@ -5616,10 +5619,10 @@ function openResourceList(type, pushNav){
   let title='',sub='',items=[];
 
   switch(type){
-    case 'VPCs':{
+    case 'VPCs':case 'VNets':{
       const d=ctx.vpcs||[];
       const accounts=new Set(d.map(v=>v._subscriptionId).filter(a=>a&&a!=='default'));
-      title='VPCs';sub=d.length+' total'+(accounts.size>1?' | '+accounts.size+' accounts':'');
+      title='VNets';sub=d.length+' total'+(accounts.size>1?' | '+accounts.size+' accounts':'');
       // Group by account if multi-account
       if(accounts.size>1||_loadedContexts.length>1){
         const grouped={};d.forEach(v=>{const a=v._accountLabel||v._subscriptionId||'default';(grouped[a]=grouped[a]||[]).push(v)});
@@ -5715,8 +5718,8 @@ function openResourceList(type, pushNav){
         items.push(row(esc(tg.TargetGroupName),'Protocol: '+(tg.Protocol||'?')+':'+(tg.Port||'?')+' | Type: '+(tg.TargetType||'?')+' | Targets: '+tc+(tg.HealthCheckPath?' | HC: '+esc(tg.HealthCheckPath):''),'#06b6d4',vid?{t:'vpc',id:vid}:null));
       });break;
     }
-    case 'RDS':{
-      const d=ctx.rdsInstances||[];title='RDS Instances';sub=d.length+' total';
+    case 'RDS':case 'SQL':{
+      const d=ctx.rdsInstances||[];title='SQL Databases';sub=d.length+' total';
       d.forEach(db=>{
         let det='Engine: '+db.Engine+' | Class: '+db.DBInstanceClass+' | Status: '+db.DBInstanceStatus;
         if(db.MultiAZ)det+=' | Multi-AZ';
@@ -5726,36 +5729,36 @@ function openResourceList(type, pushNav){
         items.push(row(esc(db.DBInstanceIdentifier),det,'#3b82f6',sid?{t:'sub',id:sid}:null));
       });break;
     }
-    case 'ECS':{
-      const d=ctx.ecsServices||[];title='ECS Services';sub=d.length+' total';
+    case 'ECS':case 'Containers':{
+      const d=ctx.ecsServices||[];title='Container Instances';sub=d.length+' total';
       d.forEach(svc=>{
         const cluster=(svc.clusterArn||'').split('/').pop();
         const sid=findSubForEcs(svc.serviceName);
         items.push(row(esc(svc.serviceName),'Cluster: '+cluster+' | Launch: '+(svc.launchType||'?')+' | Tasks: '+svc.runningCount+'/'+svc.desiredCount+(svc.cpu?' | CPU: '+svc.cpu:'')+(svc.memory?' | Mem: '+svc.memory+'MB':''),'#f97316',sid?{t:'sub',id:sid}:null));
       });break;
     }
-    case 'Lambda':{
-      const d=ctx.lambdaFns||[];title='Lambda Functions (VPC)';sub=d.length+' total';
+    case 'Lambda':case 'FuncApps':{
+      const d=ctx.lambdaFns||[];title='Function Apps';sub=d.length+' total';
       d.forEach(fn=>{
         const sid=findSubForLambda(fn.FunctionName);
         items.push(row(esc(fn.FunctionName),'Runtime: '+fn.Runtime+' | Mem: '+fn.MemorySize+'MB | Timeout: '+fn.Timeout+'s | VPC: '+vpcName(fn.VpcConfig?.VpcId),'#a855f7',sid?{t:'sub',id:sid}:{t:'vpc',id:fn.VpcConfig?.VpcId}));
       });break;
     }
-    case 'Cache':{
-      const d=ctx.ecacheClusters||[];title='ElastiCache Clusters';sub=d.length+' total';
+    case 'Cache':case 'Redis':{
+      const d=ctx.ecacheClusters||[];title='Redis Caches';sub=d.length+' total';
       d.forEach(c=>{
         const ep=(c.CacheNodes||[]).length>0?c.CacheNodes[0].Endpoint?.Address:'--';
         items.push(row(esc(c.CacheClusterId),'Engine: '+c.Engine+' | Type: '+c.CacheNodeType+' | Nodes: '+c.NumCacheNodes+' | VPC: '+vpcName(c.VpcId)+(ep?'<br>Endpoint: '+esc(ep):''),'#ef4444',c.VpcId?{t:'vpc',id:c.VpcId}:null));
       });break;
     }
-    case 'Redshift':{
-      const d=ctx.redshiftClusters||[];title='Redshift Clusters';sub=d.length+' total';
+    case 'Redshift':case 'Synapse':{
+      const d=ctx.redshiftClusters||[];title='Synapse Workspaces';sub=d.length+' total';
       d.forEach(c=>{
         items.push(row(esc(c.ClusterIdentifier),'Type: '+c.NodeType+' | Nodes: '+c.NumberOfNodes+' | Status: '+c.ClusterStatus+' | VPC: '+vpcName(c.VpcId)+(c.Endpoint?'<br>Endpoint: '+esc(c.Endpoint.Address)+':'+esc(c.Endpoint.Port):''),'#dc2626',c.VpcId?{t:'vpc',id:c.VpcId}:null));
       });break;
     }
     case 'Peering':{
-      const d=ctx.peerings||[];title='VPC Peering';sub=d.length+' total';
+      const d=ctx.peerings||[];title='VNet Peering';sub=d.length+' total';
       d.forEach(p=>{
         const req=p.RequesterVpcInfo||{};const acc=p.AccepterVpcInfo||{};
         items.push(row(esc(gn(p,p.VpcPeeringConnectionId)),'Status: '+(p.Status?.Code||'?')+' | Requester: '+vpcName(req.VpcId)+' ('+((req.CidrBlock)||'?')+') | Accepter: '+vpcName(acc.VpcId)+' ('+(acc.CidrBlock||'?')+')','#fb923c',req.VpcId?{t:'vpc',id:req.VpcId}:null));
@@ -6235,7 +6238,7 @@ function openSubnetPanel(sub,vpcId,lk){
       rb+='</div>';
       rb+='</div>';
     });
-    h+=sec('RDS Instances',sr.length,rb,false);
+    h+=sec('SQL Databases',sr.length,rb,false);
   }
   // ECS Services
   const secs=(lk.ecsBySub||{})[sub.SubnetId]||[];
@@ -6254,7 +6257,7 @@ function openSubnetPanel(sub,vpcId,lk){
       eb+='</div>';
       eb+='</div>';
     });
-    h+=sec('ECS Services',secs.length,eb,false);
+    h+=sec('Container Instances',secs.length,eb,false);
   }
   // Lambda Functions
   const slm=(lk.lambdaBySub||{})[sub.SubnetId]||[];
@@ -6270,7 +6273,7 @@ function openSubnetPanel(sub,vpcId,lk){
       lmb+='</div>';
       lmb+='</div>';
     });
-    h+=sec('Lambda (VPC)',slm.length,lmb,false);
+    h+=sec('Function Apps',slm.length,lmb,false);
   }
   // Security Groups (interactive)
   const vSgs=lk.nsgByVnet[vpcId]||[];
@@ -6899,13 +6902,13 @@ function buildResTree(subId, ctx){
       rid:lb.LoadBalancerArn?.split('/').pop()||'',lbType:lb.Type||'application',sgIds:(lb.SecurityGroups||[]).join(', ')});
   });
   // RDS
-  (rdsBySub[subId]||[]).forEach(db=>res.push({type:'SQL',name:db.DBInstanceIdentifier||'RDS',ip:db.Engine||'',col:'#3b82f6',bg:'rgba(59,130,246,.12)',children:[],
+  (rdsBySub[subId]||[]).forEach(db=>res.push({type:'SQL',name:db.DBInstanceIdentifier||'SQL',ip:db.Engine||'',col:'#3b82f6',bg:'rgba(59,130,246,.12)',children:[],
     rid:db.DBInstanceIdentifier,itype:db.DBInstanceClass||'',extra:db.EngineVersion||''}));
   // ECS
-  (ecsBySub[subId]||[]).forEach(svc=>res.push({type:'Container',name:svc.serviceName||'ECS',ip:svc.launchType||'',col:'#f97316',bg:'rgba(249,115,22,.12)',children:[],
+  (ecsBySub[subId]||[]).forEach(svc=>res.push({type:'Container',name:svc.serviceName||'Container',ip:svc.launchType||'',col:'#f97316',bg:'rgba(249,115,22,.12)',children:[],
     rid:svc.serviceName,extra:'Tasks: '+(svc.runningCount||0)+'/'+(svc.desiredCount||0)}));
   // Lambda
-  (lambdaBySub[subId]||[]).forEach(fn=>res.push({type:'FN',name:fn.FunctionName||'Lambda',ip:fn.Runtime||'',col:'#a855f7',bg:'rgba(168,85,247,.12)',children:[],
+  (lambdaBySub[subId]||[]).forEach(fn=>res.push({type:'FN',name:fn.FunctionName||'FuncApp',ip:fn.Runtime||'',col:'#a855f7',bg:'rgba(168,85,247,.12)',children:[],
     rid:fn.FunctionName,extra:fn.MemorySize?fn.MemorySize+'MB':''}));
   // Unattached ENIs
   (eniBySub[subId]||[]).forEach(e=>{
@@ -8632,7 +8635,7 @@ function renderExecutiveOverview(ctx){
 var _renderMapTimer=null;
 var _prebuiltCtx=null;
 var _parseCache={};
-function _quickHash(s){return s.length+':'+s.slice(0,64)+':'+s.slice(-64)}
+function _quickHash(s){let h=5381;for(let i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))|0}return h}
 function _cachedParse(id){
   const el=document.getElementById(id);
   const val=el?el.value:'';
@@ -9941,8 +9944,7 @@ function _renderMapInner(){
   const vpcRegionMap={};
   vL.forEach(vl=>{
     const ss=subByVnet[vl.vpc.VpcId]||[];
-    const az=ss.find(s=>s.AvailabilityZone)?.AvailabilityZone||'';
-    const region=az.replace(/[a-z]$/,'')||'unknown';
+    const region=vl.vpc._region||ss.find(s=>s._region)?._region||'unknown';
     vpcRegionMap[vl.vpc.VpcId]=region;
   });
   
@@ -11544,7 +11546,7 @@ function _resolveResourceType(rid){
   if(rid.startsWith('pcx-')) return 'PCX';
   // Check by lookup in context
   if((_rlCtx.sqlServers||[]).find(function(d){return d.DBInstanceIdentifier===rid})) return 'SQL';
-  if((_rlCtx.functionApps||[]).find(function(f){return f.FunctionName===rid})) return 'Lambda';
+  if((_rlCtx.functionApps||[]).find(function(f){return f.FunctionName===rid})) return 'FuncApp';
   if(_sgById.get(rid)) return 'SG';
   return null;
 }
@@ -12355,7 +12357,7 @@ function _captureCurrentAsContext(){
 function _detectRegionFromCtx(ctx){
   if(!ctx)return 'unknown';
   const sub=(ctx.subnets||[])[0];
-  if(sub&&sub.AvailabilityZone)return sub.AvailabilityZone.replace(/[a-z]$/,'');
+  if(sub&&sub.AvailabilityZone)return sub.AvailabilityZone;
   return 'unknown';
 }
 
@@ -18580,7 +18582,7 @@ function _getResType(id){
   if(id.startsWith('arn:'))return'ARN';
   if(_rlCtx){
     if((_rlCtx.sqlServers||[]).some(r=>r.DBInstanceIdentifier===id))return'SQL';
-    if((_rlCtx.functionApps||[]).some(f=>f.FunctionName===id))return'Lambda';
+    if((_rlCtx.functionApps||[]).some(f=>f.FunctionName===id))return'FuncApp';
     if((_rlCtx.containerInstances||[]).some(e=>e.serviceName===id))return'Container';
     if((_rlCtx.appGateways||[]).some(a=>a.LoadBalancerName===id))return'ALB';
     if((_rlCtx.redisCaches||[]).some(c=>c.CacheClusterId===id))return'ElastiCache';
@@ -21120,7 +21122,7 @@ function _rptBuildXlsxInventory(wb){
   });
   _af(c.rdsInstances).forEach(function(d){
     var vpc=(d.DBSubnetGroup&&d.DBSubnetGroup.VpcId)||'';
-    rows.push([_a(d),_r(d),vpc,'RDS',d.DBInstanceIdentifier,d.DBInstanceIdentifier,d.Engine+' / '+d.DBInstanceClass,d.MultiAZ?'Multi-AZ':'Single-AZ',d.StorageType||'']);
+    rows.push([_a(d),_r(d),vpc,'SQL',d.DBInstanceIdentifier,d.DBInstanceIdentifier,d.Engine+' / '+d.DBInstanceClass,d.MultiAZ?'Multi-AZ':'Single-AZ',d.StorageType||'']);
   });
   _af(c.albs).forEach(function(a){
     rows.push([_a(a),_r(a),a.VpcId||'','ALB',a.LoadBalancerName||'',a.LoadBalancerName,a.Type||'application',a.Scheme||'',(a.AvailabilityZones||[]).length+' AZs']);
@@ -21128,11 +21130,11 @@ function _rptBuildXlsxInventory(wb){
   _af(c.ecsServices).forEach(function(s){
     var nc=s.networkConfiguration&&s.networkConfiguration.awsvpcConfiguration;
     var sid=nc&&nc.subnets&&nc.subnets[0]?nc.subnets[0]:'';
-    rows.push([_a(s),_r(s),sid?_invSubVpc[sid]||'':'','ECS',s.serviceName||'',s.serviceName,s.launchType||'FARGATE',s.runningCount+'/'+s.desiredCount+' tasks','']);
+    rows.push([_a(s),_r(s),sid?_invSubVpc[sid]||'':'','Container',s.serviceName||'',s.serviceName,s.launchType||'FARGATE',s.runningCount+'/'+s.desiredCount+' tasks','']);
   });
   _af(c.lambdaFns).forEach(function(fn){
     var vpc=(fn.VpcConfig&&fn.VpcConfig.VpcId)||'';
-    rows.push([_a(fn),_r(fn),vpc,'Lambda',fn.FunctionName||'',fn.FunctionName,fn.Runtime||'',fn.MemorySize+'MB / '+fn.Timeout+'s','']);
+    rows.push([_a(fn),_r(fn),vpc,'FuncApp',fn.FunctionName||'',fn.FunctionName,fn.Runtime||'',fn.MemorySize+'MB / '+fn.Timeout+'s','']);
   });
   _af(c.sgs).forEach(function(sg){
     var rules=(sg.IpPermissions||[]).length+' inbound, '+(sg.IpPermissionsEgress||[]).length+' outbound';
@@ -22399,7 +22401,12 @@ function _updateLogoPreview(){
 const _SAVE_KEY='azureMapper_session';const _SAVE_INTERVAL=30000;
 var _autoSaveDisabled=false;
 var _sessionDirty=false;
-function _autoSaveSession(){if(_autoSaveDisabled||!_sessionDirty)return;_sessionDirty=false;try{const data={};document.querySelectorAll('.ji').forEach(el=>{if(!el.value.trim()||el.value.length>100000)return;data[el.id]=el.value});
+const _dirtyInputs=new Set();
+function _autoSaveSession(){if(_autoSaveDisabled||!_sessionDirty)return;_sessionDirty=false;try{
+  let data={};
+  const raw=sessionStorage.getItem(_SAVE_KEY);if(raw){try{data=JSON.parse(raw)}catch(e){data={}}}
+  _dirtyInputs.forEach(id=>{const el=document.getElementById(id);if(!el)return;if(!el.value.trim()||el.value.length>100000){delete data[id];return}data[id]=el.value});
+  _dirtyInputs.clear();
   data._accountLabel=(document.getElementById('accountLabel')||{}).value||'';data._layout=(document.getElementById('layoutMode')||{}).value||'grid';
   if(_rptState.logo)data._rptLogo=_rptState.logo;data._ts=Date.now();
   sessionStorage.setItem(_SAVE_KEY,JSON.stringify(data))}catch(e){if(e.name==='QuotaExceededError'){_autoSaveDisabled=true;console.warn('[auto-save] disabled: session too large for storage')}else{console.warn('[auto-save] failed:',e)}}}
@@ -22567,21 +22574,24 @@ _getMain().addEventListener('click',function(e){
   // Restore saved width
   const savedW=_prefs.dpWidth;
   if(savedW&&savedW>=minW&&savedW<=maxW){dp.style.width=savedW+'px';}
+  function onDpResizeMove(e){
+    const dx=startX-e.clientX;
+    const nw=Math.max(minW,Math.min(maxW,startW+dx));
+    dp.style.width=nw+'px';
+  }
+  function onDpResizeUp(){
+    document.removeEventListener('mousemove',onDpResizeMove);
+    document.removeEventListener('mouseup',onDpResizeUp);
+    resizing=false;
+    rh.classList.remove('active');document.body.style.cursor='';document.body.style.userSelect='';
+    savePrefs({dpWidth:dp.offsetWidth});
+  }
   rh.addEventListener('mousedown',function(e){
     if(window.innerWidth<=768)return;
     e.preventDefault();resizing=true;startX=e.clientX;startW=dp.offsetWidth;
     rh.classList.add('active');document.body.style.cursor='col-resize';document.body.style.userSelect='none';
-  });
-  document.addEventListener('mousemove',function(e){
-    if(!resizing)return;
-    const dx=startX-e.clientX;
-    const nw=Math.max(minW,Math.min(maxW,startW+dx));
-    dp.style.width=nw+'px';
-  });
-  document.addEventListener('mouseup',function(){
-    if(!resizing)return;resizing=false;
-    rh.classList.remove('active');document.body.style.cursor='';document.body.style.userSelect='';
-    savePrefs({dpWidth:dp.offsetWidth});
+    document.addEventListener('mousemove',onDpResizeMove);
+    document.addEventListener('mouseup',onDpResizeUp);
   });
 })();
 
@@ -23845,9 +23855,9 @@ function buildLandingZoneLayout(ctx){
       }
       res.push({type:'App Gateway',name:lb.LoadBalancerName||'ALB',id:lb.LoadBalancerArn,detail:lb.Scheme||'',children:ch,resCol:'#38bdf8'});
     });
-    sRds.forEach(db=>res.push({type:'SQL',name:db.DBInstanceIdentifier||'RDS',id:db.DBInstanceIdentifier,detail:db.Engine||'',children:[],resCol:'#3b82f6'}));
-    sEcs.forEach(svc=>res.push({type:'Container',name:svc.serviceName||'ECS',id:svc.serviceName,detail:svc.launchType||'',children:[],resCol:'#f97316'}));
-    sLam.forEach(fn=>res.push({type:'FN',name:fn.FunctionName||'Lambda',id:fn.FunctionName,detail:fn.Runtime||'',children:[],resCol:'#a855f7'}));
+    sRds.forEach(db=>res.push({type:'SQL',name:db.DBInstanceIdentifier||'SQL',id:db.DBInstanceIdentifier,detail:db.Engine||'',children:[],resCol:'#3b82f6'}));
+    sEcs.forEach(svc=>res.push({type:'Container',name:svc.serviceName||'Container',id:svc.serviceName,detail:svc.launchType||'',children:[],resCol:'#f97316'}));
+    sLam.forEach(fn=>res.push({type:'FN',name:fn.FunctionName||'FuncApp',id:fn.FunctionName,detail:fn.Runtime||'',children:[],resCol:'#a855f7'}));
     sEni.forEach(e=>{if(!attached.has(e.NetworkInterfaceId))res.push({type:'NIC',name:e.NetworkInterfaceId.slice(-8),id:e.NetworkInterfaceId,detail:e.PrivateIpAddress||'',children:[],resCol:'#3b82f6'});});
     // Standalone EBS volumes (instance not in EC2 data, placed via ENI subnet)
     ((volBySub||{})[subId]||[]).forEach(v=>{const sc=((snapByVol||{})[v.VolumeId]||[]).length;const att=(v.Attachments||[])[0];
@@ -24835,7 +24845,7 @@ function buildLucidExport(){
     const vpcVpces=vpceList.filter(v=>v.VpcId===vpc.VpcId);
     const vpcInsts=instances.filter(i=>ss.some(s=>s.SubnetId===i.SubnetId));
     const vpcEnis=enis.filter(e=>e.VpcId===vpc.VpcId);
-    const region=ss[0]?.AvailabilityZone?.replace(/-[a-z]$/,'')||'';
+    const region=vpc._region||ss[0]?._region||'';
 
     // VPC container
     shapes.push({
@@ -25002,11 +25012,11 @@ function buildLucidExport(){
         resources.push({type:'App Gateway',name:lb.LoadBalancerName||'ALB',id:lb.LoadBalancerArn,detail:lb.Scheme||'',children:ch,resCol:'#38bdf8'});
       });
       // RDS
-      subRds.forEach(db=>resources.push({type:'SQL',name:db.DBInstanceIdentifier||'RDS',id:db.DBInstanceIdentifier,detail:db.Engine||'',children:[],resCol:'#3b82f6'}));
+      subRds.forEach(db=>resources.push({type:'SQL',name:db.DBInstanceIdentifier||'SQL',id:db.DBInstanceIdentifier,detail:db.Engine||'',children:[],resCol:'#3b82f6'}));
       // ECS
-      subEcs.forEach(svc=>resources.push({type:'Container',name:svc.serviceName||'ECS',id:svc.serviceName,detail:svc.launchType||'',children:[],resCol:'#f97316'}));
+      subEcs.forEach(svc=>resources.push({type:'Container',name:svc.serviceName||'Container',id:svc.serviceName,detail:svc.launchType||'',children:[],resCol:'#f97316'}));
       // Lambda
-      subLambda.forEach(fn=>resources.push({type:'FN',name:fn.FunctionName||'Lambda',id:fn.FunctionName,detail:fn.Runtime||'',children:[],resCol:'#a855f7'}));
+      subLambda.forEach(fn=>resources.push({type:'FN',name:fn.FunctionName||'FuncApp',id:fn.FunctionName,detail:fn.Runtime||'',children:[],resCol:'#a855f7'}));
       // Unattached ENIs
       subEnis.forEach(e=>{
         if(attachedEnis.has(e.NetworkInterfaceId))return;
@@ -25839,8 +25849,8 @@ updateDetailBtns();
 
 // #endregion EXPORT UTILITIES
 // #region IAC GENERATOR
-// === TERRAFORM / CLOUDFORMATION EXPORT ===
-let _iacType='terraform'; // 'terraform' | 'cloudformation'
+// === TERRAFORM / ARM / BICEP EXPORT ===
+let _iacType='terraform'; // 'terraform' | 'arm' | 'bicep'
 let _iacOutput=''; // raw generated text
 
 function _sanitizeName(s){
@@ -26486,7 +26496,7 @@ function _writeSGRuleFlat(lines,rule){
 }
 
 // --- ARM Template Generation ---
-function generateCloudFormation(ctx,opts){
+function generateArmTemplate(ctx,opts){
   if(!ctx||!ctx.vpcs)return '// No data loaded';
   const scopeVpc=opts.scopeVpcId||null;
   const vpcs=scopeVpc?ctx.vpcs.filter(v=>(v.id||v.VpcId)===scopeVpc):ctx.vpcs;
@@ -27074,7 +27084,7 @@ function openIacModal(type){
   _iacType=type;
   const modal=document.getElementById('iacModal');
   const title=document.getElementById('iacTitle');
-  title.textContent=type==='terraform'?'Export as Terraform HCL':'Export as ARM Template';
+  title.textContent=type==='terraform'?'Export as Terraform HCL':type==='bicep'?'Export as Bicep':'Export as ARM Template';
 
   // Populate VNet scope dropdown
   const scopeSel=document.getElementById('iacScope');
@@ -27090,9 +27100,12 @@ function openIacModal(type){
   // Toggle TF-only options
   const modularLabel=document.getElementById('iacModular').parentElement;
   const formatSel=document.getElementById('iacFormat');
-  if(type==='cloudformation'){
+  if(type==='arm'){
     modularLabel.style.display='none';
-    formatSel.innerHTML='<option value="json">JSON</option><option value="bicep">Bicep</option>';
+    formatSel.innerHTML='<option value="json">JSON</option>';
+  }else if(type==='bicep'){
+    modularLabel.style.display='none';
+    formatSel.innerHTML='<option value="bicep">Bicep</option>';
   }else{
     modularLabel.style.display='';
     formatSel.innerHTML='<option value="hcl">HCL</option><option value="json">JSON</option>';
@@ -27133,8 +27146,10 @@ function generateIacPreview(){
     }else{
       result=generateTerraform(ctx,opts);
     }
+  }else if(_iacType==='bicep'&&window.AppModules&&window.AppModules.IacGenerator){
+    result=window.AppModules.IacGenerator.generateBicep(_rlCtx,opts);
   }else{
-    result=generateCloudFormation(ctx,opts);
+    result=generateArmTemplate(ctx,opts);
   }
 
   const preview=document.getElementById('iacPreview');
@@ -27159,7 +27174,7 @@ function generateIacPreview(){
   }
 
   // Highlighted code
-  const highlighted=_iacType==='terraform'?_highlightHCL(result.code):
+  const highlighted=(_iacType==='terraform'||_iacType==='bicep')?_highlightHCL(result.code):
     (opts.format==='json'?_highlightHCL(result.code):_highlightYAML(result.code));
   html+='<pre>'+highlighted+'</pre>';
 
@@ -27168,7 +27183,8 @@ function generateIacPreview(){
 
 // --- Event listeners ---
 document.getElementById('expTerraform').addEventListener('click',()=>openIacModal('terraform'));
-document.getElementById('expCloudformation').addEventListener('click',()=>openIacModal('cloudformation'));
+document.getElementById('expArmTemplate')?.addEventListener('click',()=>openIacModal('arm'));
+document.getElementById('expBicep')?.addEventListener('click',()=>openIacModal('bicep'));
 document.getElementById('iacClose').addEventListener('click',closeIacModal);
 document.getElementById('iacModal').addEventListener('click',function(e){if(e.target===this)closeIacModal()});
 document.getElementById('iacGenerate').addEventListener('click',generateIacPreview);
@@ -27766,7 +27782,7 @@ window._edgeCaseTests.iacExport = function(){
   const T = (name, fn) => { try { const r = fn(); results.push({name, pass:r.pass, detail:r.detail}); } catch(e){ results.push({name, pass:false, detail:'Exception: '+e.message}); }};
 
   const d = generateDemo();
-  // Build a minimal rlCtx-like object for generateTerraform / generateCloudFormation
+  // Build a minimal rlCtx-like object for generateTerraform / generateArmTemplate
   const ctx = {
     vpcs: (d.vnets&&d.vnets.value)||[],
     subnets: (d.subnets&&d.subnets.value)||[],
@@ -27841,7 +27857,7 @@ window._edgeCaseTests.iacExport = function(){
 
   // 5. ARM Template resource limit warning
   T('ARM Template resource limit warning', () => {
-    const cfn = generateCloudFormation(ctx, {format:'json'});
+    const cfn = generateArmTemplate(ctx, {format:'json'});
     const warnings = cfn.warnings || [];
     const stats = cfn.stats || {};
     const warnAtLimit = warnings.some(w => w.includes('800') || w.includes('resource'));

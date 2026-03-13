@@ -100,12 +100,19 @@ function _invalidateSearchIndex(){_searchIndex=null;_searchIndexCtx=null}
 function openSearch(){const ov=document.getElementById('searchOverlay');ov.style.display='block';
   const inp=document.getElementById('searchInput');inp.value='';inp.focus();document.getElementById('searchResults').innerHTML=''}
 function closeSearch(){document.getElementById('searchOverlay').style.display='none'}
-document.getElementById('searchBtn').addEventListener('click',openSearch);
-document.getElementById('searchBackdrop').addEventListener('click',closeSearch);
 var _searchTimer=null;
-document.getElementById('searchInput').addEventListener('input',function(){
-  clearTimeout(_searchTimer);const self=this;_searchTimer=setTimeout(function(){
-  const q=self.value.toLowerCase().trim();const res=document.getElementById('searchResults');
+// Defer DOM wiring until DOMContentLoaded to avoid parse-time errors
+(function _wireSearchEvents(){
+  function wire(){
+    document.getElementById('searchBtn').addEventListener('click',openSearch);
+    document.getElementById('searchBackdrop').addEventListener('click',closeSearch);
+    document.getElementById('searchInput').addEventListener('input',_onSearchInput);
+  }
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',wire)}else{wire()}
+})();
+function _onSearchInput(e){
+  clearTimeout(_searchTimer);var input=e&&e.target||document.getElementById('searchInput');_searchTimer=setTimeout(function(){
+  const q=input.value.toLowerCase().trim();const res=document.getElementById('searchResults');
   if(!q||!_rlCtx){res.innerHTML='';return}
   // Rebuild index if ctx changed
   if(_searchIndexCtx!==_rlCtx){_searchIndex=_buildSearchIndex(_rlCtx);_searchIndexCtx=_rlCtx}
@@ -117,9 +124,17 @@ document.getElementById('searchInput').addEventListener('input',function(){
   // Notes are dynamic — search them live (typically small set)
   _getAllNotes().forEach(function(n){if(matches.length>=30)return;if((n.text||'').toLowerCase().includes(q)||(_getResourceName(n.resourceId)||'').toLowerCase().includes(q))matches.push({type:'Note',name:(n.text||'').slice(0,50),id:n.resourceId,extra:n.category||'',acct:''})});
   const isMA=_rlCtx._multiAccount;
-  let h='';matches.forEach(m=>{const acctBadge=isMA&&m.acct&&m.acct!=='default'?'<span style="font-size:8px;padding:1px 5px;border-radius:3px;background:'+( getAccountColor(m.acct)||'var(--bg-tertiary)')+';color:#000;font-weight:600;white-space:nowrap">'+esc(m.acct)+'</span>':'';h+='<div style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" onclick="closeSearch();_zoomToElement(\''+esc(m.id)+'\');_openDetailForSearch(\''+esc(m.type)+'\',\''+esc(m.id)+'\')"><span style="font-size:9px;color:var(--accent-cyan);font-weight:600;width:70px">'+m.type+'</span><span style="flex:1;font-size:12px;color:var(--text-primary)">'+esc(m.name)+'</span>'+acctBadge+'<span style="font-size:10px;color:var(--text-muted)">'+esc(m.extra)+'</span></div>'});
+  let h='';matches.forEach(m=>{const acctBadge=isMA&&m.acct&&m.acct!=='default'?'<span style="font-size:8px;padding:1px 5px;border-radius:3px;background:'+( getAccountColor(m.acct)||'var(--bg-tertiary)')+';color:#000;font-weight:600;white-space:nowrap">'+esc(m.acct)+'</span>':'';h+='<div class="search-result-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" data-rid="'+esc(m.id)+'" data-rtype="'+esc(m.type)+'"><span style="font-size:9px;color:var(--accent-cyan);font-weight:600;width:70px">'+esc(m.type)+'</span><span style="flex:1;font-size:12px;color:var(--text-primary)">'+esc(m.name)+'</span>'+acctBadge+'<span style="font-size:10px;color:var(--text-muted)">'+esc(m.extra)+'</span></div>'});
   if(!matches.length)h='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px">No results</div>';
   res.innerHTML=h;
+  // Delegated click handler — replaces inline onclick attributes (CSP-safe)
+  res.querySelectorAll('.search-result-item').forEach(function(el){
+    el.addEventListener('click',function(){
+      closeSearch();
+      _zoomToElement(this.dataset.rid);
+      _openDetailForSearch(this.dataset.rtype,this.dataset.rid);
+    });
+  });
 });
 function _zoomToElement(id){
   if(!_mapSvg||!_mapZoom||!_mapG)return;

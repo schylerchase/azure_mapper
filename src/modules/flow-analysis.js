@@ -2,21 +2,21 @@
 // D3/SVG visualization (_renderFlowAnalysisOverlay, _renderTierBadges, etc.)
 // remains inline until modernized in Phase 5.
 
-// Bridge: reads from window.* globals set by app-core.js
-// Transitional: flow tracing functions not yet importable, access via window
+import { traceInternetToResource, traceResourceToInternet, traceFlowLeg } from './flow-tracing.js';
+
 function _traceInbound(target, config, ctx, opts) {
-  return typeof window !== 'undefined' && window._traceInternetToResource
-    ? window._traceInternetToResource(target, config, ctx, opts)
+  return typeof traceInternetToResource === 'function'
+    ? traceInternetToResource(target, config, ctx, opts)
     : { blocked: true, path: [] };
 }
 function _traceOutbound(source, config, ctx, opts) {
-  return typeof window !== 'undefined' && window._traceResourceToInternet
-    ? window._traceResourceToInternet(source, config, ctx, opts)
+  return typeof traceResourceToInternet === 'function'
+    ? traceResourceToInternet(source, config, ctx, opts)
     : { blocked: true, path: [] };
 }
 function _traceLeg(source, target, config, ctx, opts) {
-  return typeof window !== 'undefined' && window._traceFlowLeg
-    ? window._traceFlowLeg(source, target, config, ctx, opts)
+  return typeof traceFlowLeg === 'function'
+    ? traceFlowLeg(source, target, config, ctx, opts)
     : { blocked: true, path: [] };
 }
 

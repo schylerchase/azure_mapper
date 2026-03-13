@@ -118,6 +118,7 @@ export function buildDependencyGraph(ctx) {
     subs.forEach(s => addEdge(nat.id, s.id, 'attached_to', 'hard'));
   });
 
+  depGraph = g;
   return g;
 }
 

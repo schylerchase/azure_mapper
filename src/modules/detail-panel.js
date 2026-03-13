@@ -1,6 +1,10 @@
 // Resource detail panel and spotlight system
 // Displays detailed information for selected resources
 // Extracted from index.html for modularization
+//
+// TODO: _zoomAndShowDetail, _closeSpotlight, _openResourceSpotlight, _gatherResourceInfo
+// are duplicated in search.js. Consolidate into a single module and import from there.
+// The typeColors map also differs slightly between the two files.
 
 // === ZOOM TO RESOURCE AND OPEN DETAIL PANEL ===
 function _zoomAndShowDetail(rid){
