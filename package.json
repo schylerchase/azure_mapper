@@ -18,7 +18,7 @@
     "build:mac": "npm run bundle:prod && electron-builder --mac",
     "build:win": "npm run bundle:prod && electron-builder --win",
     "build:linux": "npm run bundle:prod && electron-builder --linux",
-    "build:web": "node build.js --production",
+    "build:web": "node build.js --production && node build-web.js",
     "test": "npx playwright test",
     "test:headed": "npx playwright test --headed",
     "test:unit": "jest && node --test tests/unit/*.test.mjs",

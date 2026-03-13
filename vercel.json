@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npm run bundle:prod",
-  "outputDirectory": ".",
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "public",
   "framework": null,
   "headers": [
     {
