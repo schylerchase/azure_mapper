@@ -1650,7 +1650,7 @@ export function generateDemo() {
     }))},
     nacls: { value: [] },
     igws: { value: [] },
-    azfws: { value: [firewall].map(fw => ({
+    azfws: { value: [azureFirewall].map(fw => ({
       id: fw.id,
       name: fw.name,
       InternetGatewayId: fw.id,
