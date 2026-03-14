@@ -12974,7 +12974,7 @@ function _renderAccountPanel(){
       const vc=(ctx.rlCtx.vpcs||[]).length;
       const sc=(ctx.rlCtx.subnets||[]).length;
       const ic=(ctx.rlCtx.instances||[]).length;
-      h+=vc+' VPC'+(vc!==1?'s':'')+' &middot; '+sc+' Subnet'+(sc!==1?'s':'')+' &middot; '+ic+' EC2';
+      h+=vc+' VNet'+(vc!==1?'s':'')+' &middot; '+sc+' Subnet'+(sc!==1?'s':'')+' &middot; '+ic+' VM'+(ic!==1?'s':'');
     }else if(_importedReportData){
       var aid=ctx.accountId;
       var fc=(_complianceFindings||[]).filter(function(f){return(f._subscriptionId||'')===aid}).length;
@@ -12986,7 +12986,7 @@ function _renderAccountPanel(){
       if(nc)parts.push(nc+' resource'+(nc!==1?'s':''));
       h+=parts.length?parts.join(' &middot; '):'Imported data';
     }else{
-      h+='0 VPCs &middot; 0 Subnets &middot; 0 EC2';
+      h+='0 VNets &middot; 0 Subnets &middot; 0 VMs';
     }
     h+='</div>';
     h+='<div class="ac-actions">';
