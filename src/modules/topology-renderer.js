@@ -1475,16 +1475,16 @@ function _renderMapInner(){
     const vG=ndL.append('g').attr('class','vnet-group').attr('data-vnet-id',vl.vnet.id);
     vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',vl.w).attr('height',vl.h).attr('fill','rgba(59,130,246,.03)').attr('stroke','var(--vnet-stroke)').attr('stroke-width',1.5);
     const _vnetName=gn(vl.vnet);
+    const nameMaxW=Math.min(_vnetName.length*8,vl.w*0.4);
     vG.append('text').attr('class','vnet-label').attr('x',vl.x+14).attr('y',vl.y+26)
-      .attr('textLength',Math.min(_vnetName.length*8,vl.w*0.55)).attr('lengthAdjust','spacing').text(_vnetName);
+      .attr('textLength',nameMaxW).attr('lengthAdjust','spacing').text(_vnetName);
     const regionTag=vnetRegionMap[vl.vnet.id]||'';
     const addrPrefixes=vl.vnet.properties?.addressSpace?.addressPrefixes||[];
     const cidrStr=addrPrefixes[0]||'';
-    const subTag=_multiSubscription&&vl.vnet._subscriptionId&&vl.vnet._subscriptionId!=='default'?(' ['+vl.vnet._subscriptionId+']'):'';
-    const cidrFull=cidrStr+(regionTag?' '+regionTag:'')+(subTag||'');
-    const cidrClipId='vc-'+vl.vnet.id.replace(/[^a-zA-Z0-9]/g,'');
-    vG.append('clipPath').attr('id',cidrClipId).append('rect').attr('x',vl.x+14).attr('y',vl.y+8).attr('width',vl.w-28).attr('height',24);
-    vG.append('text').attr('class','vnet-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').attr('clip-path','url(#'+cidrClipId+')').text(cidrFull);
+    const cidrMaxChars=Math.max(10,Math.floor((vl.w-nameMaxW-40)/6));
+    let cidrFull=cidrStr+(regionTag?' '+regionTag:'');
+    if(cidrFull.length>cidrMaxChars) cidrFull=cidrFull.slice(0,cidrMaxChars-1)+'…';
+    vG.append('text').attr('class','vnet-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').text(cidrFull);
     // Subscription color stripe for multi-subscription
     if(_multiSubscription&&vl.vnet._subscriptionId!=='default'){
       const acCol=vl.vnet._ctxColor||getAccountColor(vl.vnet._subscriptionId);
