@@ -29,7 +29,7 @@ function _renderMapInner(){
   let udrs=ext(_cachedParse('in_udrs'),['value']);
   let nsgs=ext(_cachedParse('in_nsgs'),['value']);
   let nics=ext(_cachedParse('in_nics'),['value']);
-  let firewalls=ext(_cachedParse('in_firewalls'),['value']);
+  let firewalls=ext(_cachedParse('in_azfws'),['value']);
   let bastions=ext(_cachedParse('in_bastions'),['value']);
   let natGateways=ext(_cachedParse('in_nats'),['value']);
   let privateEndpoints=ext(_cachedParse('in_pvteps'),['value']);
@@ -40,30 +40,30 @@ function _renderMapInner(){
     if(flat.length)vms=flat;
     else{const arr=Array.isArray(vmRaw)?vmRaw:[vmRaw];arr.forEach(x=>{if(x.id)vms.push(x)})}
   }
-  let appGateways=ext(_cachedParse('in_appgw'),['value']);
-  let loadBalancers=ext(_cachedParse('in_lb'),['value']);
-  let peerings=ext(_cachedParse('in_peerings'),['value']);
+  let appGateways=ext(_cachedParse('in_albs'),['value']);
+  let loadBalancers=ext(_cachedParse('in_tgs'),['value']);
+  let peerings=ext(_cachedParse('in_peer'),['value']);
   let vpnConnections=ext(_cachedParse('in_vpn'),['value']);
   let managedDisks=ext(_cachedParse('in_disks'),['value']);
   let diskSnapshots=ext(_cachedParse('in_snaps'),['value']);
   let storageRaw=_cachedParse('in_storage');let storageAccounts=storageRaw?ext(storageRaw,['value']):[];
   let dnsZones=ext(_cachedParse('in_dnsz'),['value']);
-  const allRecSets=ext(_cachedParse('in_dnsrecords'),['value']);
+  const allRecSets=ext(_cachedParse('in_r53records'),['value']);
   const recsByZoneMap={};
   allRecSets.forEach(r=>{const zid=r.id?.split('/')[r.id.split('/').indexOf('dnszones')+1];if(zid)(recsByZoneMap[zid]=recsByZoneMap[zid]||[]).push(r)});
   let wafPolicies=ext(_cachedParse('in_waf'),['value']);
   let sqlServers=ext(_cachedParse('in_sql'),['value']);
   let containerInstances=ext(_cachedParse('in_containers'),['value']);
-  let functionApps=(ext(_cachedParse('in_functions'),['value'])).filter(f=>f.properties?.virtualNetworkSubnetId);
-  let redisCaches=ext(_cachedParse('in_redis'),['value']);
+  let functionApps=(ext(_cachedParse('in_funcapps'),['value'])).filter(f=>f.properties?.virtualNetworkSubnetId);
+  let redisCaches=ext(_cachedParse('in_elasticache'),['value']);
   let synapseWorkspaces=ext(_cachedParse('in_synapse'),['value']);
-  let vwans=ext(_cachedParse('in_vwan'),['value']);
+  let vwans=ext(_cachedParse('in_tgwatt'),['value']);
   let frontDoors=[];
-  const fdRaw=_cachedParse('in_frontdoor');
+  const fdRaw=_cachedParse('in_cf');
   if(fdRaw){frontDoors=ext(fdRaw,['value']);}
   let aksClusters=ext(_cachedParse('in_aks'),['value']);
   // Parse RBAC / IAM data
-  const iamRaw=_cachedParse('in_iam');
+  const iamRaw=_cachedParse('in_rbac');
   if(iamRaw&&!_iamData)_iamData=parseIAMData(iamRaw);
 
   // Multi-tenant: tag all resources with subscription/tenant ID
