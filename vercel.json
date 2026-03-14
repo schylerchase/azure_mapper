@@ -1,7 +1,9 @@
 {
+  "projectSettings": {
+    "framework": null
+  },
   "buildCommand": "npm run build:web",
   "outputDirectory": "public",
-  "framework": null,
   "headers": [
     {
       "source": "/(.*)",

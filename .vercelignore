@@ -8,11 +8,11 @@ out/
 *.snap
 tests/
 test-results/
-main.js
-main-utils.js
-main-utils.test.js
-preload.js
-routing.test.js
+/main.js
+/main-utils.js
+/main-utils.test.js
+/preload.js
+/routing.test.js
 .github/
 azure-export-*/
 aws-export-*/
