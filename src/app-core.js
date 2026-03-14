@@ -23151,7 +23151,7 @@ document.getElementById('loadDemo').addEventListener('click',()=>{
   addAccountContext({textareas:buildAcctTextareas(acct1Vpcs),accountLabel:'prod-account (111122223333)'},'prod-account (111122223333)');
   addAccountContext({textareas:buildAcctTextareas(acct2Vpcs),accountLabel:'security-ops (444455556666)'},'security-ops (444455556666)');
   // Fill textareas with full demo for single-view fallback
-  const m={in_vnets:'vnets',in_subnets:'subnets',in_udrs:'udrs',in_nsgs:'nsgs',in_nats:'nats',in_vms:'vms',in_albs:'albs',in_peer:'peer',in_vpn:'vpn',in_pvteps:'pvteps',in_disks:'disks',in_storage:'storage',in_dnsz:'dnsz',in_r53records:'r53records',in_tgs:'tgs',in_snaps:'snaps',in_nics:'nics',in_waf:'waf',in_sql:'sql',in_containers:'containers',in_funcapps:'funcapps',in_elasticache:'elasticache',in_aks:'aks',in_tgwatt:'tgwatt',in_cf:'cf',in_rbac:'rbac'};
+  const m={in_vnets:'vnets',in_subnets:'subnets',in_udrs:'udrs',in_nsgs:'nsgs',in_nats:'nats',in_azfws:'azfws',in_bastions:'bastions',in_vms:'vms',in_albs:'albs',in_peer:'peer',in_vpn:'vpn',in_pvteps:'pvteps',in_disks:'disks',in_storage:'storage',in_dnsz:'dnsz',in_r53records:'r53records',in_tgs:'tgs',in_snaps:'snaps',in_nics:'nics',in_waf:'waf',in_sql:'sql',in_containers:'containers',in_funcapps:'funcapps',in_elasticache:'elasticache',in_aks:'aks',in_tgwatt:'tgwatt',in_cf:'cf',in_rbac:'rbac'};
   Object.entries(m).forEach(([id,k])=>{if(demo[k])document.getElementById(id).value=JSON.stringify(demo[k],null,2)});
   document.querySelectorAll('.ji').forEach(el=>{if(el.value.trim())el.className='ji valid'});
   document.querySelectorAll('.sec-hdr.collapsed').forEach(h=>{h.click()});

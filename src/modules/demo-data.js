@@ -1650,6 +1650,22 @@ export function generateDemo() {
     }))},
     nacls: { value: [] },
     igws: { value: [] },
+    azfws: { value: [firewall].map(fw => ({
+      id: fw.id,
+      name: fw.name,
+      InternetGatewayId: fw.id,
+      Attachments: [],
+      Tags: [{ Key: 'Name', Value: fw.name }],
+      properties: fw.properties,
+      _azure: fw,
+    }))},
+    bastions: { value: [bastion].map(b => ({
+      id: b.id,
+      name: b.name,
+      Tags: [{ Key: 'Name', Value: b.name }],
+      properties: b.properties,
+      _azure: b,
+    }))},
     nats: { value: natGateways.map(ng => ({
       id: ng.id,
       name: ng.name,
@@ -1658,6 +1674,7 @@ export function generateDemo() {
       SubnetId: (ng.properties.subnets || [])[0]?.id || '',
       State: 'available',
       Tags: [{ Key: 'Name', Value: ng.name }],
+      properties: ng.properties,
       _azure: ng,
     }))},
     vms: { value: vms.map(vm => ({
