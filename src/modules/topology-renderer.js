@@ -3,6 +3,58 @@
 // TODO: convert to ES module — export renderMap, _renderMapInner and import
 // dependencies (d3, _rlCtx, _designMode, etc.) instead of reading globals
 
+// --- Label collision detection & resolution utilities ---
+function _rectsOverlap(a, b, pad) {
+  pad = pad || 2;
+  return !(a.x + a.w + pad < b.x || b.x + b.w + pad < a.x ||
+           a.y + a.h + pad < b.y || b.y + b.h + pad < a.y);
+}
+
+function _resolveCollisions(labels, opts) {
+  opts = opts || {};
+  const strategy = opts.strategy || 'shift-y';
+  const padding = opts.padding || 4;
+  const maxIter = opts.maxIter || 8;
+
+  for (let iter = 0; iter < maxIter; iter++) {
+    let moved = false;
+    for (let i = 0; i < labels.length; i++) {
+      for (let j = i + 1; j < labels.length; j++) {
+        const a = labels[i], b = labels[j];
+        if (!_rectsOverlap(a, b, padding)) continue;
+        if (strategy === 'shift-y') {
+          const overlapY = (a.y + a.h + padding) - b.y;
+          if (overlapY > 0) { b.y += overlapY; moved = true; }
+        } else if (strategy === 'shift-x') {
+          const overlapX = (a.x + a.w + padding) - b.x;
+          if (overlapX > 0) { b.x += overlapX; moved = true; }
+        }
+      }
+    }
+    if (!moved) break;
+  }
+  return labels;
+}
+
+function _applyLabelPositions(labels) {
+  labels.forEach(l => {
+    if (l.rectNode) {
+      l.rectNode.attr('x', l.x).attr('y', l.y);
+      if (l.w) l.rectNode.attr('width', l.w);
+    }
+    if (l.textNode) {
+      const tx = l.textAnchor === 'middle' ? l.x + l.w / 2 : l.x + (l.textPadX || 0);
+      l.textNode.attr('x', tx).attr('y', l.y + (l.textOffY || 12));
+    }
+  });
+}
+
+function _dynamicResCols(subnetW) {
+  const minIconW = 70;
+  const padded = subnetW - 16;
+  return Math.max(1, Math.floor(padded / (minIconW + 4)));
+}
+
 function renderMap(cb){
   if(_renderMapTimer){clearTimeout(_renderMapTimer);_renderMapTimer=null}
   const overlay=document.getElementById('loadingOverlay');
@@ -392,14 +444,15 @@ function _renderMapInner(){
   subnets.forEach(s=>{
     subTrees[s.id]=buildResTree(s.id,treeCtx);
   });
-  function subHeight(sid2){
+  function subHeight(sid2, sw){
     if(_detailLevel===0) return SH_BASE;
     const tree=subTrees[sid2]||[];
     if(!tree.length) return SH_BASE;
     const maxCh=Math.max(0,...tree.map(r=>(r.children||[]).length));
     const tallest=RES_ICON+maxCh*RES_CHILD_H;
     const rowH=tallest+6;
-    const rows=Math.ceil(tree.length/RES_COLS);
+    const cols=sw?_dynamicResCols(sw):RES_COLS;
+    const rows=Math.ceil(tree.length/cols);
     return Math.max(SH_BASE, RES_TOP+rows*rowH+RES_BOT+4);
   }
 
@@ -444,10 +497,10 @@ function _renderMapInner(){
   // Calculate VNet height with dynamic subnet sizes
   const AZ_HDR=16; // height for location separator label
   function sortByLocation(ss){return ss.slice().sort((a,b)=>(a.name||'').localeCompare(b.name||''))}
-  function calcVnetHeight(ss){
+  function calcVnetHeight(ss,sw){
     let ih=0;
     const sorted=sortByLocation(ss);
-    sorted.forEach((s,i)=>{ih+=subHeight(s.id)+(i<sorted.length-1?SG:0)});
+    sorted.forEach((s,i)=>{ih+=subHeight(s.id,sw)+(i<sorted.length-1?SG:0)});
     return Math.max(ih+VP*2+VH+30,150);
   }
 
@@ -457,7 +510,7 @@ function _renderMapInner(){
     const sorted=sortByLocation(ss);
     let cy=baseY+VH+VP;
     sorted.forEach(s=>{
-      const sh=subHeight(s.id);
+      const sh=subHeight(s.id,sw);
       layouts.push({sub:s,x:baseX+VP,y:cy,w:sw,h:sh,pub:pubSubs.has(s.id)});
       cy+=sh+SG;
     });
@@ -472,7 +525,7 @@ function _renderMapInner(){
     _prevLayoutRegion=_vnetRegion;
     const ss=subByVnet[vnet.id]||[];
     const sw=vSW[vnet.id]||MSW;
-    const vw=sw+VP*2,vh=calcVnetHeight(ss);
+    const vw=sw+VP*2,vh=calcVnetHeight(ss,sw);
     const routingGws=(pvGws[vnet.id]||[]);
     let maxGwNameW=0;
     routingGws.forEach(gw=>{
@@ -505,7 +558,7 @@ function _renderMapInner(){
   unknownVnets.forEach((vnet,idx)=>{
     const ss=subByVnet[vnet.id]||[];
     const sw=vSW[vnet.id]||MSW;
-    const vw=sw+VP*2,vh=calcVnetHeight(ss);
+    const vw=sw+VP*2,vh=calcVnetHeight(ss,sw);
     const routingGws=(pvGws[vnet.id]||[]);
     let maxGwNameW=0;
     routingGws.forEach(gw=>{
@@ -1339,9 +1392,30 @@ function _renderMapInner(){
       const textX=rx+lw/2;
       lg.append('rect').attr('x',rx).attr('y',ly-8).attr('width',lw).attr('height',16).attr('rx',3).attr('class','route-label-bg').attr('fill','var(--panel-bg)').attr('stroke',colH).attr('stroke-width',.5);
       lg.append('text').attr('x',textX).attr('y',ly+3).attr('text-anchor','middle').attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(8px * var(--txt-scale,1))').attr('font-weight','500').attr('fill',colH).text(lt);
-      allLb.push({gid,vid,shared:sh,lx:textX,lw,g:lg});
+      allLb.push({gid,vid,shared:sh,lx:textX,lw,g:lg,baseY:ly});
     }
   });
+
+  // Route label inter-collision resolution
+  {
+    const routeLabelRecs=allLb.map(lb=>{
+      const bg=lb.g.select('.route-label-bg');
+      const txt=lb.g.select('text');
+      if(!bg.node()) return null;
+      const bx=parseFloat(bg.attr('x')), by=parseFloat(bg.attr('y'));
+      const bw=parseFloat(bg.attr('width')), bh=parseFloat(bg.attr('height'));
+      return {x:bx,y:by,w:bw,h:bh,rectNode:bg,textNode:txt,textAnchor:'middle',textOffY:11,lb};
+    }).filter(Boolean);
+    if(routeLabelRecs.length>1){
+      routeLabelRecs.sort((a,b)=>a.y-b.y||a.x-b.x);
+      _resolveCollisions(routeLabelRecs,{strategy:'shift-y',padding:3});
+      routeLabelRecs.forEach(r=>{
+        r.rectNode.attr('y',r.y);
+        r.textNode.attr('y',r.y+r.h-5);
+        r.lb.baseY=r.y+8; // update base for hover-time avoidance
+      });
+    }
+  }
 
   // Draw shared gateway bus routing AFTER all VNets processed
   Object.entries(sharedGwBusY).forEach(([gid,info])=>{
@@ -1455,9 +1529,9 @@ function _renderMapInner(){
       const pillW=labelText.length*6.5+16;
       const pillX=rx+rw/2-pillW/2;
       const pillY=ry-16;
-      ndL.append('rect').attr('x',pillX).attr('y',pillY).attr('width',pillW).attr('height',18)
+      const pillRect=ndL.append('rect').attr('class','region-pill').attr('x',pillX).attr('y',pillY).attr('width',pillW).attr('height',18)
         .attr('rx',9).attr('fill','rgba(59,130,246,.12)').attr('stroke','rgba(59,130,246,.3)').attr('stroke-width',1);
-      ndL.append('text').attr('x',pillX+pillW/2).attr('y',pillY+12.5)
+      const pillText=ndL.append('text').attr('class','region-pill-text').attr('x',pillX+pillW/2).attr('y',pillY+12.5)
         .attr('text-anchor','middle').attr('fill','#60a5fa')
         .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(9px * var(--txt-scale,1))')
         .attr('font-weight','600').text(labelText);
@@ -1469,21 +1543,53 @@ function _renderMapInner(){
     }
   });
 
+  // Region pill collision resolution
+  {
+    const pillRecs=[];
+    ndL.selectAll('.region-pill').each(function(){
+      const r=d3.select(this);
+      const px=parseFloat(r.attr('x')), py=parseFloat(r.attr('y'));
+      const pw=parseFloat(r.attr('width')), ph=parseFloat(r.attr('height'));
+      pillRecs.push({x:px,y:py,w:pw,h:ph,rectNode:r});
+    });
+    if(pillRecs.length>1){
+      pillRecs.sort((a,b)=>a.x-b.x);
+      _resolveCollisions(pillRecs,{strategy:'shift-x',padding:6});
+      pillRecs.forEach(p=>{
+        p.rectNode.attr('x',p.x);
+        // Move corresponding text
+        const nextSib=d3.select(p.rectNode.node().nextElementSibling);
+        if(nextSib.classed('region-pill-text')){
+          nextSib.attr('x',p.x+p.w/2);
+        }
+      });
+    }
+  }
+
   // VNet boxes
   const tt=document.getElementById('tooltip');
   vL.forEach(vl=>{
     const vG=ndL.append('g').attr('class','vnet-group').attr('data-vnet-id',vl.vnet.id);
     vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',vl.w).attr('height',vl.h).attr('fill','rgba(59,130,246,.03)').attr('stroke','var(--vnet-stroke)').attr('stroke-width',1.5);
     const _vnetName=gn(vl.vnet);
-    const nameMaxW=Math.min(_vnetName.length*8,vl.w*0.4);
-    vG.append('text').attr('class','vnet-label').attr('x',vl.x+14).attr('y',vl.y+26)
-      .attr('textLength',nameMaxW).attr('lengthAdjust','spacing').text(_vnetName);
     const regionTag=vnetRegionMap[vl.vnet.id]||'';
     const addrPrefixes=vl.vnet.properties?.addressSpace?.addressPrefixes||[];
     const cidrStr=addrPrefixes[0]||'';
-    const cidrMaxChars=Math.max(10,Math.floor((vl.w-nameMaxW-40)/6));
     let cidrFull=cidrStr+(regionTag?' '+regionTag:'');
-    if(cidrFull.length>cidrMaxChars) cidrFull=cidrFull.slice(0,cidrMaxChars-1)+'…';
+    // Measure available width and allocate between name and CIDR
+    const availW=vl.w-28; // 14px padding each side
+    const cidrEstW=cidrFull.length*6.5;
+    const nameAvail=Math.max(60, availW-cidrEstW-12);
+    const nameMaxW=Math.min(_vnetName.length*8, nameAvail);
+    // Truncate name if needed
+    const nameMaxChars=Math.max(6, Math.floor(nameAvail/8));
+    const truncVnetName=_vnetName.length>nameMaxChars?_vnetName.slice(0,nameMaxChars-1)+'\u2026':_vnetName;
+    vG.append('text').attr('class','vnet-label').attr('x',vl.x+14).attr('y',vl.y+26)
+      .attr('textLength',nameMaxW).attr('lengthAdjust','spacing').text(truncVnetName);
+    // Truncate CIDR if still not enough room
+    const cidrAvail=availW-nameMaxW-12;
+    const cidrMaxChars=Math.max(8, Math.floor(cidrAvail/6));
+    if(cidrFull.length>cidrMaxChars) cidrFull=cidrFull.slice(0,cidrMaxChars-1)+'\u2026';
     vG.append('text').attr('class','vnet-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').text(cidrFull);
     // Subscription color stripe for multi-subscription
     if(_multiSubscription&&vl.vnet._subscriptionId!=='default'){
@@ -1510,12 +1616,20 @@ function _renderMapInner(){
     const col=sl.pub?'var(--subnet-public)':'var(--subnet-private)';
     sG.append('rect').attr('x',sl.x).attr('y',sl.y).attr('width',sl.w).attr('height',sl.h).attr('fill',sl.pub?'rgba(6,182,212,.15)':'rgba(139,92,246,.15)').attr('stroke',col).attr('stroke-width',1.2);
     const cid='c-'+sl.sub.id.replace(/[^a-zA-Z0-9]/g,'');
-    sG.append('clipPath').attr('id',cid).append('rect').attr('x',sl.x+6).attr('y',sl.y).attr('width',sl.w-12).attr('height',sl.h);
+    const badgeText=sl.pub?'PUBLIC':'PRIVATE';
+    const badgeW=badgeText.length*5+8;
+    const clipW=Math.max(40, sl.w-badgeW-16);
+    sG.append('clipPath').attr('id',cid).append('rect').attr('x',sl.x+6).attr('y',sl.y).attr('width',clipW).attr('height',sl.h);
     const tG2=sG.append('g').attr('clip-path',`url(#${cid})`);
-    tG2.append('text').attr('class','subnet-label').attr('x',sl.x+8).attr('y',sl.y+18).text(gn(sl.sub));
+    const subName=gn(sl.sub);
+    const maxNameChars=Math.floor(clipW/CW);
+    const truncName=subName.length>maxNameChars?subName.slice(0,maxNameChars-1)+'\u2026':subName;
+    tG2.append('text').attr('class','subnet-label').attr('x',sl.x+8).attr('y',sl.y+18).text(truncName);
     const addrPrefix=sl.sub.properties?.addressPrefix||'';
-    tG2.append('text').attr('class','subnet-cidr').attr('x',sl.x+8).attr('y',sl.y+30).text(addrPrefix);
-    sG.append('text').attr('x',sl.x+sl.w-8).attr('y',sl.y+14).attr('text-anchor','end').attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('font-weight','600').attr('fill',col).text(sl.pub?'PUBLIC':'PRIVATE');
+    const maxCidrChars=Math.floor(clipW/5.5);
+    const truncCidr=addrPrefix.length>maxCidrChars?addrPrefix.slice(0,maxCidrChars-1)+'\u2026':addrPrefix;
+    tG2.append('text').attr('class','subnet-cidr').attr('x',sl.x+8).attr('y',sl.y+30).text(truncCidr);
+    sG.append('text').attr('x',sl.x+sl.w-8).attr('y',sl.y+14).attr('text-anchor','end').attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('font-weight','600').attr('fill',col).text(badgeText);
 
     // resource icons inside subnet (tree-based with nesting)
     const tree=subTrees[sl.sub.id]||[];
@@ -1528,12 +1642,13 @@ function _renderMapInner(){
       sG.append('text').attr('x',sl.x+8).attr('y',sl.y+sl.h-6)
         .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(6px * var(--txt-scale,1))').attr('fill','var(--text-muted)').attr('opacity',.5).text(summary);
     } else if(tree.length>0){
-      const iconW=Math.max(70,Math.floor((sl.w-16)/RES_COLS)-RES_GAP);
+      const effectiveCols=Math.min(_dynamicResCols(sl.w), tree.length);
+      const iconW=Math.max(70,Math.floor((sl.w-16)/effectiveCols)-RES_GAP);
       const maxCh=Math.max(0,...tree.map(r=>(r.children||[]).length));
       const rowH=RES_ICON+maxCh*RES_CHILD_H+6;
       let rx=sl.x+6, ry=sl.y+RES_TOP, rci=0;
       tree.forEach((res,ri)=>{
-        if(rci>=RES_COLS){rci=0;rx=sl.x+6;ry+=rowH;}
+        if(rci>=effectiveCols){rci=0;rx=sl.x+6;ry+=rowH;}
         const nCh=(res.children||[]).length;
         const iconH=RES_ICON+nCh*RES_CHILD_H;
         // wrap in interactive group
@@ -1629,9 +1744,12 @@ function _renderMapInner(){
     const lblY=pos.y+GR+14;
     const lblTxt=nm&&nm!==gw.id?nm:sid(gw.id);
     const lblClass=nm&&nm!==gw.id?'gw-name':'gw-id';
-    const tw=lblTxt.length*6.2+16;
+    // Truncate long gateway names
+    const maxGwLblChars=20;
+    const truncGwLbl=lblTxt.length>maxGwLblChars?lblTxt.slice(0,maxGwLblChars-1)+'\u2026':lblTxt;
+    const tw=truncGwLbl.length*6.2+16;
     gG.append('rect').attr('x',pos.x-tw/2).attr('y',lblY-9).attr('width',tw).attr('height',15).attr('rx',4).attr('class','gw-label-bg').attr('fill','var(--overlay-bg)').attr('stroke','var(--hover-bg)').attr('stroke-width',.5);
-    gG.append('text').attr('class',lblClass).attr('x',pos.x).attr('y',lblY).attr('text-anchor','middle').text(lblTxt);
+    gG.append('text').attr('class',lblClass).attr('x',pos.x).attr('y',lblY).attr('text-anchor','middle').text(truncGwLbl);
     gG.on('mouseenter',function(){
       if(_hlLocked) return;
       hlGw(id);
@@ -1652,6 +1770,25 @@ function _renderMapInner(){
       openGatewayPanel(gw.id,gw.type,{gwNames,firewalls,bastions,natGateways,vpnConnections,privateEndpoints,peerings,udrs,subnets,subUDR,pubSubs,vnets,vwans});
     });
   });
+
+  // Gateway label collision resolution
+  {
+    const gwLabelRecs=[];
+    ndL.selectAll('.gw-node').each(function(){
+      const g=d3.select(this);
+      const bg=g.select('.gw-label-bg');
+      const txt=g.select('.gw-name, .gw-id');
+      if(!bg.node()||!txt.node()) return;
+      const bx=parseFloat(bg.attr('x')), by=parseFloat(bg.attr('y'));
+      const bw=parseFloat(bg.attr('width')), bh=parseFloat(bg.attr('height'));
+      gwLabelRecs.push({x:bx,y:by,w:bw,h:bh,rectNode:bg,textNode:txt,textAnchor:'middle',textOffY:9,textPadX:0});
+    });
+    if(gwLabelRecs.length>1){
+      gwLabelRecs.sort((a,b)=>a.y-b.y||a.x-b.x);
+      _resolveCollisions(gwLabelRecs,{strategy:'shift-y',padding:3});
+      _applyLabelPositions(gwLabelRecs);
+    }
+  }
 
   // internet node - positioned at top-left (Azure Firewall connects to Internet)
   if(fwGwList.length){
@@ -2258,6 +2395,35 @@ function _renderMapInner(){
       .on('click',function(event){event.stopPropagation();tt.style.display='none';_lastRlType=null;_navStack=[];openResourceList('FrontDoor')});
     });
   }
+
+  // Post-render label collision safety sweep
+  // Catches any remaining overlaps within same-type label groups
+  try{
+    const labelGroups = {
+      'vnet-label': [], 'vnet-cidr': [],
+      'subnet-label': [], 'subnet-cidr': [],
+      'gw-name': [], 'gw-id': []
+    };
+    Object.keys(labelGroups).forEach(cls=>{
+      ndL.selectAll('.'+cls).each(function(){
+        const el=d3.select(this);
+        const node=el.node();
+        try{
+          const bb=node.getBBox();
+          if(bb.width>0&&bb.height>0){
+            labelGroups[cls].push({x:bb.x,y:bb.y,w:bb.width,h:bb.height,textNode:el});
+          }
+        }catch(e){}
+      });
+    });
+    Object.values(labelGroups).forEach(group=>{
+      if(group.length>1){
+        group.sort((a,b)=>a.y-b.y||a.x-b.x);
+        _resolveCollisions(group,{strategy:'shift-y',padding:2,maxIter:4});
+        group.forEach(l=>l.textNode.attr('y',l.y+l.h));
+      }
+    });
+  }catch(sweepErr){console.warn('Label collision sweep:',sweepErr)}
 
   // stats bar
   _rlCtx={vnets,subnets,pubSubs,udrs,nsgs,nics,firewalls,bastions,natGateways,privateEndpoints,vms,appGateways,loadBalancers,peerings,vpnConnections,managedDisks,diskSnapshots,storageAccounts,dnsZones,wafPolicies,wafByAgw,fdByAgw,sqlServers,containerInstances,functionApps,redisCaches,synapseWorkspaces,frontDoors,aksClusters,vmBySub,agwBySub,lbBySub,nicBySub,sqlBySub,containerBySub,fnBySub,aksBySub,subUDR,subNsg,nsgByVnet,diskByVm,snapByDisk,redisByVnet,synapseByVnet,vwans,recsByZone:recsByZoneMap,_multiSubscription,_subscriptions,_regions,_multiRegion,iamRoleResources};
