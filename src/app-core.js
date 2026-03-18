@@ -7393,13 +7393,12 @@ function renderLandingZoneMap(ctx){
         .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(8px * var(--txt-scale,1))').attr('font-weight','600').attr('fill','#fff').text('HUB');
     }
     
-    // VPC name on first line — truncate to fit box width
+    // VPC name on first line — truncate to fit box width (~9px/char at 13px bold uppercase)
     const _lzVpcName=gn(vl.vpc,vl.vpc.VpcId);
     const _lzAvailW=vl.w-24; // 12px padding each side
-    const _lzNameMaxChars=Math.max(6,Math.floor(_lzAvailW/8));
+    const _lzNameMaxChars=Math.max(4,Math.floor(_lzAvailW/9));
     const _lzTruncName=_lzVpcName.length>_lzNameMaxChars?_lzVpcName.slice(0,_lzNameMaxChars-1)+'\u2026':_lzVpcName;
-    vG.append('text').attr('class','vpc-label').attr('x',vl.x+12).attr('y',vl.y+16)
-      .attr('textLength',Math.min(_lzTruncName.length*8,_lzAvailW)).attr('lengthAdjust','spacing').text(_lzTruncName);
+    vG.append('text').attr('class','vpc-label').attr('x',vl.x+12).attr('y',vl.y+16).text(_lzTruncName);
 
     // CIDR and region on second line — truncate to fit box width
     const ss=subByVnet[vl.vpc.VpcId]||[];
@@ -10100,20 +10099,22 @@ function _renderMapInner(){
     const regionTag=vpcRegionMap[vl.vpc.VpcId]||'';
     const _acLbl2=vl.vpc._accountLabel||vl.vpc._subscriptionId;
     const acctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+_acLbl2+']'):'';
-    // Allocate width between name (left) and CIDR+subscription (right)
+    // Allocate width between name (left, ~9px/char at 13px bold uppercase) and CIDR (right, ~6px/char at 10px)
     const _availW2=vl.w-28; // 14px padding each side
     let _cidrFull2=vl.vpc.CidrBlock+(regionTag?' | '+regionTag:'')+(acctTag||'');
-    const _cidrEstW2=_cidrFull2.length*6.5;
-    const _nameAvail2=Math.max(60,_availW2-_cidrEstW2-12);
-    const _nameMaxW2=Math.min(_vpcName.length*8,_nameAvail2);
-    const _nameMaxChars2=Math.max(6,Math.floor(_nameAvail2/8));
-    const _truncName2=_vpcName.length>_nameMaxChars2?_vpcName.slice(0,_nameMaxChars2-1)+'\u2026':_vpcName;
-    vG.append('text').attr('class','vpc-label').attr('x',vl.x+14).attr('y',vl.y+26)
-      .attr('textLength',_nameMaxW2).attr('lengthAdjust','spacing').text(_truncName2);
-    // Truncate CIDR+subscription if still too wide
-    const _cidrAvail2=_availW2-_nameMaxW2-12;
-    const _cidrMaxChars2=Math.max(8,Math.floor(_cidrAvail2/6));
-    if(_cidrFull2.length>_cidrMaxChars2) _cidrFull2=_cidrFull2.slice(0,_cidrMaxChars2-1)+'\u2026';
+    const _cidrW2=_cidrFull2.length*6;
+    const _nameW2=_vpcName.length*9;
+    const _totalW2=_nameW2+_cidrW2+16; // 16px gap between name and CIDR
+    if(_totalW2>_availW2){
+      // Truncate — give CIDR 55% of space, name gets the rest
+      const _cidrMax2=Math.max(10,Math.floor(_availW2*0.55/6));
+      if(_cidrFull2.length>_cidrMax2) _cidrFull2=_cidrFull2.slice(0,_cidrMax2-1)+'\u2026';
+      const _nameMax2=Math.max(4,Math.floor((_availW2-_cidrMax2*6-16)/9));
+      var _truncName2=_vpcName.length>_nameMax2?_vpcName.slice(0,_nameMax2-1)+'\u2026':_vpcName;
+    }else{
+      var _truncName2=_vpcName;
+    }
+    vG.append('text').attr('class','vpc-label').attr('x',vl.x+14).attr('y',vl.y+26).text(_truncName2);
     vG.append('text').attr('class','vpc-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').text(_cidrFull2);
     // Account color stripe for multi-account
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
