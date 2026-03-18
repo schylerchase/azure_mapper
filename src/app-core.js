@@ -7393,19 +7393,25 @@ function renderLandingZoneMap(ctx){
         .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(8px * var(--txt-scale,1))').attr('font-weight','600').attr('fill','#fff').text('HUB');
     }
     
-    // VPC name on first line
+    // VPC name on first line — truncate to fit box width
     const _lzVpcName=gn(vl.vpc,vl.vpc.VpcId);
+    const _lzAvailW=vl.w-24; // 12px padding each side
+    const _lzNameMaxChars=Math.max(6,Math.floor(_lzAvailW/8));
+    const _lzTruncName=_lzVpcName.length>_lzNameMaxChars?_lzVpcName.slice(0,_lzNameMaxChars-1)+'\u2026':_lzVpcName;
     vG.append('text').attr('class','vpc-label').attr('x',vl.x+12).attr('y',vl.y+16)
-      .attr('textLength',Math.min(_lzVpcName.length*8,vl.w*0.55)).attr('lengthAdjust','spacing').text(_lzVpcName);
-    
-    // CIDR and region on second line
+      .attr('textLength',Math.min(_lzTruncName.length*8,_lzAvailW)).attr('lengthAdjust','spacing').text(_lzTruncName);
+
+    // CIDR and region on second line — truncate to fit box width
     const ss=subByVnet[vl.vpc.VpcId]||[];
     const az=ss.find(s=>s.AvailabilityZone)?.AvailabilityZone||'';
     const region=az.replace(/[a-z]$/,'')||'';
     const _lzAcctLbl=vl.vpc._accountLabel||vl.vpc._subscriptionId;
     const lzAcctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+_lzAcctLbl+']'):'';
+    let _lzCidrFull=vl.vpc.CidrBlock+(region?' | '+region:'')+lzAcctTag;
+    const _lzCidrMaxChars=Math.max(8,Math.floor(_lzAvailW/6));
+    if(_lzCidrFull.length>_lzCidrMaxChars) _lzCidrFull=_lzCidrFull.slice(0,_lzCidrMaxChars-1)+'\u2026';
     vG.append('text').attr('class','vpc-cidr').attr('x',vl.x+12).attr('y',vl.y+28)
-      .text(vl.vpc.CidrBlock+(region?' | '+region:'')+lzAcctTag);
+      .text(_lzCidrFull);
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
       const lzAcCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
       if(lzAcCol){
@@ -10091,12 +10097,24 @@ function _renderMapInner(){
     const vG=ndL.append('g').attr('class','vpc-group').attr('data-vnet-id',vl.vpc.VpcId);
     vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',vl.w).attr('height',vl.h).attr('fill','rgba(59,130,246,.03)').attr('stroke','var(--vpc-stroke)').attr('stroke-width',1.5);
     const _vpcName=gn(vl.vpc,vl.vpc.VpcId);
-    vG.append('text').attr('class','vpc-label').attr('x',vl.x+14).attr('y',vl.y+26)
-      .attr('textLength',Math.min(_vpcName.length*8,vl.w*0.55)).attr('lengthAdjust','spacing').text(_vpcName);
     const regionTag=vpcRegionMap[vl.vpc.VpcId]||'';
     const _acLbl2=vl.vpc._accountLabel||vl.vpc._subscriptionId;
     const acctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+_acLbl2+']'):'';
-    vG.append('text').attr('class','vpc-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').text(vl.vpc.CidrBlock+(regionTag?' | '+regionTag:'')+(acctTag?acctTag:''));
+    // Allocate width between name (left) and CIDR+subscription (right)
+    const _availW2=vl.w-28; // 14px padding each side
+    let _cidrFull2=vl.vpc.CidrBlock+(regionTag?' | '+regionTag:'')+(acctTag||'');
+    const _cidrEstW2=_cidrFull2.length*6.5;
+    const _nameAvail2=Math.max(60,_availW2-_cidrEstW2-12);
+    const _nameMaxW2=Math.min(_vpcName.length*8,_nameAvail2);
+    const _nameMaxChars2=Math.max(6,Math.floor(_nameAvail2/8));
+    const _truncName2=_vpcName.length>_nameMaxChars2?_vpcName.slice(0,_nameMaxChars2-1)+'\u2026':_vpcName;
+    vG.append('text').attr('class','vpc-label').attr('x',vl.x+14).attr('y',vl.y+26)
+      .attr('textLength',_nameMaxW2).attr('lengthAdjust','spacing').text(_truncName2);
+    // Truncate CIDR+subscription if still too wide
+    const _cidrAvail2=_availW2-_nameMaxW2-12;
+    const _cidrMaxChars2=Math.max(8,Math.floor(_cidrAvail2/6));
+    if(_cidrFull2.length>_cidrMaxChars2) _cidrFull2=_cidrFull2.slice(0,_cidrMaxChars2-1)+'\u2026';
+    vG.append('text').attr('class','vpc-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').text(_cidrFull2);
     // Account color stripe for multi-account
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
       const acCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
