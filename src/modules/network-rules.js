@@ -300,6 +300,23 @@ function ruleMatches(rule, direction, protocol, srcAddr, srcPort, dstAddr, dstPo
 // NSG evaluation
 // ---------------------------------------------------------------------------
 
+// Cache merged+sorted rules per NSG per direction to avoid re-sorting on every call.
+// WeakMap keyed by NSG object -- auto-invalidates when NSG data is replaced on reload.
+const _nsgRuleCache = new WeakMap();
+
+function _getCachedRules(nsg, direction) {
+  const dirKey = direction.toLowerCase() === 'inbound' ? 'in' : 'out';
+  let cached = _nsgRuleCache.get(nsg);
+  if (cached && cached[dirKey]) return cached[dirKey];
+  const customRules = (nsg && nsg.securityRules) || [];
+  const defaults = dirKey === 'in' ? DEFAULT_INBOUND_RULES : DEFAULT_OUTBOUND_RULES;
+  const allRules = [...customRules, ...defaults];
+  allRules.sort((a, b) => a.priority - b.priority);
+  if (!cached) { cached = {}; _nsgRuleCache.set(nsg, cached); }
+  cached[dirKey] = allRules;
+  return allRules;
+}
+
 /**
  * Evaluate an NSG's rules for a given traffic flow in priority order.
  *
@@ -320,16 +337,8 @@ function ruleMatches(rule, direction, protocol, srcAddr, srcPort, dstAddr, dstPo
 export function evaluateNsgRules(nsg, direction, protocol, srcAddr, srcPort, dstAddr, dstPort, opts) {
   const vnetPrefixes = (opts && opts.vnetPrefixes) || [];
 
-  // Merge custom rules with defaults
-  const customRules = (nsg && nsg.securityRules) || [];
-  const defaults = direction.toLowerCase() === 'inbound'
-    ? DEFAULT_INBOUND_RULES
-    : DEFAULT_OUTBOUND_RULES;
-
-  const allRules = [...customRules, ...defaults];
-
-  // Sort by priority ascending (lowest number = highest priority)
-  allRules.sort((a, b) => a.priority - b.priority);
+  // Use cached merged+sorted rules (avoids re-sorting on every call)
+  const allRules = _getCachedRules(nsg, direction);
 
   for (const rule of allRules) {
     if (ruleMatches(rule, direction, protocol, srcAddr, srcPort, dstAddr, dstPort, vnetPrefixes)) {

@@ -69,4 +69,118 @@ async function captureErrors(page, fn) {
   return errors;
 }
 
-module.exports = { BASE, loadDemo, countElements, openDashTab, clickSubnet, captureErrors };
+// ── Visual regression helpers ──────────────────────────────────────
+
+/**
+ * Get bounding boxes for all elements matching a selector (in SVG or DOM).
+ * Uses getBoundingClientRect for DOM elements and getBBox + CTM for SVG.
+ */
+async function getBoundingBoxes(page, selector) {
+  return page.evaluate((sel) => {
+    const els = document.querySelectorAll(sel);
+    return Array.from(els).map((el, i) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        index: i,
+        id: el.id || el.getAttribute('data-subnet-id') || el.getAttribute('data-vnet-id') || '',
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      };
+    }).filter(b => b.w > 0 && b.h > 0);
+  }, selector);
+}
+
+/**
+ * Check whether two bounding boxes overlap (with optional margin tolerance).
+ * Returns true if a and b overlap by more than margin pixels.
+ */
+function boxesOverlap(a, b, margin = 0) {
+  return (
+    a.x < b.x + b.w - margin &&
+    a.x + a.w > b.x + margin &&
+    a.y < b.y + b.h - margin &&
+    a.y + a.h > b.y + margin
+  );
+}
+
+/**
+ * Find all overlapping pairs in an array of bounding boxes.
+ * Returns array of { a, b } pairs that overlap beyond the given margin.
+ */
+function findOverlaps(boxes, margin = 0) {
+  const overlaps = [];
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (boxesOverlap(boxes[i], boxes[j], margin)) {
+        overlaps.push({ a: boxes[i], b: boxes[j] });
+      }
+    }
+  }
+  return overlaps;
+}
+
+/**
+ * Get bounding boxes of SVG <text> elements within a parent selector.
+ * Returns screen-space rects using getBoundingClientRect on the text nodes.
+ */
+async function getTextBounds(page, parentSelector) {
+  return page.evaluate((sel) => {
+    const parent = sel ? document.querySelector(sel) : document;
+    if (!parent) return [];
+    const texts = parent.querySelectorAll('text');
+    return Array.from(texts).map((t, i) => {
+      const rect = t.getBoundingClientRect();
+      return {
+        index: i,
+        text: t.textContent?.slice(0, 40) || '',
+        class: t.getAttribute('class') || '',
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        w: Math.round(rect.width),
+        h: Math.round(rect.height),
+      };
+    }).filter(b => b.w > 0 && b.h > 0);
+  }, parentSelector);
+}
+
+/**
+ * Check that a child element is fully contained within a parent element.
+ */
+function isContainedIn(child, parent, tolerance = 2) {
+  return (
+    child.x >= parent.x - tolerance &&
+    child.y >= parent.y - tolerance &&
+    child.x + child.w <= parent.x + parent.w + tolerance &&
+    child.y + child.h <= parent.y + parent.h + tolerance
+  );
+}
+
+/**
+ * Get computed z-index for visible panel elements.
+ */
+async function getPanelZIndexes(page, selectors) {
+  return page.evaluate((sels) => {
+    return sels.map(sel => {
+      const el = document.querySelector(sel);
+      if (!el) return { selector: sel, visible: false, zIndex: null };
+      const style = getComputedStyle(el);
+      const visible = style.display !== 'none' && style.visibility !== 'hidden';
+      return {
+        selector: sel,
+        visible,
+        zIndex: parseInt(style.zIndex) || 0,
+        rect: (() => {
+          const r = el.getBoundingClientRect();
+          return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+        })(),
+      };
+    });
+  }, selectors);
+}
+
+module.exports = {
+  BASE, loadDemo, countElements, openDashTab, clickSubnet, captureErrors,
+  getBoundingBoxes, boxesOverlap, findOverlaps, getTextBounds, isContainedIn, getPanelZIndexes,
+};

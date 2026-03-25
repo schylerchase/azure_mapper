@@ -186,8 +186,10 @@ export function classifyTier(f) {
 export function groupByResource(findings) {
   const map = {};
   findings.forEach(f => {
-    const k = f.resource;
-    if (!map[k]) map[k] = { resource: f.resource, resourceName: f.resourceName || f.resource, findings: [], worstSev: 'LOW', worstTier: 'low', _accountId: f._accountId };
+    // Use resourceId (ARM ID) as key to prevent cross-subscription name collisions.
+    // Falls back to display name for findings without an ARM ID (e.g., subscription-level RBAC).
+    const k = f.resourceId || f.resource;
+    if (!map[k]) map[k] = { resource: f.resource, resourceId: f.resourceId || '', resourceName: f.resourceName || f.resource, findings: [], worstSev: 'LOW', worstTier: 'low', _accountId: f._accountId };
     const tier = classifyTier(f);
     map[k].findings.push(Object.assign({}, f, { effort: getEffort(f), tier: tier }));
     if ((SEV_ORDER[f.severity] || 9) < (SEV_ORDER[map[k].worstSev] || 9)) map[k].worstSev = f.severity;

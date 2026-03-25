@@ -1637,9 +1637,9 @@ export function runComplianceChecks(data, cloudEnv) {
   if (frameworks.includes('CAF')) {
     findings.push(...runCAFChecks(data));
   }
-  if (frameworks.includes('RBAC')) {
-    findings.push(...runRBACChecks(data));
-  }
+  // RBAC checks are handled by the IAM engine (analyzeRoleAssignments) below.
+  // The legacy runRBACChecks() produced duplicate findings with different control IDs
+  // (RBAC-OWNER vs RBAC-1, RBAC-SP-OWNER vs RBAC-2, etc.). Removed to prevent duplicates.
   if (frameworks.includes('SOC2')) {
     findings.push(...runSOC2Checks(data));
   }
