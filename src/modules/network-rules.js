@@ -306,15 +306,21 @@ const _nsgRuleCache = new WeakMap();
 
 function _getCachedRules(nsg, direction) {
   const dirKey = direction.toLowerCase() === 'inbound' ? 'in' : 'out';
-  let cached = _nsgRuleCache.get(nsg);
-  if (cached && cached[dirKey]) return cached[dirKey];
-  const customRules = (nsg && nsg.securityRules) || [];
+  // WeakMap keys must be objects — skip cache for null/undefined/primitive NSG
+  if (nsg && typeof nsg === 'object') {
+    let cached = _nsgRuleCache.get(nsg);
+    if (cached && cached[dirKey]) return cached[dirKey];
+    const customRules = nsg.securityRules || [];
+    const defaults = dirKey === 'in' ? DEFAULT_INBOUND_RULES : DEFAULT_OUTBOUND_RULES;
+    const allRules = [...customRules, ...defaults];
+    allRules.sort((a, b) => a.priority - b.priority);
+    if (!cached) { cached = {}; _nsgRuleCache.set(nsg, cached); }
+    cached[dirKey] = allRules;
+    return allRules;
+  }
+  // Null/missing NSG — return sorted defaults (uncached, rare path)
   const defaults = dirKey === 'in' ? DEFAULT_INBOUND_RULES : DEFAULT_OUTBOUND_RULES;
-  const allRules = [...customRules, ...defaults];
-  allRules.sort((a, b) => a.priority - b.priority);
-  if (!cached) { cached = {}; _nsgRuleCache.set(nsg, cached); }
-  cached[dirKey] = allRules;
-  return allRules;
+  return [...defaults].sort((a, b) => a.priority - b.priority);
 }
 
 /**
