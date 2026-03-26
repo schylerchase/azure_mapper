@@ -1,14 +1,23 @@
 // Utility functions used across the application
 // Azure Network Mapper — rewritten from AWS equivalents
 
+// Maximum input size for safeParse (50 MB) — prevents browser freeze
+// on oversized paste. Typical multi-subscription Azure exports are 5-15 MB.
+const MAX_PARSE_BYTES = 50 * 1024 * 1024;
+
 /**
  * Safe JSON parse with fallback for malformed JSON.
  * Attempts to extract valid JSON objects from text.
+ * Rejects input exceeding MAX_PARSE_BYTES to prevent DoS.
  * @param {string} t - Text to parse
  * @returns {Object|Object[]|null} Parsed JSON or null
  */
 export function safeParse(t) {
   if (!t || !t.trim()) return null;
+  if (t.length > MAX_PARSE_BYTES) {
+    console.warn(`safeParse: input exceeds ${MAX_PARSE_BYTES / 1024 / 1024} MB limit (${(t.length / 1024 / 1024).toFixed(1)} MB) — rejected`);
+    return null;
+  }
   try {
     return JSON.parse(t.trim());
   } catch (e) {

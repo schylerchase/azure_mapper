@@ -24,6 +24,11 @@ describe('safeParse', () => {
   it('returns null for completely invalid text', () => {
     assert.equal(safeParse('no json here'), null);
   });
+  it('rejects input exceeding 50 MB', () => {
+    // Build a string just over the limit (50 MB + 1 byte)
+    const oversize = 'x'.repeat(50 * 1024 * 1024 + 1);
+    assert.equal(safeParse(oversize), null);
+  });
 });
 
 describe('ext', () => {
