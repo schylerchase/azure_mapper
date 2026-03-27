@@ -15,7 +15,9 @@ CLOUD=""
 TENANT=""
 LIGHTHOUSE=false
 EXPORTED=0
+EMPTY=0
 SKIPPED=0
+EXPORT_LOG="["
 
 usage() {
   cat >&2 <<EOF
@@ -159,13 +161,29 @@ if [ -n "$LOC" ]; then
   echo "Location filter: $LOC"
 fi
 
-# --- Helper: export az command output with error capture and location filter ---
+# --- Helper: log entry for export log ---
+
+log_entry() {
+  local label="$1" file="$2" status="$3"
+  shift 3
+  local extra=""
+  if [ "$#" -ge 1 ]; then extra=",\"bytes\":$1"; fi
+  if [ "$#" -ge 2 ]; then extra="$extra,\"items\":$2"; fi
+  if [ "$#" -ge 3 ]; then
+    local escaped
+    escaped=$(echo "$3" | sed 's/"/\\"/g' | head -c 120)
+    extra="$extra,\"detail\":\"$escaped\""
+  fi
+  EXPORT_LOG="${EXPORT_LOG}{\"label\":\"$label\",\"file\":\"$file\",\"status\":\"$status\"${extra}},"
+}
+
+# --- Helper: export az command output with error capture, empty detection, and location filter ---
 
 run_cmd() {
   local desc="$1"
   local outfile="$2"
   shift 2
-  echo "Exporting: $desc..."
+  printf "  %-40s" "$desc..."
 
   local tmpfile="$OUTDIR/.$outfile.tmp"
   local errfile="$OUTDIR/.$outfile.err"
@@ -188,15 +206,24 @@ with open(sys.argv[3], 'w') as f:
     fi
     rm -f "$errfile"
 
-    local count
+    local count size
     count=$(python3 -c "
 import json, sys
 with open(sys.argv[1]) as f:
     d = json.load(f)
 print(len(d) if isinstance(d, list) else 1)
 " "$OUTDIR/$outfile" 2>/dev/null || echo "?")
-    echo "  -> $outfile ($count items)"
-    EXPORTED=$((EXPORTED + 1))
+    size=$(wc -c < "$OUTDIR/$outfile" | tr -d ' ')
+
+    if [ "$count" = "0" ]; then
+      echo "EMPTY (no resources)"
+      EMPTY=$((EMPTY + 1))
+      log_entry "$desc" "$outfile" "EMPTY"
+    else
+      echo "OK ($count items, ${size} bytes)"
+      EXPORTED=$((EXPORTED + 1))
+      log_entry "$desc" "$outfile" "OK" "$size" "$count"
+    fi
   else
     local err_detail=""
     if [ -s "$errfile" ]; then
@@ -205,15 +232,16 @@ print(len(d) if isinstance(d, list) else 1)
       cat "$errfile" >> "$ERRLOG"
       echo "" >> "$ERRLOG"
     fi
-    echo "  -> SKIPPED: $desc${err_detail:+ ($err_detail)}" >&2
+    echo "SKIP${err_detail:+ ($err_detail)}"
     echo "[]" > "$OUTDIR/$outfile"
     rm -f "$tmpfile" "$errfile"
     SKIPPED=$((SKIPPED + 1))
+    log_entry "$desc" "$outfile" "SKIPPED" "" "" "$err_detail"
   fi
   rm -f "$tmpfile"
 }
 
-# --- Helper: merge JSON arrays (used by peerings/SQL loops) ---
+# --- Helper: merge JSON arrays (used by iteration loops) ---
 
 merge_json() {
   python3 -c "
@@ -224,104 +252,272 @@ print(json.dumps(a + b))
 " "$1" "$2"
 }
 
+# --- Helper: iterate-and-merge export (for per-VNet, per-zone, per-server resources) ---
+
+iterate_export() {
+  local desc="$1"
+  local outfile="$2"
+  local list_json="$3"
+  shift 3
+  # Remaining args: the az command template with __NAME__ and __RG__ placeholders
+
+  printf "  %-40s" "$desc..."
+  local merged="[]"
+  local item_count=0
+
+  while IFS=$'\t' read -r iname irg; do
+    [ -z "$iname" ] && continue
+    # Build command by replacing placeholders
+    local cmd_str="$*"
+    cmd_str="${cmd_str//__NAME__/$iname}"
+    cmd_str="${cmd_str//__RG__/$irg}"
+    local result
+    result=$(eval "$cmd_str" 2>/dev/null || echo "[]")
+    merged=$(merge_json "$merged" "$result" 2>/dev/null || echo "$merged")
+    item_count=$((item_count + 1))
+  done < <(echo "$list_json" | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+for r in (data if isinstance(data, list) else []):
+    name = r.get('name', '')
+    rg = r.get('resourceGroup', '')
+    if name and rg:
+        print(f'{name}\t{rg}')
+" 2>/dev/null || true)
+
+  echo "$merged" > "$OUTDIR/$outfile"
+  local count
+  count=$(python3 -c "import json,sys;d=json.loads(sys.argv[1]);print(len(d) if isinstance(d,list) else 0)" "$merged" 2>/dev/null || echo "0")
+
+  if [ "$count" = "0" ]; then
+    echo "EMPTY (0 items from $item_count parents)"
+    EMPTY=$((EMPTY + 1))
+    log_entry "$desc" "$outfile" "EMPTY"
+  else
+    local size
+    size=$(wc -c < "$OUTDIR/$outfile" | tr -d ' ')
+    echo "OK ($count items from $item_count parents, ${size} bytes)"
+    EXPORTED=$((EXPORTED + 1))
+    log_entry "$desc" "$outfile" "OK" "$size" "$count"
+  fi
+}
+
+# --- Write export log ---
+
+write_export_log() {
+  # Remove trailing comma and close the array
+  EXPORT_LOG="${EXPORT_LOG%,}]"
+  echo "$EXPORT_LOG" | python3 -m json.tool > "$OUTDIR/_export-log.json" 2>/dev/null \
+    || echo "$EXPORT_LOG" > "$OUTDIR/_export-log.json"
+}
+
 # ==========================================
 # Export resources
 # ==========================================
 
-# Core Networking
+echo ""
+echo "== Network ======================================"
 run_cmd "Virtual Networks" "vnets.json" az network vnet list "${COMMON_RG[@]}" -o json
 run_cmd "NSGs" "nsgs.json" az network nsg list "${COMMON_RG[@]}" -o json
 run_cmd "Route Tables" "route-tables.json" az network route-table list "${COMMON_RG[@]}" -o json
 run_cmd "NICs" "nics.json" az network nic list "${COMMON_RG[@]}" -o json
 run_cmd "Public IPs" "public-ips.json" az network public-ip list "${COMMON_RG[@]}" -o json
+run_cmd "ASGs" "asgs.json" az network asg list "${COMMON_RG[@]}" -o json
+run_cmd "CDN Profiles" "cdn-profiles.json" az cdn profile list "${COMMON_RG[@]}" -o json
+run_cmd "Traffic Manager" "traffic-manager.json" az network traffic-manager profile list "${COMMON_RG[@]}" -o json
+run_cmd "Private Link Services" "private-link-services.json" az network private-link-service list "${COMMON_RG[@]}" -o json
+run_cmd "DDoS Protection Plans" "ddos-protection.json" az network ddos-protection list "${COMMON_RG[@]}" -o json
+
+# Subnets (per VNet — requires iterating)
+VNET_JSON=$(cat "$OUTDIR/vnets.json" 2>/dev/null || echo "[]")
+iterate_export "Subnets" "subnets.json" "$VNET_JSON" \
+  "az network vnet subnet list --vnet-name __NAME__ -g __RG__ ${COMMON[*]} -o json"
+
+echo ""
+echo "== Gateways ====================================="
 run_cmd "NAT Gateways" "nat-gateways.json" az network nat gateway list "${COMMON_RG[@]}" -o json
 run_cmd "Private Endpoints" "private-endpoints.json" az network private-endpoint list "${COMMON_RG[@]}" -o json
-run_cmd "ASGs" "asgs.json" az network asg list "${COMMON_RG[@]}" -o json
+run_cmd "Azure Firewalls" "firewalls.json" az network firewall list "${COMMON_RG[@]}" -o json
+run_cmd "Bastions" "bastions.json" az network bastion list "${COMMON_RG[@]}" -o json
 
-# Compute
+echo ""
+echo "== Compute ======================================"
 run_cmd "VMs (with details)" "vms.json" az vm list --show-details "${COMMON_RG[@]}" -o json
 run_cmd "Function Apps" "function-apps.json" az functionapp list "${COMMON_RG[@]}" -o json
 run_cmd "Container Instances" "container-instances.json" az container list "${COMMON_RG[@]}" -o json
 run_cmd "AKS Clusters" "aks-clusters.json" az aks list "${COMMON_RG[@]}" -o json
+run_cmd "App Service Plans" "app-service-plans.json" az appservice plan list "${COMMON_RG[@]}" -o json
+run_cmd "Web Apps" "web-apps.json" az webapp list "${COMMON_RG[@]}" -o json
+run_cmd "Container Registries" "container-registries.json" az acr list "${COMMON_RG[@]}" -o json
+run_cmd "Batch Accounts" "batch-accounts.json" az batch account list "${COMMON_RG[@]}" -o json
+run_cmd "Virtual Desktop Host Pools" "virtual-desktop.json" az desktopvirtualization hostpool list "${COMMON_RG[@]}" -o json
 
-# Load Balancing
+echo ""
+echo "== Load Balancing ==============================="
 run_cmd "App Gateways" "app-gateways.json" az network application-gateway list "${COMMON_RG[@]}" -o json
 run_cmd "Load Balancers" "load-balancers.json" az network lb list "${COMMON_RG[@]}" -o json
 
-# VNet Peerings (per VNet — requires iterating)
-echo "Exporting: VNet Peerings..."
-PEERINGS="[]"
-while IFS=$'\t' read -r vname vrg; do
-  [ -z "$vname" ] && continue
-  result=$(az network vnet peering list --vnet-name "$vname" -g "$vrg" "${COMMON[@]}" -o json 2>/dev/null || echo "[]")
-  PEERINGS=$(merge_json "$PEERINGS" "$result" 2>/dev/null || echo "$PEERINGS")
-done < <(az network vnet list "${COMMON_RG[@]}" --query '[].{n:name,rg:resourceGroup}' -o tsv 2>/dev/null || true)
-echo "$PEERINGS" > "$OUTDIR/peerings.json"
-EXPORTED=$((EXPORTED + 1))
-echo "  -> peerings.json"
+echo ""
+echo "== Connectivity ================================="
 
-# Connectivity
+# VNet Peerings (per VNet)
+iterate_export "VNet Peerings" "peerings.json" "$VNET_JSON" \
+  "az network vnet peering list --vnet-name __NAME__ -g __RG__ ${COMMON[*]} -o json"
+
 run_cmd "VPN Connections" "vpn-connections.json" az network vpn-connection list "${COMMON_RG[@]}" -o json
 run_cmd "vWANs" "vwans.json" az network vwan list "${COMMON_RG[@]}" -o json
 run_cmd "Virtual Hubs" "vhubs.json" az network vhub list "${COMMON_RG[@]}" -o json
+run_cmd "VNet Gateways" "vnet-gateways.json" az network vnet-gateway list "${COMMON_RG[@]}" -o json
+run_cmd "Express Route Circuits" "express-routes.json" az network express-route list "${COMMON_RG[@]}" -o json
 
-# Storage
+echo ""
+echo "== Storage ======================================"
 run_cmd "Disks" "disks.json" az disk list "${COMMON_RG[@]}" -o json
 run_cmd "Snapshots" "snapshots.json" az snapshot list "${COMMON_RG[@]}" -o json
 run_cmd "Storage Accounts" "storage-accounts.json" az storage account list "${COMMON_RG[@]}" -o json
+run_cmd "NetApp Files Accounts" "netapp-accounts.json" az netappfiles account list "${COMMON_RG[@]}" -o json
 
-# DNS
+echo ""
+echo "== DNS =========================================="
 run_cmd "DNS Zones" "dns-zones.json" az network dns zone list "${COMMON_RG[@]}" -o json
 run_cmd "Private DNS Zones" "private-dns-zones.json" az network private-dns zone list "${COMMON_RG[@]}" -o json
 
-# Security & Edge
-run_cmd "Front Doors" "front-doors.json" az network front-door list "${COMMON_RG[@]}" -o json
-run_cmd "WAF Policies" "waf-policies.json" az network application-gateway waf-policy list "${COMMON_RG[@]}" -o json
+# DNS Record Sets (iterate public + private zones)
+DNS_ZONE_JSON=$(cat "$OUTDIR/dns-zones.json" 2>/dev/null || echo "[]")
+PDNS_ZONE_JSON=$(cat "$OUTDIR/private-dns-zones.json" 2>/dev/null || echo "[]")
 
-# Database
-run_cmd "SQL Servers" "sql-servers.json" az sql server list "${COMMON_RG[@]}" -o json
+printf "  %-40s" "DNS Record Sets..."
+DNS_RECORDS="[]"
+DNS_REC_PARENTS=0
+# Public DNS zones
+while IFS=$'\t' read -r zname zrg; do
+  [ -z "$zname" ] && continue
+  result=$(az network dns record-set list --zone-name "$zname" -g "$zrg" "${COMMON[@]}" -o json 2>/dev/null || echo "[]")
+  DNS_RECORDS=$(merge_json "$DNS_RECORDS" "$result" 2>/dev/null || echo "$DNS_RECORDS")
+  DNS_REC_PARENTS=$((DNS_REC_PARENTS + 1))
+done < <(echo "$DNS_ZONE_JSON" | python3 -c "
+import json, sys
+for r in json.load(sys.stdin):
+    print(f'{r.get(\"name\",\"\")}\t{r.get(\"resourceGroup\",\"\")}')
+" 2>/dev/null || true)
+# Private DNS zones
+while IFS=$'\t' read -r zname zrg; do
+  [ -z "$zname" ] && continue
+  result=$(az network private-dns record-set list --zone-name "$zname" -g "$zrg" "${COMMON[@]}" -o json 2>/dev/null || echo "[]")
+  DNS_RECORDS=$(merge_json "$DNS_RECORDS" "$result" 2>/dev/null || echo "$DNS_RECORDS")
+  DNS_REC_PARENTS=$((DNS_REC_PARENTS + 1))
+done < <(echo "$PDNS_ZONE_JSON" | python3 -c "
+import json, sys
+for r in json.load(sys.stdin):
+    print(f'{r.get(\"name\",\"\")}\t{r.get(\"resourceGroup\",\"\")}')
+" 2>/dev/null || true)
+echo "$DNS_RECORDS" > "$OUTDIR/dns-records.json"
+DNS_REC_COUNT=$(python3 -c "import json,sys;d=json.loads(sys.argv[1]);print(len(d) if isinstance(d,list) else 0)" "$DNS_RECORDS" 2>/dev/null || echo "0")
+if [ "$DNS_REC_COUNT" = "0" ]; then
+  echo "EMPTY (0 records from $DNS_REC_PARENTS zones)"
+  EMPTY=$((EMPTY + 1))
+  log_entry "DNS Record Sets" "dns-records.json" "EMPTY"
+else
+  DNS_REC_SIZE=$(wc -c < "$OUTDIR/dns-records.json" | tr -d ' ')
+  echo "OK ($DNS_REC_COUNT records from $DNS_REC_PARENTS zones, ${DNS_REC_SIZE} bytes)"
+  EXPORTED=$((EXPORTED + 1))
+  log_entry "DNS Record Sets" "dns-records.json" "OK" "$DNS_REC_SIZE" "$DNS_REC_COUNT"
+fi
 
-# SQL Databases (per server — requires iterating)
-echo "Exporting: SQL Databases..."
-SQL_DBS="[]"
-while IFS=$'\t' read -r sname srg; do
-  [ -z "$sname" ] && continue
-  result=$(az sql db list -s "$sname" -g "$srg" "${COMMON[@]}" -o json 2>/dev/null || echo "[]")
-  SQL_DBS=$(merge_json "$SQL_DBS" "$result" 2>/dev/null || echo "$SQL_DBS")
-done < <(az sql server list "${COMMON_RG[@]}" --query '[].{n:name,rg:resourceGroup}' -o tsv 2>/dev/null || true)
-echo "$SQL_DBS" > "$OUTDIR/sql-databases.json"
-EXPORTED=$((EXPORTED + 1))
-echo "  -> sql-databases.json"
-
-run_cmd "Redis Caches" "redis-caches.json" az redis list "${COMMON_RG[@]}" -o json
-run_cmd "Synapse Workspaces" "synapse-workspaces.json" az synapse workspace list "${COMMON_RG[@]}" -o json
-
-# Identity (no RG filter — these are subscription-scoped)
-run_cmd "Role Assignments" "role-assignments.json" az role assignment list "${COMMON[@]}" --all -o json
-run_cmd "Role Definitions" "role-definitions.json" az role definition list "${COMMON[@]}" -o json
-
-# Azure-Specific
-run_cmd "Resource Groups" "resource-groups.json" az group list "${COMMON[@]}" -o json
-run_cmd "Bastions" "bastions.json" az network bastion list "${COMMON_RG[@]}" -o json
-run_cmd "Network Watchers" "network-watchers.json" az network watcher list "${COMMON[@]}" -o json
-run_cmd "Firewalls" "firewalls.json" az network firewall list "${COMMON_RG[@]}" -o json
-
-# ==========================================
-# Summary
-# ==========================================
+# Private DNS Zone VNet Links (iterate private zones)
+iterate_export "Private DNS Zone Links" "private-dns-links.json" "$PDNS_ZONE_JSON" \
+  "az network private-dns link vnet list --zone-name __NAME__ -g __RG__ ${COMMON[*]} -o json"
 
 echo ""
-echo "Export complete: $OUTDIR"
-echo "  Exported: $EXPORTED resource types"
+echo "== Security & Edge =============================="
+run_cmd "Front Doors" "front-doors.json" az network front-door list "${COMMON_RG[@]}" -o json
+run_cmd "WAF Policies" "waf-policies.json" az network application-gateway waf-policy list "${COMMON_RG[@]}" -o json
+run_cmd "Key Vaults" "key-vaults.json" az keyvault list "${COMMON_RG[@]}" -o json
+
+echo ""
+echo "== Database ====================================="
+run_cmd "SQL Servers" "sql-servers.json" az sql server list "${COMMON_RG[@]}" -o json
+
+# SQL Databases (per server)
+SQL_SERVER_JSON=$(cat "$OUTDIR/sql-servers.json" 2>/dev/null || echo "[]")
+iterate_export "SQL Databases" "sql-databases.json" "$SQL_SERVER_JSON" \
+  "az sql db list -s __NAME__ -g __RG__ ${COMMON[*]} -o json"
+
+run_cmd "Redis Caches" "redis-caches.json" az redis list "${COMMON_RG[@]}" -o json
+run_cmd "Cosmos DB Accounts" "cosmos-accounts.json" az cosmosdb list "${COMMON_RG[@]}" -o json
+run_cmd "Synapse Workspaces" "synapse-workspaces.json" az synapse workspace list "${COMMON_RG[@]}" -o json
+run_cmd "MySQL Flexible Servers" "mysql-servers.json" az mysql flexible-server list "${COMMON_RG[@]}" -o json
+run_cmd "PostgreSQL Flexible Servers" "postgres-servers.json" az postgres flexible-server list "${COMMON_RG[@]}" -o json
+
+echo ""
+echo "== Integration =================================="
+run_cmd "Service Bus Namespaces" "service-bus.json" az servicebus namespace list "${COMMON_RG[@]}" -o json
+run_cmd "Event Hub Namespaces" "event-hubs.json" az eventhubs namespace list "${COMMON_RG[@]}" -o json
+run_cmd "API Management" "api-management.json" az apim list "${COMMON_RG[@]}" -o json
+run_cmd "Logic Apps" "logic-apps.json" az logic workflow list "${COMMON_RG[@]}" -o json
+run_cmd "SignalR Services" "signalr.json" az signalr list "${COMMON_RG[@]}" -o json
+run_cmd "Relay Namespaces" "relay-namespaces.json" az relay namespace list "${COMMON_RG[@]}" -o json
+run_cmd "Data Factories" "data-factories.json" az datafactory list "${COMMON_RG[@]}" -o json
+run_cmd "IoT Hubs" "iot-hubs.json" az iot hub list "${COMMON_RG[@]}" -o json
+
+echo ""
+echo "== Observability ================================"
+run_cmd "Application Insights" "app-insights.json" az monitor app-insights component list "${COMMON_RG[@]}" -o json
+run_cmd "Log Analytics Workspaces" "log-analytics.json" az monitor log-analytics workspace list "${COMMON_RG[@]}" -o json
+run_cmd "Monitor Action Groups" "action-groups.json" az monitor action-group list "${COMMON_RG[@]}" -o json
+run_cmd "Monitor Metric Alerts" "metric-alerts.json" az monitor metrics alert list "${COMMON_RG[@]}" -o json
+run_cmd "Automation Accounts" "automation-accounts.json" az automation account list "${COMMON_RG[@]}" -o json
+
+echo ""
+echo "== Identity ====================================="
+run_cmd "Role Assignments" "role-assignments.json" az role assignment list "${COMMON[@]}" --all -o json
+run_cmd "Role Definitions" "role-definitions.json" az role definition list "${COMMON[@]}" -o json
+run_cmd "Managed Identities" "managed-identities.json" az identity list "${COMMON_RG[@]}" -o json
+run_cmd "Policy Assignments" "policy-assignments.json" az policy assignment list -o json
+
+echo ""
+echo "== Azure Resources =============================="
+run_cmd "Resource Groups" "resource-groups.json" az group list "${COMMON[@]}" -o json
+run_cmd "Network Watchers" "network-watchers.json" az network watcher list "${COMMON[@]}" -o json
+run_cmd "Azure Arc Machines" "arc-machines.json" az connectedmachine list "${COMMON_RG[@]}" -o json
+run_cmd "Recovery Services Vaults" "recovery-vaults.json" az backup vault list "${COMMON_RG[@]}" -o json
+run_cmd "Managed Applications" "managed-apps.json" az managedapp list "${COMMON_RG[@]}" -o json
+run_cmd "Azure Maps Accounts" "maps-accounts.json" az maps account list "${COMMON_RG[@]}" -o json
+
+echo ""
+echo "== AI & Cognitive ==============================="
+run_cmd "Cognitive Services" "cognitive-services.json" az cognitiveservices account list "${COMMON_RG[@]}" -o json
+run_cmd "ML Workspaces" "ml-workspaces.json" az ml workspace list "${COMMON_RG[@]}" -o json
+run_cmd "Purview Accounts" "purview-accounts.json" az purview account list "${COMMON_RG[@]}" -o json
+
+# ==========================================
+# Export log + Summary
+# ==========================================
+
+write_export_log
+
+echo ""
+echo "================================================="
+TOTAL=$((EXPORTED + EMPTY + SKIPPED))
+echo "  Export complete: $OUTDIR"
+echo "  Total: $TOTAL resource types"
+echo "    OK:      $EXPORTED (with data)"
+echo "    Empty:   $EMPTY (no resources found)"
 if [ "$SKIPPED" -gt 0 ]; then
-  echo "  Skipped:  $SKIPPED resource types (see $ERRLOG for details)"
+  echo "    Skipped: $SKIPPED (see $ERRLOG)"
 fi
 echo ""
 echo "Files:"
 for f in "$OUTDIR"/*.json; do
   [ -f "$f" ] || continue
+  fname=$(basename "$f")
+  [ "$fname" = "_export-log.json" ] && continue
   size=$(wc -c < "$f" | tr -d ' ')
-  echo "  $(basename "$f") (${size} bytes)"
+  echo "  $fname (${size} bytes)"
 done
 echo ""
-echo "To load: Use 'Upload JSON Files' in Azure Network Mapper and select all files from $OUTDIR/"
+echo "  Export log: $OUTDIR/_export-log.json"
+echo ""
+echo "To load: Use 'Upload JSON Files' in Azure Network Mapper"
+echo "         and select all files from $OUTDIR/"
+echo "================================================="
