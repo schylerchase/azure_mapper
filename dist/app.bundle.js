@@ -2263,10 +2263,10 @@ var AppBundle = (() => {
   var _BUDR_STRATEGY = { hot: "Hot", warm: "Warm", pilot: "Pilot Light", cold: "Cold" };
   var _BUDR_STRATEGY_ORDER = { hot: 0, warm: 1, pilot: 2, cold: 3 };
   var _BUDR_STRATEGY_LEGEND = [
-    { k: "critical", label: "Critical (Hot)", color: "#ef4444", icon: "\u{1F534}", desc: "Active-active: full replica running at all times. Near-zero RTO & RPO." },
-    { k: "high", label: "High (Warm)", color: "#f59e0b", icon: "\u{1F7E1}", desc: "Scaled-down replica running. Scale up on failover. Minutes to recover." },
-    { k: "medium", label: "Medium (Pilot Light)", color: "#6366f1", icon: "\u{1F7E3}", desc: "Data replicated continuously, compute stopped. Spin up on failover. ~10-30 min." },
-    { k: "low", label: "Low (Cold)", color: "#64748b", icon: "\u26AA", desc: "Backups only, no standby. Rebuild from scratch. Hours to recover." }
+    { k: "critical", label: "Critical (Hot)", color: "#ef4444", icon: "", desc: "Active-active: full replica running at all times. Near-zero RTO & RPO." },
+    { k: "high", label: "High (Warm)", color: "#f59e0b", icon: "", desc: "Scaled-down replica running. Scale up on failover. Minutes to recover." },
+    { k: "medium", label: "Medium (Pilot Light)", color: "#6366f1", icon: "", desc: "Data replicated continuously, compute stopped. Spin up on failover. ~10-30 min." },
+    { k: "low", label: "Low (Cold)", color: "#64748b", icon: "", desc: "Backups only, no standby. Rebuild from scratch. Hours to recover." }
   ];
   var _BUDR_RTO_RPO = {
     sql_zone_redundant: { rto: "~5 min", rpo: "~1 min", tier: "protected", strategy: "warm" },

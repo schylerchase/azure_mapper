@@ -14,7 +14,7 @@
     --fw-color:#ef4444;--bastion-color:#10b981;--aks-color:#8b5cf6;
     /* Legacy alias for any remaining references */
     --vpc-stroke:var(--vnet-stroke);
-    --txt-scale:1;--dp-txt-scale:1;
+    --txt-scale:1.15;--dp-txt-scale:1.15;
     /* Transparency variables (dark defaults) */
     --overlay-bg:rgba(10,17,30,.92);
     --panel-bg:rgba(10,14,23,.97);
@@ -25,6 +25,10 @@
     --shadow-heavy:rgba(0,0,0,.5);
     --grid-color:rgba(50,70,100,.35);
   }
+  /* Global readability: bump minimum font sizes for dashboard/sidebar text */
+  .udash-body,.udash-toolbar,.sidebar,.comp-table,.fw-card,.inv-table,.gov-table{font-size:12px}
+  .udash-body td,.udash-body th,.comp-table td,.comp-table th,.inv-table td,.inv-table th{font-size:12px}
+  .comp-sev-pill,.fw-summary-card .fw-card-sub,.tier-count,.tier-effort{font-size:11px}
   /* ── Light theme overrides ──────────────────────────────────── */
   [data-theme="light"] {
     color-scheme:light;

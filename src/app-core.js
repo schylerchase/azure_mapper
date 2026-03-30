@@ -340,10 +340,10 @@ function _runComplianceWithCache(ctx){
 const _BUDR_STRATEGY={hot:'Hot',warm:'Warm',pilot:'Pilot Light',cold:'Cold'};
 const _BUDR_STRATEGY_ORDER={hot:0,warm:1,pilot:2,cold:3};
 const _BUDR_STRATEGY_LEGEND=[
-  {k:'critical',label:'Critical (Hot)',color:'#ef4444',icon:'🔴',desc:'Active-active: full replica running at all times. Near-zero RTO & RPO.'},
-  {k:'high',label:'High (Warm)',color:'#f59e0b',icon:'🟡',desc:'Scaled-down replica running. Scale up on failover. Minutes to recover.'},
-  {k:'medium',label:'Medium (Pilot Light)',color:'#6366f1',icon:'🟣',desc:'Data replicated continuously, compute stopped. Spin up on failover. ~10-30 min.'},
-  {k:'low',label:'Low (Cold)',color:'#64748b',icon:'⚪',desc:'Backups only, no standby. Rebuild from scratch. Hours to recover.'}
+  {k:'critical',label:'Critical (Hot)',color:'#ef4444',icon:'',desc:'Active-active: full replica running at all times. Near-zero RTO & RPO.'},
+  {k:'high',label:'High (Warm)',color:'#f59e0b',icon:'',desc:'Scaled-down replica running. Scale up on failover. Minutes to recover.'},
+  {k:'medium',label:'Medium (Pilot Light)',color:'#6366f1',icon:'',desc:'Data replicated continuously, compute stopped. Spin up on failover. ~10-30 min.'},
+  {k:'low',label:'Low (Cold)',color:'#64748b',icon:'',desc:'Backups only, no standby. Rebuild from scratch. Hours to recover.'}
 ];
 const _BUDR_RTO_RPO={
   rds_multi_az:{rto:'~5 min',rpo:'~1 min',tier:'protected',strategy:'warm'},
@@ -1668,7 +1668,7 @@ function _rptBUDRStrategyLegend(){
   h+='<div style="color:var(--text-muted);font-weight:600;margin-bottom:6px;font-size:10px;letter-spacing:.5px">DR STRATEGY REFERENCE</div>';
   _BUDR_STRATEGY_LEGEND.forEach(function(s){
     h+='<div style="display:flex;align-items:baseline;gap:6px;margin-bottom:3px">';
-    h+='<span style="color:'+s.color+';font-weight:700;min-width:100px">'+s.icon+' '+esc(s.label)+'</span>';
+    h+='<span style="color:'+s.color+';font-weight:700;min-width:100px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:'+s.color+';margin-right:4px;vertical-align:middle"></span>'+esc(s.label)+'</span>';
     h+='<span style="color:var(--text-secondary)">'+esc(s.desc)+'</span>';
     h+='</div>';
   });
@@ -19189,7 +19189,7 @@ function _renderBUDRDash(){
       // Classification tier badge + compliance indicator
       var ct=a.classTier||'low';var cc=a.compliance||{status:'unknown'};
       var tierColors={critical:'#ef4444',high:'#f59e0b',medium:'#22d3ee',low:'#64748b'};
-      var compIcon=cc.status==='pass'?'✓':cc.status==='warn'?'⚠':cc.status==='fail'?'✗':'?';
+      var compIcon=cc.status==='pass'?'✓':cc.status==='warn'?'!':cc.status==='fail'?'✗':'?';
       var compColor=cc.status==='pass'?'#22c55e':cc.status==='warn'?'#f59e0b':cc.status==='fail'?'#ef4444':'#64748b';
       h+='<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:'+tierColors[ct]+'22;color:'+tierColors[ct]+';border:1px solid '+tierColors[ct]+'44;margin-left:auto">'+ct.toUpperCase()+'</span>';
       h+='<span style="font-size:9px;color:'+compColor+';margin-left:4px" title="'+esc(cc.issues?cc.issues.map(function(i){return i.msg}).join('; '):'')+'">'+compIcon+'</span>';
