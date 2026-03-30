@@ -176,19 +176,19 @@ $exports = @(
     @{ Label="App Gateways";             File="app-gateways.json";         Cmd=@("network","application-gateway","list");               UseRg=$true  },
     @{ Label="Load Balancers";           File="load-balancers.json";       Cmd=@("network","lb","list");                                UseRg=$true  },
     # == Connectivity ==
-    @{ Label="VPN Connections";          File="vpn-connections.json";      Cmd=@("network","vpn-connection","list");                    UseRg=$true  },
+    @{ Label="VPN Connections";          File="vpn-connections.json";      Cmd=@("resource","list","--resource-type","Microsoft.Network/connections"); UseRg=$false },
     @{ Label="vWANs";                    File="vwans.json";                Cmd=@("network","vwan","list");                              UseRg=$true  },
     @{ Label="Virtual Hubs";             File="vhubs.json";                Cmd=@("network","vhub","list");                              UseRg=$true  },
-    @{ Label="VNet Gateways";            File="vnet-gateways.json";        Cmd=@("network","vnet-gateway","list");                      UseRg=$true  },
+    @{ Label="VNet Gateways";            File="vnet-gateways.json";        Cmd=@("resource","list","--resource-type","Microsoft.Network/virtualNetworkGateways"); UseRg=$false },
     @{ Label="Express Route Circuits";   File="express-routes.json";       Cmd=@("network","express-route","list");                     UseRg=$true  },
     # == Storage ==
-    @{ Label="Disks";                    File="disks.json";                Cmd=@("disk","list");                                        UseRg=$true  },
+    @{ Label="Disks";                    File="disks.json";                Cmd=@("resource","list","--resource-type","Microsoft.Compute/disks"); UseRg=$false },
     @{ Label="Snapshots";                File="snapshots.json";            Cmd=@("snapshot","list");                                    UseRg=$true  },
     @{ Label="Storage Accounts";         File="storage-accounts.json";     Cmd=@("storage","account","list");                           UseRg=$true  },
     @{ Label="NetApp Files";             File="netapp-accounts.json";      Cmd=@("netappfiles","account","list");                       UseRg=$true  },
     # == DNS ==
-    @{ Label="DNS Zones";                File="dns-zones.json";            Cmd=@("network","dns","zone","list");                        UseRg=$true  },
-    @{ Label="Private DNS Zones";        File="private-dns-zones.json";    Cmd=@("network","private-dns","zone","list");                UseRg=$true  },
+    @{ Label="DNS Zones";                File="dns-zones.json";            Cmd=@("resource","list","--resource-type","Microsoft.Network/dnsZones"); UseRg=$false },
+    @{ Label="Private DNS Zones";        File="private-dns-zones.json";    Cmd=@("resource","list","--resource-type","Microsoft.Network/privateDnsZones"); UseRg=$false },
     # == Security & Edge ==
     @{ Label="Front Doors";              File="front-doors.json";          Cmd=@("network","front-door","list");                        UseRg=$true  },
     @{ Label="WAF Policies";             File="waf-policies.json";         Cmd=@("network","application-gateway","waf-policy","list");  UseRg=$true  },
@@ -210,7 +210,7 @@ $exports = @(
     @{ Label="Data Factories";           File="data-factories.json";       Cmd=@("datafactory","list");                                 UseRg=$true  },
     @{ Label="IoT Hubs";                 File="iot-hubs.json";             Cmd=@("iot","hub","list");                                   UseRg=$true  },
     # == Observability ==
-    @{ Label="Application Insights";     File="app-insights.json";         Cmd=@("monitor","app-insights","component","list");          UseRg=$true  },
+    @{ Label="Application Insights";     File="app-insights.json";         Cmd=@("resource","list","--resource-type","Microsoft.Insights/components"); UseRg=$false },
     @{ Label="Log Analytics Workspaces"; File="log-analytics.json";        Cmd=@("monitor","log-analytics","workspace","list");         UseRg=$true  },
     @{ Label="Monitor Action Groups";    File="action-groups.json";        Cmd=@("monitor","action-group","list");                      UseRg=$true  },
     @{ Label="Monitor Metric Alerts";    File="metric-alerts.json";        Cmd=@("monitor","metrics","alert","list");                   UseRg=$true  },
@@ -227,7 +227,7 @@ $exports = @(
     # == Infrastructure ==
     @{ Label="Resource Groups";          File="resource-groups.json";      Cmd=@("group","list");                                       UseRg=$false },
     @{ Label="Network Watchers";         File="network-watchers.json";     Cmd=@("network","watcher","list");                           UseRg=$false },
-    @{ Label="Azure Arc Machines";       File="arc-machines.json";         Cmd=@("connectedmachine","list");                            UseRg=$true  },
+    @{ Label="Azure Arc Machines";       File="arc-machines.json";         Cmd=@("resource","list","--resource-type","Microsoft.HybridCompute/machines"); UseRg=$false },
     @{ Label="Recovery Services Vaults"; File="recovery-vaults.json";      Cmd=@("backup","vault","list");                              UseRg=$true  },
     @{ Label="Managed Applications";     File="managed-apps.json";         Cmd=@("managedapp","list");                                  UseRg=$true  },
     @{ Label="Azure Maps";               File="maps-accounts.json";        Cmd=@("maps","account","list");                              UseRg=$true  }
@@ -267,11 +267,29 @@ $results = $exports | ForEach-Object -ThrottleLimit $MaxParallel -Parallel {
     $sw.Stop()
     $elapsed = "{0:N1}s" -f $sw.Elapsed.TotalSeconds
 
-    if ($succeeded) {
+    # Robust success check: verify output looks like JSON, not just $LASTEXITCODE
+    # ($LASTEXITCODE can be unreliable in -Parallel runspaces on PS 7.0-7.2)
+    $jsonStr = ''
+    if ($rawResult) {
+        $jsonStr = (($rawResult | Where-Object { $_ -is [string] }) -join "`n").Trim()
+    }
+    $looksLikeJson = $jsonStr -and ($jsonStr.StartsWith('[') -or $jsonStr.StartsWith('{'))
+
+    if ($succeeded -and $looksLikeJson) {
         try {
-            $jsonStr = ($rawResult | Where-Object { $_ -is [string] }) -join "`n"
-            $json = $jsonStr | ConvertFrom-Json
-            $items = if ($json -is [System.Array]) { $json } else { @($json) }
+            # Handle empty arrays without ConvertFrom-Json (avoids pipeline unrolling null)
+            if ($jsonStr -eq '[]') {
+                $items = @()
+            } else {
+                $parsed = $jsonStr | ConvertFrom-Json
+                if ($null -eq $parsed) {
+                    $items = @()
+                } elseif ($parsed -is [System.Array]) {
+                    $items = $parsed
+                } else {
+                    $items = @($parsed)
+                }
+            }
 
             # Apply location filter if specified
             if ($locFilter -and $items.Count -gt 0) {
@@ -291,6 +309,11 @@ $results = $exports | ForEach-Object -ThrottleLimit $MaxParallel -Parallel {
             $size = (Get-Item $filePath).Length
             @{ Label=$export.Label; File=$export.File; Status="OK"; Bytes=$size; Elapsed=$elapsed; Items="?" }
         }
+    } elseif ($succeeded -and -not $looksLikeJson) {
+        # Command "succeeded" but output isn't JSON — likely a stderr-only response
+        "[]" | Out-File -FilePath $filePath -Encoding utf8
+        $detail = if ($jsonStr) { $jsonStr.Substring(0, [Math]::Min($jsonStr.Length, 80)) } else { "no output" }
+        @{ Label=$export.Label; File=$export.File; Status="SKIP"; Detail=$detail; Elapsed=$elapsed }
     } else {
         "[]" | Out-File -FilePath $filePath -Encoding utf8
         $errMsg = ($rawResult | Out-String).Trim()
@@ -301,16 +324,35 @@ $results = $exports | ForEach-Object -ThrottleLimit $MaxParallel -Parallel {
 
 # Print results sorted by status
 $okCount = 0; $emptyCount = 0; $skipCount = 0
-foreach ($r in $results | Sort-Object { switch($_.Status){ "OK"{0} "EMPTY"{1} "SKIP"{2} } }, Label) {
-    $color = switch ($r.Status) { "OK" { "Green" } "EMPTY" { "Yellow" } "SKIP" { "Red" } default { "Gray" } }
-    $detail = switch ($r.Status) {
-        "OK"    { "$($r.Items) items, $([Math]::Round($r.Bytes/1KB,1))KB" }
-        "EMPTY" { "no resources" }
-        "SKIP"  { $r.Detail }
+if (-not $results -or @($results).Count -eq 0) {
+    Write-Host "  WARNING: No results returned from parallel export block!" -ForegroundColor Red
+    Write-Host "  This may indicate a PowerShell version issue with ForEach-Object -Parallel." -ForegroundColor Red
+    Write-Host "  PowerShell version: $($PSVersionTable.PSVersion)" -ForegroundColor Yellow
+} else {
+    foreach ($r in $results | Sort-Object { switch($_.Status){ "OK"{0} "EMPTY"{1} "SKIP"{2} } }, Label) {
+        $color = switch ($r.Status) { "OK" { "Green" } "EMPTY" { "Yellow" } "SKIP" { "Red" } default { "Gray" } }
+        $detail = switch ($r.Status) {
+            "OK"    { "$($r.Items) items, $([Math]::Round($r.Bytes/1KB,1))KB" }
+            "EMPTY" { "no resources" }
+            "SKIP"  { $r.Detail }
+        }
+        $line = "  {0,-38} {1,-6} ({2})  {3}" -f $r.Label, $r.Status, $detail, $r.Elapsed
+        Write-Host $line -ForegroundColor $color
+        switch ($r.Status) { "OK" { $okCount++ } "EMPTY" { $emptyCount++ } "SKIP" { $skipCount++ } }
     }
-    $line = "  {0,-38} {1,-6} ({2})  {3}" -f $r.Label, $r.Status, $detail, $r.Elapsed
-    Write-Host $line -ForegroundColor $color
-    switch ($r.Status) { "OK" { $okCount++ } "EMPTY" { $emptyCount++ } "SKIP" { $skipCount++ } }
+}
+
+# Diagnostic warning if everything was skipped or empty
+if ($skipCount -gt 0 -and $okCount -eq 0) {
+    Write-Host ""
+    Write-Host "  WARNING: All exports were SKIPPED or EMPTY." -ForegroundColor Red
+    Write-Host "  Possible causes:" -ForegroundColor Yellow
+    Write-Host "    - az CLI auth expired (run: az login)" -ForegroundColor Yellow
+    Write-Host "    - Wrong subscription (run: az account show)" -ForegroundColor Yellow
+    Write-Host "    - Missing CLI extensions for some resource types" -ForegroundColor Yellow
+    Write-Host "    - Permissions issue on the subscription" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Quick test: az network vnet list --subscription '$Subscription' -o json" -ForegroundColor Yellow
 }
 
 # ─── Multi-step exports (sequential — depend on prior outputs) ─
@@ -319,9 +361,17 @@ Write-Host ""
 Write-Host "  Multi-step exports:" -ForegroundColor Cyan
 
 function Get-JsonArray([string]$FilePath) {
-    if (-not (Test-Path $FilePath)) { return @() }
-    $content = Get-Content $FilePath -Raw | ConvertFrom-Json
-    if ($content -is [System.Array]) { return $content } else { return @($content) }
+    if (-not (Test-Path $FilePath)) { return ,@() }
+    $raw = (Get-Content $FilePath -Raw)
+    if (-not $raw) { return ,@() }
+    $trimmed = $raw.Trim()
+    if (-not $trimmed -or $trimmed -eq '[]' -or $trimmed -eq 'null') { return ,@() }
+    try {
+        $parsed = $trimmed | ConvertFrom-Json
+        if ($null -eq $parsed) { return ,@() }
+        if ($parsed -is [System.Array]) { return ,$parsed }
+        return ,@($parsed)
+    } catch { return ,@() }
 }
 
 function Export-IteratedResource {
@@ -336,6 +386,7 @@ function Export-IteratedResource {
     $all = @()
     $parentCount = 0
     foreach ($parent in $Parents) {
+        if ($null -eq $parent) { continue }
         $name = $parent.name
         $rg = $parent.resourceGroup
         if (-not $name -or -not $rg) { continue }
@@ -344,8 +395,14 @@ function Export-IteratedResource {
             $cmd = & $CommandBuilder $name $rg
             $result = Invoke-AzWithRetry -Cmd $cmd
             if ($LASTEXITCODE -eq 0 -and $result) {
-                $parsed = ($result | Out-String) | ConvertFrom-Json
-                if ($parsed -is [System.Array]) { $all += $parsed } else { $all += @($parsed) }
+                $str = ($result | Out-String).Trim()
+                # Skip empty/null JSON to avoid injecting nulls
+                if ($str -and $str -ne '[]' -and $str -ne 'null') {
+                    $parsed = $str | ConvertFrom-Json
+                    if ($null -ne $parsed) {
+                        if ($parsed -is [System.Array]) { $all += $parsed } else { $all += @($parsed) }
+                    }
+                }
             }
         } catch {
             Write-Warning "  $Label - failed for '$name' in '$rg': $_"
@@ -354,11 +411,13 @@ function Export-IteratedResource {
     $sw.Stop()
     $elapsed = "{0:N1}s" -f $sw.Elapsed.TotalSeconds
     $filePath = Join-Path $OutputDir $OutFile
-    $all | ConvertTo-Json -Depth 20 -AsArray | Out-File -FilePath $filePath -Encoding utf8
+    # Write [] explicitly for empty — piping @() through ConvertTo-Json produces empty file
     if ($all.Count -eq 0) {
+        "[]" | Out-File -FilePath $filePath -Encoding utf8
         Write-Host " EMPTY (0 from $parentCount parents) $elapsed" -ForegroundColor Yellow
         $script:emptyCount++
     } else {
+        $all | ConvertTo-Json -Depth 20 -AsArray | Out-File -FilePath $filePath -Encoding utf8
         $size = (Get-Item $filePath).Length
         Write-Host " OK ($($all.Count) items from $parentCount parents, $([Math]::Round($size/1KB,1))KB) $elapsed" -ForegroundColor Green
         $script:okCount++
@@ -399,7 +458,12 @@ Export-IteratedResource -Label "DNS Records (private)" -OutFile "dns-records-pri
 $pubRecords = Get-JsonArray (Join-Path $OutputDir "dns-records-public.json")
 $privRecords = Get-JsonArray (Join-Path $OutputDir "dns-records-private.json")
 $allDnsRecords = @($pubRecords) + @($privRecords)
-$allDnsRecords | ConvertTo-Json -Depth 20 -AsArray | Out-File -FilePath (Join-Path $OutputDir "dns-records.json") -Encoding utf8
+$dnsOutPath = Join-Path $OutputDir "dns-records.json"
+if ($allDnsRecords.Count -eq 0) {
+    "[]" | Out-File -FilePath $dnsOutPath -Encoding utf8
+} else {
+    $allDnsRecords | ConvertTo-Json -Depth 20 -AsArray | Out-File -FilePath $dnsOutPath -Encoding utf8
+}
 Remove-Item (Join-Path $OutputDir "dns-records-public.json") -ErrorAction SilentlyContinue
 Remove-Item (Join-Path $OutputDir "dns-records-private.json") -ErrorAction SilentlyContinue
 
