@@ -11614,12 +11614,14 @@ if(_isElectron){
         }));
       }
       Promise.all(pending).then(()=>{
+        // Extract folder name from first file's webkitRelativePath
+        var folderName=(inp.files[0]&&inp.files[0].webkitRelativePath||'').split('/')[0]||'';
         if(Object.keys(profiles).length){
-          importFolder({_structure:'multi-profile',profiles,files:flatFiles});
+          importFolder({_structure:'multi-profile',profiles,files:flatFiles,_folderName:folderName});
         }else if(Object.keys(regions).length){
-          importFolder({_structure:'multi-region',regions,files:flatFiles});
+          importFolder({_structure:'multi-region',regions,files:flatFiles,_folderName:folderName});
         }else{
-          importFolder({_structure:'flat',files:flatFiles});
+          importFolder({_structure:'flat',files:flatFiles,_folderName:folderName});
         }
       });
     });
@@ -11669,12 +11671,13 @@ if(_isElectron){
           flatFiles[name]=await file.text();
         }
       }
+      var dirName=dirHandle.name||'';
       if(Object.keys(profiles).length){
-        importFolder({_structure:'multi-profile',profiles,files:flatFiles});
+        importFolder({_structure:'multi-profile',profiles,files:flatFiles,_folderName:dirName});
       }else if(Object.keys(regions).length){
-        importFolder({_structure:'multi-region',regions,files:flatFiles});
+        importFolder({_structure:'multi-region',regions,files:flatFiles,_folderName:dirName});
       }else{
-        importFolder({_structure:'flat',files:flatFiles});
+        importFolder({_structure:'flat',files:flatFiles,_folderName:dirName});
       }
     }catch(e){
       if(e.name==='AbortError')return;// user cancelled
