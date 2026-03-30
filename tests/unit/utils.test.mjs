@@ -188,3 +188,28 @@ describe('getTenantFromResource', () => {
     assert.equal(getTenantFromResource({ name: 'hub-vnet' }), '');
   });
 });
+
+// ─── R1.2: ext() edge cases ──────────────────────────────────────────────────
+
+describe('ext() edge cases (R1.2)', () => {
+  it('returns flat Azure CLI array as-is when objects have .id/.name/.type', () => {
+    const arr = [{ id: '/subs/x/vnets/hub', name: 'hub', type: 'Microsoft.Network/virtualNetworks' }];
+    const result = ext(arr, ['value']);
+    assert.equal(result, arr, 'should return the original flat array');
+  });
+
+  it('extracts array from wrapped {value:[...]} object', () => {
+    const result = ext({ value: [{ id: '1' }, { id: '2' }] }, ['value']);
+    assert.deepEqual(result, [{ id: '1' }, { id: '2' }]);
+  });
+
+  it('returns empty array for flat array with no .id, .name, or .type marker', () => {
+    const result = ext([{ foo: 'bar' }], ['value']);
+    assert.deepEqual(result, []);
+  });
+
+  it('extracts nested array from single resource object', () => {
+    const result = ext({ securityRules: [{ priority: 100 }] }, ['securityRules']);
+    assert.deepEqual(result, [{ priority: 100 }]);
+  });
+});
