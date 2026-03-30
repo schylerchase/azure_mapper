@@ -25,6 +25,11 @@ Plans:
 
 **Requirements:** R1.1-R1.8
 **Estimate:** 1-2 sessions
+**Plans:** 2 plans
+
+Plans:
+- [ ] 02-01-PLAN.md -- Extract normalization functions from app-core.js into testable module
+- [ ] 02-02-PLAN.md -- Write unit, integration, and regression tests for all R1.x requirements
 
 ## Phase 3: E2E Browser Tests
 **Goal:** Playwright tests for critical user flows
