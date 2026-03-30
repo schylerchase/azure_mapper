@@ -8795,6 +8795,14 @@ function _normalizeAzureResources(d){
     // Azure CLI flattens properties to top level; renderer expects properties.* wrapper.
     // Create self-reference so r.properties.routes === r.routes, etc.
     if(r&&!r.properties)r.properties=r;
+    // Also add self-ref to nested arrays (ipConfigurations, securityRules, routes, etc.)
+    // so nic.properties.ipConfigurations[0].properties.subnet.id resolves correctly
+    ['ipConfigurations','securityRules','defaultSecurityRules','routes','frontendIPConfigurations',
+     'gatewayIPConfigurations','backendPools','originGroups','backends','origins',
+     'privateLinkServiceConnections','privateEndpointConnections','agentPoolProfiles',
+     'virtualNetworkLinks','loadBalancingRules'].forEach(function(k){
+      if(r[k]&&Array.isArray(r[k]))r[k].forEach(function(item){if(item&&typeof item==='object'&&!item.properties)item.properties=item});
+    });
   })});
   // Property mappings
   if(d.vpcs)d.vpcs.forEach(function(v){if(!v.VpcId)v.VpcId=v.id||'';if(!v.CidrBlock)v.CidrBlock=(v.addressSpace&&v.addressSpace.addressPrefixes&&v.addressSpace.addressPrefixes[0])||''});
