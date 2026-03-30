@@ -250,8 +250,11 @@ ipcMain.handle('dialog:openFolder', async () => {
     });
     if (!canceled && filePaths.length > 0) {
         const folder = filePaths[0];
+        const folderName = path.basename(folder);
         const files = fs.readdirSync(folder);
-        return mapFolderFiles(files, f => fs.readFileSync(path.join(folder, f), 'utf8'));
+        const data = mapFolderFiles(files, f => fs.readFileSync(path.join(folder, f), 'utf8'));
+        data._folderName = folderName;
+        return data;
     }
     return null;
 });

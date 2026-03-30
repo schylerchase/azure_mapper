@@ -8784,7 +8784,12 @@ function _normalizeAzureResources(d){
     if(!r.Tags&&!r.tags&&r.name)r.Tags=[{Key:'Name',Value:r.name}];
   }
   var allArrays=[d.vpcs,d.subnets,d.rts,d.sgs,d.enis,d.nats,d.vpces,d.instances,d.albs,d.tgs,d.peerings,d.vpns,d.volumes,d.snapshots,d.s3bk,d.zones,d.wafAcls,d.rdsInstances,d.ecsServices,d.lambdaFns,d.ecacheClusters,d.redshiftClusters,d.tgwAttachments,d.cfDistributions];
-  allArrays.forEach(function(arr){if(arr)arr.forEach(_normTags)});
+  allArrays.forEach(function(arr){if(arr)arr.forEach(function(r){
+    _normTags(r);
+    // Azure CLI flattens properties to top level; renderer expects properties.* wrapper.
+    // Create self-reference so r.properties.routes === r.routes, etc.
+    if(r&&!r.properties)r.properties=r;
+  })});
   // Property mappings
   if(d.vpcs)d.vpcs.forEach(function(v){if(!v.VpcId)v.VpcId=v.id||'';if(!v.CidrBlock)v.CidrBlock=(v.addressSpace&&v.addressSpace.addressPrefixes&&v.addressSpace.addressPrefixes[0])||''});
   if(d.subnets)d.subnets.forEach(function(s){if(!s.SubnetId)s.SubnetId=s.id||'';if(!s.VpcId)s.VpcId=(s.id||'').split('/subnets/')[0]||'';if(!s.CidrBlock)s.CidrBlock=s.addressPrefix||''});
@@ -11276,8 +11281,24 @@ function _isValidData(content){
   }
   return true;
 }
+function _friendlyFolderLabel(folderName){
+  if(!folderName)return null;
+  // "azure-export-LMAT-PROD-20260330-075242" → "LMAT-PROD"
+  // "azure-export-bddb1488-285c-419e-adfa-b336450de7a3-20260330-080034" → truncated sub ID
+  var m=folderName.match(/^azure-export-(.+?)-\d{8}-\d{6}$/);
+  if(m){
+    var sub=m[1];
+    // If it's a GUID (subscription ID), truncate it
+    if(/^[0-9a-f]{8}-[0-9a-f]{4}-/.test(sub))return sub.substring(0,13)+'...';
+    return sub;
+  }
+  // Truncate any long folder name
+  return folderName.length>30?folderName.substring(0,27)+'...':folderName;
+}
 function importFolder(result){
   if(!result)return;
+  // Extract folder name before restructuring
+  var _folderLabel=_friendlyFolderLabel(result._folderName||'');
   // Legacy format: plain object without _structure (old Electron handler)
   if(!result._structure){
     result={_structure:'flat',files:result};
@@ -11361,10 +11382,11 @@ function importFolder(result){
       _showToast('No valid data found in profile folders');
     }
   }else{
-    // Flat structure: load into textareas directly
+    // Flat structure: load into textareas + optional multi-view context
     const files=result.files||result;
-    const entries=Object.entries(files);
+    const entries=Object.entries(files).filter(([k])=>!k.startsWith('_'));
     let matched=0,skipped=[];
+    const textareas={};
     for(const [fname,content] of entries){
       if(!_isValidData(content)){skipped.push(fname+' (invalid JSON)');continue}
       const contentStr=typeof content==='string'?content:JSON.stringify(content,null,2);
@@ -11372,6 +11394,7 @@ function importFolder(result){
       if(!inputId){skipped.push(fname);continue}
       const el=document.getElementById(inputId);
       if(el){el.value=contentStr;el.className='ji valid';matched++}
+      textareas[inputId]=contentStr;
     }
     document.querySelectorAll('.sec-hdr.collapsed').forEach(h=>{
       const body=h.nextElementSibling;
@@ -11383,7 +11406,12 @@ function importFolder(result){
     if(skipped.length)msg+=' | Skipped: '+skipped.join(', ');
     status.textContent=msg;
     status.style.color=skipped.length?'var(--accent-orange)':'var(--accent-green)';
-    if(matched>0)renderMap();
+    // Register as account context for multi-view (enables multi-folder import)
+    if(matched>0&&_folderLabel){
+      addAccountContext({textareas,accountLabel:_folderLabel},_folderLabel);
+    }else if(matched>0){
+      renderMap();
+    }
   }
 }
 
