@@ -4251,8 +4251,8 @@ function _buildInventoryData(){
   var rows=[];
   var vpcNameMap={};
   (ctx.vpcs||[]).forEach(function(v){vpcNameMap[v.VpcId]=gn(v,v.VpcId)});
-  function tag(obj){var t=(obj.Tags||obj.tags||[]).find(function(x){return x.Key==='Name'});return t?t.Value:''}
-  function tags(obj){var m={};(obj.Tags||obj.tags||[]).forEach(function(t){m[t.Key]=t.Value});return m}
+  function tag(obj){var tg=obj.Tags||obj.tags;if(!tg)return'';if(Array.isArray(tg)){var t=tg.find(function(x){return x.Key==='Name'});return t?t.Value:''}return tg.Name||tg.name||''}
+  function tags(obj){var tg=obj.Tags||obj.tags;if(!tg)return{};if(Array.isArray(tg)){var m={};tg.forEach(function(t){if(t.Key)m[t.Key]=t.Value});return m}return tg}
   function mkRow(id,type,name,obj,extra){
     return{id:id,type:type,name:name,
       account:obj._accountLabel||obj._subscriptionId||'',region:obj._region||'',
@@ -5027,8 +5027,12 @@ const _TIER_RPO_RTO={
 };
 
 function _getTagMap(obj){
-  var arr=obj.Tags||obj.tags||obj.TagList||[];
-  var m={};arr.forEach(function(t){if(t.Key)m[t.Key]=t.Value||''});return m;
+  var tg=obj.Tags||obj.tags||obj.TagList;
+  if(!tg)return{};
+  // Azure flat object format: {Name: "value", Environment: "prod"}
+  if(!Array.isArray(tg)&&typeof tg==='object')return tg;
+  // AWS array format: [{Key: "Name", Value: "value"}]
+  var m={};tg.forEach(function(t){if(t.Key)m[t.Key]=t.Value||''});return m;
 }
 
 function _safeRegex(pattern){
@@ -8876,23 +8880,30 @@ function _renderMapInner(){
   function tagResource(r){if(!r)return r;r._subscriptionId=detectAccountId(r)||userAccount||'default';r._region=detectRegion(r)||'unknown';return r}
   [vpcs,subnets,igws,nats,sgs,instances,albs,rdsInstances,ecsServices,lambdaFns,peerings].forEach(arr=>arr.forEach(tagResource));
   // Normalize Azure-native properties → internal format (supports flat az CLI exports)
+  // Tag normalization: Azure uses {Name:"value"} objects, code expects [{Key:"Name",Value:"value"}] arrays
+  function _normTags(r){
+    if(!r)return;
+    var tg=r.tags;
+    if(tg&&!Array.isArray(tg)&&typeof tg==='object'){
+      r.Tags=Object.keys(tg).map(function(k){return{Key:k,Value:tg[k]||''}});
+    }
+    if(!r.Tags&&!r.tags&&r.name)r.Tags=[{Key:'Name',Value:r.name}];
+  }
+  [vpcs,subnets,rts,sgs,enis,nats,vpces,instances,albs,tgs,peerings,vpns,volumes,snapshots,s3bk,zones,wafAcls,rdsInstances,ecsServices,lambdaFns,ecacheClusters,redshiftClusters,tgwAttachments,cfDistributions].forEach(function(arr){arr.forEach(_normTags)});
   vpcs.forEach(v=>{
     if(!v.VpcId)v.VpcId=v.id||'';
     if(!v.CidrBlock)v.CidrBlock=(v.addressSpace&&v.addressSpace.addressPrefixes&&v.addressSpace.addressPrefixes[0])||'';
-    if(!v.tags&&v.name)v.tags={Name:v.name};
   });
   subnets.forEach(s=>{
     if(!s.SubnetId)s.SubnetId=s.id||'';
     if(!s.VpcId)s.VpcId=(s.id||'').split('/subnets/')[0]||'';
     if(!s.CidrBlock)s.CidrBlock=s.addressPrefix||'';
-    if(!s.tags&&s.name)s.tags={Name:s.name};
   });
   rts.forEach(r=>{
     if(!r.RouteTableId)r.RouteTableId=r.id||'';
     if(!r.VpcId){const subs=r.subnets||[];if(subs[0]&&subs[0].id)r.VpcId=subs[0].id.split('/subnets/')[0]||''}
     // Map Azure routes → Routes array for firewall tab
     if(!r.Routes&&r.routes){r.Routes=r.routes.map(rt=>({DestinationCidrBlock:rt.addressPrefix||'',GatewayId:rt.nextHopType||'',State:'active',_azRoute:rt}))}
-    if(!r.tags&&r.name)r.tags={Name:r.name};
   });
   sgs.forEach(s=>{
     if(!s.GroupId)s.GroupId=s.id||'';
@@ -8914,56 +8925,47 @@ function _renderMapInner(){
         IpRanges:[{CidrIp:r.destinationAddressPrefix||'*'}],_azRule:r
       }));
     }
-    if(!s.tags&&s.name)s.tags={Name:s.name};
   });
   enis.forEach(e=>{
     if(!e.NetworkInterfaceId)e.NetworkInterfaceId=e.id||'';
     if(!e.SubnetId&&e.ipConfigurations&&e.ipConfigurations[0]&&e.ipConfigurations[0].subnet)e.SubnetId=e.ipConfigurations[0].subnet.id||'';
     if(!e.VpcId&&e.SubnetId)e.VpcId=(e.SubnetId||'').split('/subnets/')[0]||'';
-    if(!e.tags&&e.name)e.tags={Name:e.name};
   });
   nats.forEach(n=>{
     if(!n.NatGatewayId)n.NatGatewayId=n.id||'';
     if(!n.SubnetId&&n.subnets&&n.subnets[0])n.SubnetId=n.subnets[0].id||'';
     if(!n.VpcId&&n.SubnetId)n.VpcId=(n.SubnetId||'').split('/subnets/')[0]||'';
-    if(!n.tags&&n.name)n.tags={Name:n.name};
   });
   vpces.forEach(v=>{
     if(!v.VpcEndpointId)v.VpcEndpointId=v.id||'';
     if(!v.ServiceName&&v.privateLinkServiceConnections&&v.privateLinkServiceConnections[0]){const plc=v.privateLinkServiceConnections[0];v.ServiceName=(plc.groupIds&&plc.groupIds[0])||plc.privateLinkServiceId||''}
     if(!v.SubnetId&&v.subnet)v.SubnetId=v.subnet.id||'';
     if(!v.VpcId&&v.SubnetId)v.VpcId=(v.SubnetId||'').split('/subnets/')[0]||'';
-    if(!v.tags&&v.name)v.tags={Name:v.name};
   });
   instances.forEach(i=>{
     if(!i.InstanceId)i.InstanceId=i.id||'';
     if(!i.InstanceType&&i.hardwareProfile)i.InstanceType=i.hardwareProfile.vmSize||'';
     if(!i.SubnetId&&i.networkProfile&&i.networkProfile.networkInterfaces&&i.networkProfile.networkInterfaces[0]){const nic=i.networkProfile.networkInterfaces[0];i._nicId=nic.id||''}
-    if(!i.tags&&i.name)i.tags={Name:i.name};
   });
   albs.forEach(a=>{
     if(!a.LoadBalancerArn)a.LoadBalancerArn=a.id||'';
     if(!a.LoadBalancerName)a.LoadBalancerName=a.name||'';
     if(!a.AvailabilityZones&&a.frontendIPConfigurations){a.AvailabilityZones=a.frontendIPConfigurations.filter(f=>f.subnet).map(f=>({SubnetId:f.subnet.id||''}))}
-    if(!a.tags&&a.name)a.tags={Name:a.name};
   });
   tgs.forEach(t=>{
     if(!t.TargetGroupArn)t.TargetGroupArn=t.id||'';
     if(!t.TargetGroupName)t.TargetGroupName=t.name||'';
     if(!t.LoadBalancerArns&&t.loadBalancingRules)t.LoadBalancerArns=t.loadBalancingRules.map(r=>(r.id||'').split('/loadBalancingRules/')[0]).filter(Boolean);
-    if(!t.tags&&t.name)t.tags={Name:t.name};
   });
   peerings.forEach(p=>{
     if(!p.VpcPeeringConnectionId)p.VpcPeeringConnectionId=p.id||'';
     if(!p.RequesterVpcInfo&&p.localVirtualNetwork)p.RequesterVpcInfo={VpcId:p.localVirtualNetwork.id||'',CidrBlock:p.localAddressSpace&&p.localAddressSpace.addressPrefixes&&p.localAddressSpace.addressPrefixes[0]||''};
     if(!p.AccepterVpcInfo&&p.remoteVirtualNetwork)p.AccepterVpcInfo={VpcId:p.remoteVirtualNetwork.id||'',CidrBlock:p.remoteAddressSpace&&p.remoteAddressSpace.addressPrefixes&&p.remoteAddressSpace.addressPrefixes[0]||''};
     if(!p.Status&&p.peeringState)p.Status={Code:p.peeringState};
-    if(!p.tags&&p.name)p.tags={Name:p.name};
   });
   vpns.forEach(v=>{
     if(!v.VpnGatewayId)v.VpnGatewayId=v.virtualNetworkGateway1&&v.virtualNetworkGateway1.id||v.id||'';
     if(!v.State)v.State=v.connectionStatus||v.provisioningState||'';
-    if(!v.tags&&v.name)v.tags={Name:v.name};
   });
   volumes.forEach(v=>{
     if(!v.VolumeId)v.VolumeId=v.id||'';
@@ -8971,69 +8973,57 @@ function _renderMapInner(){
     if(!v.VolumeType&&v.sku)v.VolumeType=v.sku.name||'';
     if(!v.State)v.State=v.diskState||v.provisioningState||'';
     if(!v.Attachments&&v.managedBy)v.Attachments=[{InstanceId:v.managedBy}];
-    if(!v.tags&&v.name)v.tags={Name:v.name};
   });
   snapshots.forEach(s=>{
     if(!s.SnapshotId)s.SnapshotId=s.id||'';
     if(!s.VolumeId&&s.creationData)s.VolumeId=s.creationData.sourceResourceId||'';
     if(!s.VolumeSize&&s.diskSizeGb)s.VolumeSize=s.diskSizeGb;
     if(!s.State)s.State=s.provisioningState||'';
-    if(!s.tags&&s.name)s.tags={Name:s.name};
   });
   s3bk.forEach(s=>{
     if(!s.Name)s.Name=s.name||'';
-    if(!s.tags&&s.name)s.tags={Name:s.name};
   });
   zones.forEach(z=>{
     if(!z.Id)z.Id=z.id||'';
     if(!z.Config)z.Config={PrivateZone:z.zoneType==='Private'};
-    if(!z.tags&&z.name)z.tags={Name:z.name};
   });
   wafAcls.forEach(w=>{
     if(!w.ResourceArns&&w.applicationGateways)w.ResourceArns=w.applicationGateways.map(a=>a.id||'');
-    if(!w.tags&&w.name)w.tags={Name:w.name};
   });
   rdsInstances.forEach(r=>{
     if(!r.DBInstanceIdentifier)r.DBInstanceIdentifier=r.name||'';
     if(!r.DBInstanceClass&&r.sku)r.DBInstanceClass=r.sku.tier||r.sku.name||'';
     if(!r.Engine)r.Engine=r.version||r.kind||'SQL';
-    if(!r.tags&&r.name)r.tags={Name:r.name};
   });
   ecsServices.forEach(c=>{
     if(!c.serviceName)c.serviceName=c.name||'';
     if(!c.serviceArn)c.serviceArn=c.id||'';
-    if(!c.tags&&c.name)c.tags={Name:c.name};
   });
   lambdaFns.forEach(f=>{
     if(!f.FunctionName)f.FunctionName=f.name||'';
     if(!f.FunctionArn)f.FunctionArn=f.id||'';
     if(!f.Runtime){const lv=f.siteConfig&&f.siteConfig.linuxFxVersion;f.Runtime=lv||f.kind||''}
     if(!f.VpcConfig&&f.virtualNetworkSubnetId)f.VpcConfig={SubnetIds:[f.virtualNetworkSubnetId]};
-    if(!f.tags&&f.name)f.tags={Name:f.name};
   });
   ecacheClusters.forEach(c=>{
     if(!c.CacheClusterId)c.CacheClusterId=c.name||'';
     if(!c.Engine&&c.sku)c.Engine=c.sku.family||'Redis';
     if(!c.CacheNodeType&&c.sku)c.CacheNodeType=c.sku.capacity||'';
     if(!c.CacheClusterStatus)c.CacheClusterStatus=c.provisioningState||'';
-    if(!c.tags&&c.name)c.tags={Name:c.name};
   });
   redshiftClusters.forEach(c=>{
     if(!c.ClusterIdentifier)c.ClusterIdentifier=c.name||'';
     if(!c.NumberOfNodes&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NumberOfNodes=c.agentPoolProfiles[0].count||1;
     if(!c.NodeType&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NodeType=c.agentPoolProfiles[0].vmSize||'';
     if(!c.ClusterStatus)c.ClusterStatus=c.provisioningState||'';
-    if(!c.tags&&c.name)c.tags={Name:c.name};
   });
   tgwAttachments.forEach(t=>{
     if(!t.TransitGatewayId)t.TransitGatewayId=t.id||'';
     if(!t.State)t.State=t.provisioningState||'';
-    if(!t.tags&&t.name)t.tags={Name:t.name};
   });
   cfDistributions.forEach(c=>{
     if(!c.Id)c.Id=c.id||'';
     if(!c.DomainName&&c.frontendEndpoints&&c.frontendEndpoints[0])c.DomainName=c.frontendEndpoints[0].hostName||c.frontendEndpoints[0].name||'';
-    if(!c.tags&&c.name)c.tags={Name:c.name};
   });
   } // end else (textarea parse path)
   console.log('[PERF] parse phase: '+(performance.now()-_t0).toFixed(1)+'ms');
