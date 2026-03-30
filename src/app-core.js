@@ -11579,7 +11579,7 @@ if(_isElectron){
     const inp=document.createElement('input');inp.type='file';
     inp.setAttribute('webkitdirectory','');inp.setAttribute('directory','');inp.multiple=true;
     inp.addEventListener('change',()=>{
-      if(!inp.files||!inp.files.length)return;
+      if(!inp.files||!inp.files.length){inp.remove();return}
       const regionRe=/^[a-z]{2}-(north|south|east|west|central|northeast|southeast|northwest|southwest)-\d+$/;
       const regions={},flatFiles={},profiles={};
       const pending=[];
@@ -11623,8 +11623,10 @@ if(_isElectron){
         }else{
           importFolder({_structure:'flat',files:flatFiles,_folderName:folderName});
         }
+        inp.remove();
       });
     });
+    inp.addEventListener('cancel',()=>inp.remove());
     inp.click();
   }
   bfBtn.addEventListener('click',async()=>{
@@ -20264,20 +20266,22 @@ function _openRulesEditor(){
   document.getElementById('govRulesImport').addEventListener('click',function(){
     var inp=document.createElement('input');inp.type='file';inp.accept='.json';
     inp.addEventListener('change',function(){
-      if(!this.files[0]) return;
+      if(!this.files[0]){inp.remove();return}
       var reader=new FileReader();
       reader.onload=function(e){
         try{
           var imported=JSON.parse(e.target.result);
-          if(!Array.isArray(imported)){_showToast('Invalid rules file','warn');return}
+          if(!Array.isArray(imported)){_showToast('Invalid rules file','warn');inp.remove();return}
           workRules=imported;
           workRules.forEach(function(r){if(r.enabled===undefined) r.enabled=true});
           renderRules();renderPreview();
           _showToast(imported.length+' rules imported');
         }catch(err){_showToast('Failed to parse JSON','warn')}
+        inp.remove();
       };
       reader.readAsText(this.files[0]);
     });
+    inp.addEventListener('cancel',()=>inp.remove());
     inp.click();
   });
   document.getElementById('govRuleApply').addEventListener('click',function(){
