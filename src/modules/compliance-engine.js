@@ -220,61 +220,7 @@ function runCISAzureChecks(data) {
   const networkWatchers = data.networkWatchers || [];
   const regions = data._regions || [];
 
-  // CIS-9: NSG allows RDP (3389) from 0.0.0.0/0
-  nsgs.forEach(nsg => {
-    const rules = _getRules(nsg);
-    rules.forEach(rule => {
-      const rp = _ruleProps(rule);
-      if (rp.direction !== 'Inbound' || rp.access !== 'Allow') return;
-      if (_coversPort(rule, 3389) && _hasOpenSourcePrefixes(rule)) {
-        f.push(_finding({
-          id: 'CIS-9', framework: 'CIS_AZURE', severity: 'HIGH',
-          title: 'NSG allows RDP from 0.0.0.0/0',
-          message: `NSG "${_rn(nsg)}" rule "${rp.name || _rn(rule)}" allows RDP (3389) from any source`,
-          resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
-          remediation: 'Restrict RDP access to specific CIDR ranges or use Azure Bastion',
-        }));
-      }
-    });
-  });
-
-  // CIS-10: NSG allows SSH (22) from 0.0.0.0/0
-  nsgs.forEach(nsg => {
-    const rules = _getRules(nsg);
-    rules.forEach(rule => {
-      const rp = _ruleProps(rule);
-      if (rp.direction !== 'Inbound' || rp.access !== 'Allow') return;
-      if (_coversPort(rule, 22) && _hasOpenSourcePrefixes(rule)) {
-        f.push(_finding({
-          id: 'CIS-10', framework: 'CIS_AZURE', severity: 'HIGH',
-          title: 'NSG allows SSH from 0.0.0.0/0',
-          message: `NSG "${_rn(nsg)}" rule "${rp.name || _rn(rule)}" allows SSH (22) from any source`,
-          resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
-          remediation: 'Restrict SSH access to specific CIDR ranges or use Azure Bastion',
-        }));
-      }
-    });
-  });
-
-  // CIS-12: NSG allows all inbound traffic
-  nsgs.forEach(nsg => {
-    const rules = _getRules(nsg);
-    rules.forEach(rule => {
-      const rp = _ruleProps(rule);
-      if (rp.direction !== 'Inbound' || rp.access !== 'Allow') return;
-      if (_isAllProtocols(rule) && _isAllPorts(rule) && _hasOpenSourcePrefixes(rule)) {
-        f.push(_finding({
-          id: 'CIS-12', framework: 'CIS_AZURE', severity: 'CRITICAL',
-          title: 'NSG allows all inbound traffic',
-          message: `NSG "${_rn(nsg)}" rule "${rp.name || _rn(rule)}" allows all traffic from any source`,
-          resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
-          remediation: 'Remove or restrict rule to specific ports and source addresses',
-        }));
-      }
-    });
-  });
-
-  // CIS-DB: NSG allows database ports (1433/3306/5432) from 0.0.0.0/0
+  // Single pass: CIS-9 (RDP), CIS-10 (SSH), CIS-12 (all inbound), CIS-DB (database ports), CIS-UDP (all UDP)
   const dbPorts = [
     { port: 1433, name: 'SQL Server' },
     { port: 3306, name: 'MySQL' },
@@ -285,7 +231,43 @@ function runCISAzureChecks(data) {
     rules.forEach(rule => {
       const rp = _ruleProps(rule);
       if (rp.direction !== 'Inbound' || rp.access !== 'Allow') return;
-      if (!_hasOpenSourcePrefixes(rule)) return;
+      const openSrc = _hasOpenSourcePrefixes(rule);
+      if (!openSrc) return;
+
+      // CIS-9: RDP from internet
+      if (_coversPort(rule, 3389)) {
+        f.push(_finding({
+          id: 'CIS-9', framework: 'CIS_AZURE', severity: 'HIGH',
+          title: 'NSG allows RDP from 0.0.0.0/0',
+          message: `NSG "${_rn(nsg)}" rule "${rp.name || _rn(rule)}" allows RDP (3389) from any source`,
+          resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
+          remediation: 'Restrict RDP access to specific CIDR ranges or use Azure Bastion',
+        }));
+      }
+
+      // CIS-10: SSH from internet
+      if (_coversPort(rule, 22)) {
+        f.push(_finding({
+          id: 'CIS-10', framework: 'CIS_AZURE', severity: 'HIGH',
+          title: 'NSG allows SSH from 0.0.0.0/0',
+          message: `NSG "${_rn(nsg)}" rule "${rp.name || _rn(rule)}" allows SSH (22) from any source`,
+          resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
+          remediation: 'Restrict SSH access to specific CIDR ranges or use Azure Bastion',
+        }));
+      }
+
+      // CIS-12: All inbound traffic
+      if (_isAllProtocols(rule) && _isAllPorts(rule)) {
+        f.push(_finding({
+          id: 'CIS-12', framework: 'CIS_AZURE', severity: 'CRITICAL',
+          title: 'NSG allows all inbound traffic',
+          message: `NSG "${_rn(nsg)}" rule "${rp.name || _rn(rule)}" allows all traffic from any source`,
+          resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
+          remediation: 'Remove or restrict rule to specific ports and source addresses',
+        }));
+      }
+
+      // CIS-DB: Database ports from internet
       dbPorts.forEach(db => {
         if (_coversPort(rule, db.port)) {
           f.push(_finding({
@@ -297,18 +279,10 @@ function runCISAzureChecks(data) {
           }));
         }
       });
-    });
-  });
 
-  // CIS-UDP: NSG allows UDP from 0.0.0.0/0
-  nsgs.forEach(nsg => {
-    const rules = _getRules(nsg);
-    rules.forEach(rule => {
-      const rp = _ruleProps(rule);
-      if (rp.direction !== 'Inbound' || rp.access !== 'Allow') return;
+      // CIS-UDP: All UDP from internet
       const proto = (rp.protocol || '').toLowerCase();
-      if (proto !== 'udp') return;
-      if (_isAllPorts(rule) && _hasOpenSourcePrefixes(rule)) {
+      if (proto === 'udp' && _isAllPorts(rule)) {
         f.push(_finding({
           id: 'CIS-UDP', framework: 'CIS_AZURE', severity: 'HIGH',
           title: 'NSG allows all UDP from 0.0.0.0/0',

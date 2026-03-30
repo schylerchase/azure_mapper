@@ -457,3 +457,50 @@ describe('runComplianceChecks: integration', () => {
     assert.ok(Array.isArray(findings));
   });
 });
+
+// ============================================================================
+// Single-pass consolidation: multi-check rule produces all expected findings
+// ============================================================================
+
+describe('NSG single-pass consolidation', () => {
+  it('a rule triggering all CIS checks produces all finding IDs in one pass', () => {
+    // A rule that is: Inbound + Allow + open source + all protocols + all ports
+    // This triggers: CIS-9 (covers 3389), CIS-10 (covers 22), CIS-12 (all protos + all ports),
+    // CIS-DB-1433, CIS-DB-3306, CIS-DB-5432 (all ports includes DB ports), NOT CIS-UDP (proto is *)
+    const allOpenRule = makeRule({
+      name: 'allow-everything',
+      port: '*',
+      source: '*',
+      protocol: '*',
+    });
+    const data = {
+      nsgs: [makeNsg('mega-open-nsg', [allOpenRule])]
+    };
+    const findings = runComplianceChecks(data);
+    const ids = findings.map(f => f.id);
+
+    assert.ok(ids.includes('CIS-9'), 'Should flag RDP (3389)');
+    assert.ok(ids.includes('CIS-10'), 'Should flag SSH (22)');
+    assert.ok(ids.includes('CIS-12'), 'Should flag all inbound');
+    assert.ok(ids.includes('CIS-DB-1433'), 'Should flag SQL Server port');
+    assert.ok(ids.includes('CIS-DB-3306'), 'Should flag MySQL port');
+    assert.ok(ids.includes('CIS-DB-5432'), 'Should flag PostgreSQL port');
+  });
+
+  it('100 NSGs with 20 rules each produces correct per-NSG findings', () => {
+    const nsgs = Array.from({ length: 100 }, (_, i) => {
+      const rules = Array.from({ length: 20 }, (_, j) => {
+        // First rule per NSG opens RDP; rest are benign restricted rules
+        if (j === 0) {
+          return makeRule({ name: `rdp-rule-${i}`, port: '3389', source: '*' });
+        }
+        return makeRule({ name: `ok-rule-${i}-${j}`, port: '443', source: '10.0.1.0/24' });
+      });
+      return makeNsg(`nsg-${i}`, rules);
+    });
+    const data = { nsgs };
+    const findings = runComplianceChecks(data);
+    const rdpFindings = findings.filter(f => f.id === 'CIS-9');
+    assert.equal(rdpFindings.length, 100, 'Should produce exactly 100 CIS-9 findings (one per NSG)');
+  });
+});
