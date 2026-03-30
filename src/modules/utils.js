@@ -63,6 +63,10 @@ export function ext(r, keys) {
       if (i[k]) res = res.concat(i[k]);
     }
   }
+  // Fallback: flat array of resource objects (az CLI -o json produces these directly)
+  if (!res.length && Array.isArray(r) && r.length && typeof r[0] === 'object' && r[0] !== null) {
+    if (r[0].id || r[0].name || r[0].type) return r;
+  }
   return res;
 }
 
