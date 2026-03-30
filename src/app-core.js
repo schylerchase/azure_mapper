@@ -47,6 +47,17 @@ if(_prefs.sidebarCollapsed||_isMobile()){
 }
 // Apply saved text scale on load
 if(_prefs.gTxtScale) applyGlobalTxtScale();
+// Cloud environment selector
+(function(){
+  var sel=document.getElementById('cloudEnvSelector');
+  if(!sel)return;
+  // Restore saved cloud env
+  if(_prefs.cloudEnv){sel.value=_prefs.cloudEnv;try{AppModules.setCloudEnv(_prefs.cloudEnv)}catch(e){}}
+  sel.addEventListener('change',function(){
+    try{AppModules.setCloudEnv(this.value);savePrefs({cloudEnv:this.value})}catch(e){console.warn('Invalid cloud env:',this.value)}
+    if(_rlCtx)renderMap();// re-render with new cloud context
+  });
+})();
 
 const inputSections=[
   {t:'Network',open:true,inputs:[
@@ -23321,12 +23332,12 @@ document.getElementById('landingImportReport').addEventListener('click',function
 var _lcActions={
   'lc-topology':function(){document.getElementById('uploadBtn').click()},
   'lc-compliance':function(){if(_rlCtx)openUnifiedDash('compliance');else{document.getElementById('uploadBtn').click()}},
-  'lc-flow':function(){if(_rlCtx)openUnifiedDash('flow');else{document.getElementById('uploadBtn').click()}},
-  'lc-design':function(){if(_rlCtx&&typeof toggleDesignMode==='function')toggleDesignMode();else{document.getElementById('uploadBtn').click()}},
+  'lc-flow':function(){if(_rlCtx){document.getElementById('flowAnalysisBtn').click()}else{document.getElementById('uploadBtn').click()}},
+  'lc-design':function(){if(_rlCtx&&typeof enterDesignMode==='function')enterDesignMode();else{document.getElementById('uploadBtn').click()}},
   'lc-multisub':function(){document.getElementById('uploadBtn').click()},
   'lc-budr':function(){if(_rlCtx)openUnifiedDash('budr');else{document.getElementById('uploadBtn').click()}},
   'lc-reports':function(){if(_rlCtx)openUnifiedDash('reports');else{document.getElementById('uploadBtn').click()}},
-  'lc-iac':function(){if(_rlCtx&&typeof openIaCPanel==='function')openIaCPanel();else{document.getElementById('uploadBtn').click()}},
+  'lc-iac':function(){if(_rlCtx&&typeof openIacModal==='function')openIacModal();else{document.getElementById('uploadBtn').click()}},
   'lc-governance':function(){if(_rlCtx)openUnifiedDash('classification');else{document.getElementById('uploadBtn').click()}}
 };
 Object.keys(_lcActions).forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',_lcActions[id])});
