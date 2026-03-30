@@ -7469,12 +7469,12 @@ function renderLandingZoneMap(ctx){
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
       const lzAcCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
       if(lzAcCol){
-        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',vl.h).attr('fill',lzAcCol).attr('rx',2).attr('opacity',.7);
         const lzAcLbl=vl.vpc._accountLabel||vl.vpc._subscriptionId;
-        const lzMaxCh=Math.floor(vl.h/7);
-        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+vl.h-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+vl.h-6))+')')
+        const lzLblH=Math.max(vl.h, lzAcLbl.length*7+16);
+        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',lzLblH).attr('fill',lzAcCol).attr('rx',2).attr('opacity',.7);
+        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+lzLblH-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+lzLblH-6))+')')
           .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.5px')
-          .text(lzAcLbl.length>lzMaxCh?lzAcLbl.slice(0,lzMaxCh-1)+'…':lzAcLbl);
+          .text(lzAcLbl);
       }
     }
 
@@ -10225,12 +10225,12 @@ function _renderMapInner(){
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
       const acCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
       if(acCol){
-        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',vl.h).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
         const acLbl=vl.vpc._accountLabel||vl.vpc._subscriptionId;
-        const maxChars=Math.floor(vl.h/7);
-        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+vl.h-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+vl.h-6))+')')
+        const lblH=Math.max(vl.h, acLbl.length*7+16);
+        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',lblH).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
+        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+lblH-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+lblH-6))+')')
           .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.5px')
-          .text(acLbl.length>maxChars?acLbl.slice(0,maxChars-1)+'…':acLbl);
+          .text(acLbl);
       }
     }
     // show indicator for VPCs with no subnets
@@ -13089,7 +13089,7 @@ function _renderMergeBannerChips(){
     chip.title=(ctx.visible?'Click to hide':'Click to show')+': '+ctx.accountLabel;
     const dot=document.createElement('span');dot.className='mac-dot';dot.style.background=ctx.color||'var(--text-muted)';
     const lbl=document.createElement('span');lbl.style.color=ctx.visible?'var(--text-primary)':'var(--text-muted)';
-    lbl.textContent=ctx.accountLabel.length>16?ctx.accountLabel.slice(0,14)+'…':ctx.accountLabel;
+    lbl.textContent=ctx.accountLabel;
     chip.appendChild(dot);chip.appendChild(lbl);
     chip.addEventListener('click',()=>{toggleAccountVisibility(i)});
     box.appendChild(chip);
