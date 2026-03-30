@@ -462,8 +462,11 @@ function _renderMapInner(){
     const vnetNameLen=(gn(v).length+2)*CW+30;
     const addrPrefixes=v.properties?.addressSpace?.addressPrefixes||[];
     const cidrStr=addrPrefixes[0]||'';
-    const cidrLen=(cidrStr.length+15)*CW+20;
-    let mx=Math.max(MSW,vnetNameLen+cidrLen);
+    // Account for full subtitle: CIDR | region [accountLabel]
+    const regionStr=v.location||v._region||'';
+    const acctLbl=v._accountLabel||'';
+    const subtitleLen=(cidrStr.length+(regionStr?' | '+regionStr:'').length+(acctLbl?' ['+acctLbl+']':'').length+4)*CW+20;
+    let mx=Math.max(MSW,vnetNameLen+subtitleLen,vnetNameLen+(cidrStr.length+15)*CW+20);
     ss.forEach(s=>{
       const nameW=gn(s).length*CW+100;
       if(_detailLevel>0){
