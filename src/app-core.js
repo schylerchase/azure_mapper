@@ -7463,9 +7463,12 @@ function renderLandingZoneMap(ctx){
     const az=ss.find(s=>s.AvailabilityZone)?.AvailabilityZone||'';
     const region=az.replace(/[a-z]$/,'')||'';
     const _lzAcctLbl=vl.vpc._accountLabel||vl.vpc._subscriptionId;
-    const lzAcctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+_lzAcctLbl+']'):'';
+    const lzAcctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+(_lzAcctLbl.length>24?_lzAcctLbl.slice(0,21)+'...':_lzAcctLbl)+']'):'';
+    var lzCidrLine=vl.vpc.CidrBlock+(region?' | '+region:'')+lzAcctTag;
+    var lzMaxChars=Math.max(20,Math.floor((vl.w-24)/6));
+    if(lzCidrLine.length>lzMaxChars)lzCidrLine=lzCidrLine.slice(0,lzMaxChars-1)+'\u2026';
     vG.append('text').attr('class','vnet-cidr').attr('x',vl.x+12).attr('y',vl.y+28)
-      .text(vl.vpc.CidrBlock+(region?' | '+region:'')+lzAcctTag);
+      .text(lzCidrLine);
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
       const lzAcCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
       if(lzAcCol){
@@ -10202,11 +10205,14 @@ function _renderMapInner(){
     const _vpcName=gn(vl.vpc,vl.vpc.VpcId);
     const regionTag=vpcRegionMap[vl.vpc.VpcId]||'';
     const _acLbl2=vl.vpc._accountLabel||vl.vpc._subscriptionId;
-    const acctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+_acLbl2+']'):'';
-    // Name on first line, CIDR+subscription on second line
+    const acctTag=_multiTenant&&vl.vpc._subscriptionId&&vl.vpc._subscriptionId!=='default'?(' ['+(_acLbl2.length>24?_acLbl2.slice(0,21)+'...':_acLbl2)+']'):'';
+    // Name on first line, CIDR+subscription on second line (truncated to fit)
     vG.append('text').attr('class','vnet-label').attr('x',vl.x+14).attr('y',vl.y+16).text(_vpcName);
+    var cidrLine=vl.vpc.CidrBlock+(regionTag?' | '+regionTag:'')+(acctTag||'');
+    var maxCidrChars=Math.max(20,Math.floor((vl.w-28)/6));
+    if(cidrLine.length>maxCidrChars)cidrLine=cidrLine.slice(0,maxCidrChars-1)+'\u2026';
     vG.append('text').attr('class','vnet-cidr').attr('x',vl.x+14).attr('y',vl.y+28)
-      .text(vl.vpc.CidrBlock+(regionTag?' | '+regionTag:'')+(acctTag||''));
+      .text(cidrLine);
     // Account color stripe for multi-account
     if(_multiTenant&&vl.vpc._subscriptionId!=='default'){
       const acCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
