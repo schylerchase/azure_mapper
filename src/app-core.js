@@ -1413,7 +1413,7 @@ function _rptAppSummary(ctx, opts){
     h+='<thead><tr><th style="text-align:left;padding:4px 8px;border-bottom:1px solid #334155">Resource</th>';
     h+='<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #334155">Type</th>';
     h+='<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #334155">Tier</th>';
-    h+='<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #334155">VPC</th></tr></thead><tbody>';
+    h+='<th style="text-align:left;padding:4px 8px;border-bottom:1px solid #334155">VNet</th></tr></thead><tbody>';
     a.matched.forEach(function(r){
       var rm=_TIER_RPO_RTO[r.tier]||_TIER_RPO_RTO.low;
       h+='<tr><td style="padding:3px 8px;border-bottom:1px solid #1e293b">'+esc(r.name)+'</td>';
@@ -1829,7 +1829,7 @@ function _rptInventory(ctx, opts){
     h+='<th>Name</th><th>ID</th>';
     if(hasConfig) h+='<th>Config</th>';
     if(hasState) h+='<th>State</th>';
-    if(hasVpc) h+='<th>VPC</th>';
+    if(hasVpc) h+='<th>VNet</th>';
     h+='<th>Region</th>';
     h+='</tr></thead><tbody>';
     items.forEach(function(r){
@@ -1860,10 +1860,10 @@ function _rptTagName(o){
 function _rptInvVPCs(c){
   var items=c.vpcs||[];
   if(!items.length) return '';
-  var h='<h3 id="s-inv-vpcs">VPCs ('+items.length+')</h3>';
+  var h='<h3 id="s-inv-vpcs">VNets ('+items.length+')</h3>';
   h+='<div class="rpt-table-wrap" id="rpt-tbl-inv-vpcs">';
   h+=_rptBuildToolbar('rpt-tbl-inv-vpcs',{});
-  h+='<table><thead class="rpt-sticky"><tr><th>Name</th><th>VPC ID</th>';
+  h+='<table><thead class="rpt-sticky"><tr><th>Name</th><th>VNet ID</th>';
   h+='<th>CIDR</th><th>State</th></tr></thead><tbody>';
   items.forEach(function(v){
     h+='<tr id="res-'+esc(v.VpcId)+'"><td>'+esc(_rptTagName(v))+'</td>';
@@ -1919,7 +1919,7 @@ function _rptInvEC2(c){
 function _rptInvRDS(c){
   var items=c.rdsInstances||[];
   if(!items.length) return '';
-  var h='<h3 id="s-inv-rds">RDS Instances ('+items.length+')</h3>';
+  var h='<h3 id="s-inv-rds">SQL Servers ('+items.length+')</h3>';
   h+='<div class="rpt-table-wrap" id="rpt-tbl-inv-rds">';
   h+=_rptBuildToolbar('rpt-tbl-inv-rds',{});
   h+='<table><thead class="rpt-sticky"><tr><th>Identifier</th><th>Engine</th>';
@@ -1956,7 +1956,7 @@ function _rptInvALBs(c){
 function _rptInvECS(c){
   var items=c.ecsServices||[];
   if(!items.length) return '';
-  var h='<h3 id="s-inv-ecs">ECS Services ('+items.length+')</h3>';
+  var h='<h3 id="s-inv-ecs">Container Instances ('+items.length+')</h3>';
   h+='<div class="rpt-table-wrap" id="rpt-tbl-inv-ecs">';
   h+=_rptBuildToolbar('rpt-tbl-inv-ecs',{});
   h+='<table><thead class="rpt-sticky"><tr><th>Service</th><th>Desired</th>';
@@ -1974,7 +1974,7 @@ function _rptInvECS(c){
 function _rptInvLambda(c){
   var items=c.lambdaFns||[];
   if(!items.length) return '';
-  var h='<h3 id="s-inv-lambda">Lambda Functions ('+items.length+')</h3>';
+  var h='<h3 id="s-inv-lambda">Function Apps ('+items.length+')</h3>';
   h+='<div class="rpt-table-wrap" id="rpt-tbl-inv-lambda">';
   h+=_rptBuildToolbar('rpt-tbl-inv-lambda',{});
   h+='<table><thead class="rpt-sticky"><tr><th>Function</th><th>Runtime</th>';
@@ -3600,7 +3600,7 @@ function showDesignForm(formType,context){
   const dp=document.getElementById('detailPanel');
   let h='';
   if(formType==='add_subnet'){
-    dpTitle.textContent='Add Subnet';dpSub.textContent='VPC: '+gn(context.vpc,context.vpc.VpcId);
+    dpTitle.textContent='Add Subnet';dpSub.textContent='VNet: '+gn(context.vpc,context.vpc.VpcId);
     const vpcCidr=context.vpc.CidrBlock;
     const azs=_detectAZs();
     h='<div class="design-form"><label>CIDR Block</label><input id="df_cidr" placeholder="e.g. 10.0.4.0/24"><div class="form-hint" id="df_hint">Must be within '+vpcCidr+'</div><div class="form-error" id="df_err" style="display:none"></div>';
@@ -3614,7 +3614,7 @@ function showDesignForm(formType,context){
       const val=cidrInput.value.trim();const p=parseCIDR(val);
       if(!val){errEl.style.display='none';okBtn.disabled=true;cidrInput.classList.remove('invalid');return}
       if(!p){errEl.textContent='Invalid CIDR notation';errEl.style.display='block';okBtn.disabled=true;cidrInput.classList.add('invalid');return}
-      if(!cidrContains(vpcCidr,val)){errEl.textContent='Not within VPC CIDR '+vpcCidr;errEl.style.display='block';okBtn.disabled=true;cidrInput.classList.add('invalid');return}
+      if(!cidrContains(vpcCidr,val)){errEl.textContent='Not within VNet CIDR '+vpcCidr;errEl.style.display='block';okBtn.disabled=true;cidrInput.classList.add('invalid');return}
       // Check overlap with existing subnets
       const existSubs=_rlCtx?(_rlCtx.subnets||[]).filter(s=>s.VpcId===context.vpc.VpcId):[];
       const overlap=existSubs.find(s=>cidrOverlap(val,s.CidrBlock));
@@ -3702,7 +3702,7 @@ function showDesignForm(formType,context){
       dp.classList.remove('open');
     });
   } else if(formType==='add_security_group'){
-    dpTitle.textContent='Add Security Group';dpSub.textContent='VPC: '+gn(context.vpc,context.vpc.VpcId);
+    dpTitle.textContent='Add NSG';dpSub.textContent='VNet: '+gn(context.vpc,context.vpc.VpcId);
     h='<div class="design-form"><label>Name</label><input id="df_sgname" placeholder="e.g. web-tier-sg">';
     h+='<label>Description</label><input id="df_sgdesc" placeholder="e.g. Allow HTTP/HTTPS inbound">';
     h+='<div style="margin:8px 0 4px;font-size:calc(8px * var(--txt-scale,1) * var(--dp-txt-scale,1));color:var(--accent-orange);font-weight:600;text-transform:uppercase;letter-spacing:.5px">Inbound Rules</div>';
@@ -3736,9 +3736,9 @@ function showDesignForm(formType,context){
       dp.classList.remove('open');
     });
   } else if(formType==='add_vpc'){
-    dpTitle.textContent='Create VPC';dpSub.textContent='Design a new Virtual Private Cloud';
+    dpTitle.textContent='Create VNet';dpSub.textContent='Design a new Virtual Network';
     const regions=Object.keys(_regionAZs);
-    h='<div class="design-form"><label>VPC Name</label><input id="df_vpcname" placeholder="e.g. production-vpc">';
+    h='<div class="design-form"><label>VNet Name</label><input id="df_vpcname" placeholder="e.g. production-vnet">';
     h+='<label>CIDR Block</label><input id="df_vpccidr" placeholder="e.g. 10.0.0.0/16">';
     h+='<div class="form-hint" id="df_hint">RFC 1918: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16</div>';
     h+='<div class="form-error" id="df_err" style="display:none"></div>';
@@ -3746,7 +3746,7 @@ function showDesignForm(formType,context){
     h+='<div style="display:flex;gap:8px;margin:6px 0"><button type="button" class="btn-cancel" style="flex:none;padding:2px 8px;font-size:calc(8px * var(--txt-scale,1) * var(--dp-txt-scale,1))" onclick="document.getElementById(\'df_vpccidr\').value=\'10.0.0.0/16\';document.getElementById(\'df_vpccidr\').dispatchEvent(new Event(\'input\'))">10.0/16</button><button type="button" class="btn-cancel" style="flex:none;padding:2px 8px;font-size:calc(8px * var(--txt-scale,1) * var(--dp-txt-scale,1))" onclick="document.getElementById(\'df_vpccidr\').value=\'172.16.0.0/16\';document.getElementById(\'df_vpccidr\').dispatchEvent(new Event(\'input\'))">172.16/16</button><button type="button" class="btn-cancel" style="flex:none;padding:2px 8px;font-size:calc(8px * var(--txt-scale,1) * var(--dp-txt-scale,1))" onclick="document.getElementById(\'df_vpccidr\').value=\'192.168.0.0/16\';document.getElementById(\'df_vpccidr\').dispatchEvent(new Event(\'input\'))">192.168/16</button></div>';
     h+='<label>Region</label><select id="df_vpcregion">'+regions.map(r=>'<option value="'+r+'"'+(r===_designRegion?' selected':'')+'>'+r+' ('+(_regionAZs[r]||[]).length+' AZs)</option>').join('')+'</select>';
     h+='<div id="df_vpc_ips" style="font-size:calc(8px * var(--txt-scale,1) * var(--dp-txt-scale,1));color:var(--text-muted);margin:4px 0;padding:4px 6px;background:rgba(255,255,255,.03);border-radius:3px;display:none"></div>';
-    h+='<div class="form-actions"><button class="btn-confirm" id="df_ok" disabled>Create VPC</button><button class="btn-cancel" onclick="document.getElementById(\'detailPanel\').classList.remove(\'open\')">Cancel</button></div></div>';
+    h+='<div class="form-actions"><button class="btn-confirm" id="df_ok" disabled>Create VNet</button><button class="btn-cancel" onclick="document.getElementById(\'detailPanel\').classList.remove(\'open\')">Cancel</button></div></div>';
     dpBody.innerHTML=h;dp.classList.add('open');
     const cidrInput=document.getElementById('df_vpccidr');const errEl=document.getElementById('df_err');const okBtn=document.getElementById('df_ok');
     const warnEl=document.getElementById('df_vpc_warnings');const ipsEl=document.getElementById('df_vpc_ips');
@@ -3837,7 +3837,7 @@ function renderChangeLog(){
 function _changeDesc(ch){
   const action=ch.action;
   let badge='',label='';
-  if(action==='add_vpc'){badge='<span class="cl-action-badge add">+vpc</span>';label=esc(ch.params.Name||'New VPC')+' ('+esc(ch.params.CidrBlock)+')'}
+  if(action==='add_vpc'){badge='<span class="cl-action-badge add">+vnet</span>';label=esc(ch.params.Name||'New VNet')+' ('+esc(ch.params.CidrBlock)+')'}
   else if(action==='add_subnet'){badge='<span class="cl-action-badge add">+subnet</span>';label=esc(ch.params.Name||ch.params.CidrBlock||'new')}
   else if(action==='split_subnet'){badge='<span class="cl-action-badge split">split</span>';label=esc(ch.target.SubnetId||'subnet')}
   else if(action==='add_gateway'){badge='<span class="cl-action-badge add">+'+(ch.params.GatewayType||'gw').toLowerCase()+'</span>';label=esc(ch.params.Name||'new')}
@@ -4331,17 +4331,17 @@ function _buildInventoryData(){
   });
   // 15. VPC Endpoints
   (ctx.vpces||[]).forEach(function(e){
-    rows.push(mkRow(e.VpcEndpointId,'VPC Endpoint',tag(e)||e.VpcEndpointId,e,{vpcId:e.VpcId||'',config:e.ServiceName||'',state:e.State||''}));
+    rows.push(mkRow(e.VpcEndpointId,'Private Endpoint',tag(e)||e.VpcEndpointId,e,{vpcId:e.VpcId||'',config:e.ServiceName||'',state:e.State||''}));
   });
   // 16. ENIs
   (ctx.enis||[]).forEach(function(e){
-    rows.push(mkRow(e.NetworkInterfaceId,'ENI',e.Description||e.NetworkInterfaceId,e,{vpcId:e.VpcId||'',subnetId:e.SubnetId||'',az:e.AvailabilityZone||'',config:e.PrivateIpAddress||'',state:e.Status||''}));
+    rows.push(mkRow(e.NetworkInterfaceId,'NIC',e.Description||e.NetworkInterfaceId,e,{vpcId:e.VpcId||'',subnetId:e.SubnetId||'',az:e.AvailabilityZone||'',config:e.PrivateIpAddress||'',state:e.Status||''}));
   });
   // 17. EBS Volumes
   (ctx.volumes||[]).forEach(function(vol){
     var attInsts=(vol.Attachments||[]).map(function(a){return a.InstanceId}).filter(Boolean);
     var vpcId='';if(attInsts.length)vpcId=instVpcMap[attInsts[0]]||'';
-    rows.push(mkRow(vol.VolumeId,'EBS Volume',tag(vol)||vol.VolumeId,vol,{vpcId:vpcId,az:vol.AvailabilityZone||'',config:vol.Size+'GB '+(vol.VolumeType||''),state:vol.State||'',encrypted:!!vol.Encrypted,related:attInsts}));
+    rows.push(mkRow(vol.VolumeId,'Managed Disk',tag(vol)||vol.VolumeId,vol,{vpcId:vpcId,az:vol.AvailabilityZone||'',config:vol.Size+'GB '+(vol.VolumeType||''),state:vol.State||'',encrypted:!!vol.Encrypted,related:attInsts}));
   });
   // 18. Snapshots
   (ctx.snapshots||[]).forEach(function(snap){
@@ -4355,7 +4355,7 @@ function _buildInventoryData(){
   (ctx.zones||[]).forEach(function(z){
     var recs=ctx.recsByZone&&ctx.recsByZone[z.Id]?ctx.recsByZone[z.Id].length:z.ResourceRecordSetCount||0;
     var vis=z.Config&&z.Config.PrivateZone?'private':'public';
-    rows.push(mkRow(z.Id,'Route 53',z.Name||z.Id,z,{config:recs+' records '+vis}));
+    rows.push(mkRow(z.Id,'DNS Zone',z.Name||z.Id,z,{config:recs+' records '+vis}));
   });
   // 21. WAF ACLs
   (ctx.wafAcls||[]).forEach(function(w){
@@ -4364,12 +4364,12 @@ function _buildInventoryData(){
   });
   // 22. CloudFront
   (ctx.cfDistributions||[]).forEach(function(cf){
-    rows.push(mkRow(cf.Id,'CloudFront',cf.DomainName||cf.Id,cf,{config:cf.Status||'',state:cf.Status||''}));
+    rows.push(mkRow(cf.Id,'Front Door',cf.DomainName||cf.Id,cf,{config:cf.Status||'',state:cf.Status||''}));
   });
   // 23. VPC Peering
   (ctx.peerings||[]).forEach(function(p){
     var req=p.RequesterVpcInfo?p.RequesterVpcInfo.VpcId:'';var acc=p.AccepterVpcInfo?p.AccepterVpcInfo.VpcId:'';
-    rows.push(mkRow(p.VpcPeeringConnectionId,'VPC Peering',tag(p)||p.VpcPeeringConnectionId,p,{config:req+'\u2194'+acc,state:p.Status?p.Status.Code||'':''}));
+    rows.push(mkRow(p.VpcPeeringConnectionId,'VNet Peering',tag(p)||p.VpcPeeringConnectionId,p,{config:req+'\u2194'+acc,state:p.Status?p.Status.Code||'':''}));
   });
   // 24. VPN
   (ctx.vpns||[]).forEach(function(v){
@@ -4382,7 +4382,7 @@ function _buildInventoryData(){
   });
   // 26. Target Groups — use TargetGroupName as ID
   (ctx.tgs||[]).forEach(function(tg){
-    rows.push(mkRow(tg.TargetGroupName,'Target Group',tg.TargetGroupName,tg,{vpcId:tg.VpcId||'',config:(tg.Protocol||'')+':'+(tg.Port||''),state:tg.TargetType||''}));
+    rows.push(mkRow(tg.TargetGroupName,'Backend Pool',tg.TargetGroupName,tg,{vpcId:tg.VpcId||'',config:(tg.Protocol||'')+':'+(tg.Port||''),state:tg.TargetType||''}));
   });
   // === Enrichment pass ===
   // 1. Classification tier lookup
@@ -4427,7 +4427,7 @@ const _INV_TYPE_COLORS={
   'Load Balancer':'#f9a8d4'
 };
 
-const _INV_NO_MAP_TYPES={'Storage Account':1,'Route 53':1,'WAF':1,'CloudFront':1,'Snapshot':1,'TGW Attachment':1,'Target Group':1};
+const _INV_NO_MAP_TYPES={'Storage Account':1,'DNS Zone':1,'WAF':1,'Front Door':1,'Snapshot':1,'TGW Attachment':1,'Backend Pool':1};
 
 function _filterInventory(){
   var st=_invState;
@@ -4494,8 +4494,8 @@ function _renderInventoryTab(){
       accountKeys.forEach(function(a){th+='<option value="'+_escHtml(a)+'"'+(st.accountFilter===a?' selected':'')+'>'+_escHtml(a)+'</option>'});
       th+='</select>';
     }
-    th+='<label>VPC</label>';
-    th+='<select id="invVpcFilter"><option value="all">All VPCs</option>';
+    th+='<label>VNet</label>';
+    th+='<select id="invVpcFilter"><option value="all">All VNets</option>';
     vpcKeys.forEach(function(v){th+='<option value="'+_escHtml(v)+'"'+(st.vpcFilter===v?' selected':'')+'>'+_escHtml(vpcs[v])+'</option>'});
     th+='</select>';
     th+='<div style="margin-left:auto;display:flex;gap:2px">';
@@ -5282,9 +5282,9 @@ function renderIAMPanel(vpcId){
   }
   const roles=getIAMAccessForVpc(_iamData,vpcId);
   const dp=document.getElementById('detailPanel');const dpTitle=document.getElementById('dpTitle');const dpSub=document.getElementById('dpSub');const dpBody=document.getElementById('dpBody');
-  dpTitle.textContent='IAM Access';dpSub.textContent='VPC: '+vpcId;
+  dpTitle.textContent='IAM Access';dpSub.textContent='VNet: '+vpcId;
   let h='<div style="font-family:Segoe UI,system-ui,sans-serif;font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1))">';
-  if(!roles.length){h+='<div style="color:var(--text-muted);padding:12px">No roles with direct VPC access found</div>'}
+  if(!roles.length){h+='<div style="color:var(--text-muted);padding:12px">No roles with direct VNet access found</div>'}
   else{
     h+='<div style="color:var(--text-muted);margin-bottom:8px">'+roles.length+' role(s) with access:</div>';
     roles.forEach(r=>{
@@ -5738,7 +5738,7 @@ function openResourceList(type, pushNav){
       });break;
     }
     case 'ENIs':{
-      const d=ctx.enis||[];title='ENIs';sub=d.length+' total';
+      const d=ctx.enis||[];title='NICs';sub=d.length+' total';
       d.forEach(e=>{
         items.push(row(gn(e,e.NetworkInterfaceId),'Type: '+(e.InterfaceType||'?')+' | Status: '+(e.Status||'?')+' | IP: '+(e.PrivateIpAddress||'?')+' | Subnet: '+subName(e.SubnetId),'#3b82f6',e.SubnetId?{t:'sub',id:e.SubnetId}:null));
       });break;
@@ -5758,7 +5758,7 @@ function openResourceList(type, pushNav){
       });break;
     }
     case 'TGs':{
-      const d=ctx.tgs||[];title='Target Groups';sub=d.length+' total';
+      const d=ctx.tgs||[];title='Backend Pools';sub=d.length+' total';
       d.forEach(tg=>{
         const tc=(tg.Targets||[]).length;
         const vid=tg.VpcId;
@@ -5818,7 +5818,7 @@ function openResourceList(type, pushNav){
       });break;
     }
     case 'Endpoints':{
-      const d=ctx.vpces||[];title='VPC Endpoints';sub=d.length+' total';
+      const d=ctx.vpces||[];title='Private Endpoints';sub=d.length+' total';
       d.forEach(e=>{
         items.push(row(gn(e,e.VpcEndpointId),'Service: '+(e.ServiceName||'?').split('.').pop()+' | Type: '+(e.VpcEndpointType||'?')+' | VPC: '+vpcName(e.VpcId),'#a78bfa',e.VpcId?{t:'vpc',id:e.VpcId}:null));
       });break;
@@ -5841,14 +5841,14 @@ function openResourceList(type, pushNav){
       });break;
     }
     case 'Volumes':{
-      const d=ctx.volumes||[];title='EBS Volumes';sub=d.length+' total';
+      const d=ctx.volumes||[];title='Managed Disks';sub=d.length+' total';
       d.forEach(v=>{
         const att=(v.Attachments||[]).map(a=>a.InstanceId).filter(Boolean).join(', ')||'detached';
         items.push(row(gn(v,v.VolumeId),'Size: '+v.Size+'GB | Type: '+(v.VolumeType||'?')+' | State: '+(v.State||'?')+' | AZ: '+(v.AvailabilityZone||'?')+' | Attached: '+att,'#64748b'));
       });break;
     }
     case 'Snapshots':{
-      const d=ctx.snapshots||[];title='EBS Snapshots';sub=d.length+' total';
+      const d=ctx.snapshots||[];title='Disk Snapshots';sub=d.length+' total';
       d.forEach(s=>{
         items.push(row(gn(s,s.SnapshotId),'Volume: '+(s.VolumeId||'?')+' | Size: '+(s.VolumeSize||'?')+'GB | State: '+(s.State||'?')+' | Started: '+((s.StartTime||'').split('T')[0]||'?'),'#94a3b8'));
       });break;
@@ -6004,7 +6004,7 @@ function openResourceList(type, pushNav){
   // Inject design toolbar for VPC resource list
   if(_designMode&&(type==='VPCs')){
     const tb=document.createElement('div');tb.className='design-toolbar';
-    let tbHtml='<button onclick="showDesignForm(\'add_vpc\',{})">+ VPC</button>';
+    let tbHtml='<button onclick="showDesignForm(\'add_vpc\',{})">+ VNet</button>';
     if(ctx.vpcs&&ctx.vpcs.length){
       tbHtml+=ctx.vpcs.map(v=>'<button onclick="showDesignForm(\'add_subnet\',{vpc:_rlCtx.vnets.find(x=>x.VpcId===\''+v.VpcId+'\')})">+ Sub ('+esc(gn(v,v.VpcId))+')</button><button onclick="showDesignForm(\'add_gateway\',{vpc:_rlCtx.vnets.find(x=>x.VpcId===\''+v.VpcId+'\')})">+ GW ('+esc(gn(v,v.VpcId))+')</button><button onclick="showDesignForm(\'add_security_group\',{vpc:_rlCtx.vnets.find(x=>x.VpcId===\''+v.VpcId+'\')})">+ SG ('+esc(gn(v,v.VpcId))+')</button>').join('');
     }
@@ -6199,7 +6199,7 @@ function openSubnetPanel(sub,vpcId,lk){
       const instEnis=(lk.enis||[]).filter(e=>e.Attachment&&e.Attachment.InstanceId===inst.InstanceId);
       if(instEnis.length){
         eb+='<div class="dp-sub">';
-        eb+='<div class="dp-sub-title">ENIs <span class="dp-sub-count">'+instEnis.length+'</span></div>';
+        eb+='<div class="dp-sub-title">NICs <span class="dp-sub-count">'+instEnis.length+'</span></div>';
         instEnis.forEach(e=>{
           eb+='<div class="dp-sub-item">'+e.NetworkInterfaceId+' <span style="color:var(--text-muted)">'+(e.PrivateIpAddress||'')+'</span> <span style="color:var(--accent-orange)">'+(e.InterfaceType||'')+'</span></div>';
         });
@@ -6226,7 +6226,7 @@ function openSubnetPanel(sub,vpcId,lk){
       enb+='</div>';
       enb+='</div>';
     });
-    h+=sec('ENIs',se.length,enb,false);
+    h+=sec('NICs',se.length,enb,true);
   }
   // Load Balancers
   if(sa.length){
@@ -6244,7 +6244,7 @@ function openSubnetPanel(sub,vpcId,lk){
         const albTgs=(lk.tgByAlb||{})[a.LoadBalancerArn]||[];
         if(albTgs.length){
           lb+='<div class="dp-sub">';
-          lb+='<div class="dp-sub-title">Target Groups <span class="dp-sub-count">'+albTgs.length+'</span></div>';
+          lb+='<div class="dp-sub-title">Backend Pools <span class="dp-sub-count">'+albTgs.length+'</span></div>';
           albTgs.forEach(tg=>{
             lb+='<div class="dp-sub-item"><span class="i">'+(tg.TargetGroupName||tg.TargetGroupArn.split('/')[1]||'')+'</span>';
             lb+=' <span class="k">'+tg.Protocol+':'+tg.Port+'</span> ['+tg.TargetType+']';
@@ -6271,7 +6271,7 @@ function openSubnetPanel(sub,vpcId,lk){
         const albCfs=(lk.cfByAlb||{})[a.LoadBalancerArn]||[];
         if(albCfs.length){
           lb+='<div class="dp-sub">';
-          lb+='<div class="dp-sub-title" style="color:#8b5cf6">CloudFront <span class="dp-sub-count">'+albCfs.length+'</span></div>';
+          lb+='<div class="dp-sub-title" style="color:#8b5cf6">Front Door <span class="dp-sub-count">'+albCfs.length+'</span></div>';
           albCfs.forEach(d=>{
             lb+='<div class="dp-sub-item"><span class="i" style="color:#8b5cf6">'+d.DomainName+'</span>';
             const aliases=(d.Aliases?.Items||[]);
@@ -6349,7 +6349,7 @@ function openSubnetPanel(sub,vpcId,lk){
     let sgb='';
     displaySgs.forEach(sg=>{sgb+=_fwRenderSgInline(sg)});
     if(subSgs.length&&vSgs.length>subSgs.length){
-      sgb+='<div class="dp-row"><span class="k">+ '+(vSgs.length-subSgs.length)+' more SGs in VPC (not attached to this subnet)</span></div>';
+      sgb+='<div class="dp-row"><span class="k">+ '+(vSgs.length-subSgs.length)+' more SGs in VNet (not attached to this subnet)</span></div>';
     }
     h+=sec('Security Groups',displaySgs.length,sgb,false);
   }
@@ -6492,7 +6492,7 @@ function openSubnetPanel(sub,vpcId,lk){
       // Group by AZ
       const byAz={};
       allSubs.forEach(s=>{const az=s.AvailabilityZone||'unknown';if(!byAz[az])byAz[az]=[];byAz[az].push(s)});
-      relBody+='<div class="dp-related-group"><div class="dp-related-title">VPC Subnets ('+allSubs.length+')</div>';
+      relBody+='<div class="dp-related-group"><div class="dp-related-title">VNet Subnets ('+allSubs.length+')</div>';
       Object.keys(byAz).sort().forEach(az=>{
         byAz[az].forEach(s=>{
           const sIsPub=lk.pubSubs&&lk.pubSubs.has(s.SubnetId);
@@ -6564,7 +6564,7 @@ function openSubnetPanel(sub,vpcId,lk){
         }
       });
       Object.entries(sharedSubs).forEach(([sid,info])=>{
-        crossLinks.push({type:'sg',label:info.sgs.size+' shared SG'+(info.sgs.size>1?'s':''),detail:info.count+' ENI'+(info.count>1?'s':'')+' in '+sid.slice(0,16),subId:sid,icon:'&#8596;'});
+        crossLinks.push({type:'sg',label:info.sgs.size+' shared SG'+(info.sgs.size>1?'s':''),detail:info.count+' NIC'+(info.count>1?'s':'')+' in '+sid.slice(0,16),subId:sid,icon:'&#8596;'});
       });
     }
     // Peering / TGW routes
@@ -6575,7 +6575,7 @@ function openSubnetPanel(sub,vpcId,lk){
         if(pcx){
           const peer=(_rlCtx.peerings||[]).find(p=>p.VpcPeeringConnectionId===pcx);
           const peerVpc=peer?(peer.AccepterVpcInfo&&peer.AccepterVpcInfo.VpcId!==vpcId?peer.AccepterVpcInfo.VpcId:peer.RequesterVpcInfo&&peer.RequesterVpcInfo.VpcId!==vpcId?peer.RequesterVpcInfo.VpcId:'?'):'?';
-          crossLinks.push({type:'peering',label:'Peering '+pcx.slice(0,12),detail:'to VPC '+peerVpc.slice(0,16)+' via '+(r.DestinationCidrBlock||'?'),subId:null,icon:'&#8644;'});
+          crossLinks.push({type:'peering',label:'Peering '+pcx.slice(0,12),detail:'to VNet '+peerVpc.slice(0,16)+' via '+(r.DestinationCidrBlock||'?'),subId:null,icon:'&#8644;'});
         }
         if(tgw){
           crossLinks.push({type:'tgw',label:'TGW '+tgw.slice(0,14),detail:'route to '+(r.DestinationCidrBlock||'?'),subId:null,icon:'&#8644;'});
@@ -6595,7 +6595,7 @@ function openSubnetPanel(sub,vpcId,lk){
     }
 
     const totalRelated=allSubs.length+crossLinks.length;
-    if(totalRelated) h+=sec('Related Resources',totalRelated,relBody,false);
+    if(totalRelated) h+=sec('Related Resources',totalRelated,relBody,true);
   }
 
   // Wrap sections in grid container (2-col grid in fullscreen)
@@ -15808,7 +15808,7 @@ function _renderFlowDetail(){
 }
 
 function _hopTypeLabel(type){
-  var labels={'source':'Source','target':'Target','route-table':'Route Table','nacl-outbound':'NACL Outbound','nacl-inbound':'NACL Inbound','sg-outbound':'SG Outbound','sg-inbound':'SG Inbound','peering':'VPC Peering','tgw':'Transit Gateway','cross-vpc':'Cross-VPC','error':'Error','igw-check':'IGW Check'};
+  var labels={'source':'Source','target':'Target','route-table':'Route Table','nacl-outbound':'NACL Outbound','nacl-inbound':'NACL Inbound','sg-outbound':'SG Outbound','sg-inbound':'SG Inbound','peering':'VNet Peering','tgw':'Virtual WAN','cross-vpc':'Cross-VNet','error':'Error','igw-check':'Firewall Check'};
   return labels[type]||type;
 }
 
@@ -21419,13 +21419,13 @@ function _rptBuildXlsxInventory(wb){
   _af(c.volumes).forEach(function(v){
     var att=(v.Attachments||[])[0];
     var vpc=att?_invInstVpc[att.InstanceId]||'':'';
-    rows.push([_a(v),_r(v),vpc,'EBS Volume',v.VolumeId,_rptTagName(v),v.VolumeType+' / '+v.Size+'GB',v.State||'',att?att.Device||'':'unattached']);
+    rows.push([_a(v),_r(v),vpc,'Managed Disk',v.VolumeId,_rptTagName(v),v.VolumeType+' / '+v.Size+'GB',v.State||'',att?att.Device||'':'unattached']);
   });
   _af(c.snapshots).forEach(function(s){
-    rows.push([_a(s),_r(s),'','EBS Snapshot',s.SnapshotId,_rptTagName(s),s.VolumeSize+'GB',s.State||'',s.Description||'']);
+    rows.push([_a(s),_r(s),'','Disk Snapshot',s.SnapshotId,_rptTagName(s),s.VolumeSize+'GB',s.State||'',s.Description||'']);
   });
   _af(c.enis).forEach(function(e){
-    rows.push([_a(e),_r(e),e.VpcId||'','ENI',e.NetworkInterfaceId,_rptTagName(e),e.InterfaceType||'',e.Status||'',e.PrivateIpAddress||'']);
+    rows.push([_a(e),_r(e),e.VpcId||'','NIC',e.NetworkInterfaceId,_rptTagName(e),e.InterfaceType||'',e.Status||'',e.PrivateIpAddress||'']);
   });
   _af(c.igws).forEach(function(g){
     var att=(g.Attachments||[])[0];
@@ -21435,32 +21435,32 @@ function _rptBuildXlsxInventory(wb){
     rows.push([_a(n),_r(n),n.VpcId||'','NAT Gateway',n.NatGatewayId,_rptTagName(n),'',n.State||'',n.SubnetId||'']);
   });
   _af(c.vpces).forEach(function(ep){
-    rows.push([_a(ep),_r(ep),ep.VpcId||'','VPC Endpoint',ep.VpcEndpointId,ep.ServiceName||'',ep.VpcEndpointType||'',ep.State||'','']);
+    rows.push([_a(ep),_r(ep),ep.VpcId||'','Private Endpoint',ep.VpcEndpointId,ep.ServiceName||'',ep.VpcEndpointType||'',ep.State||'','']);
   });
   _af(c.ecacheClusters).forEach(function(ec){
-    rows.push([_a(ec),_r(ec),ec.VpcId||'','ElastiCache',ec.CacheClusterId,ec.CacheClusterId,ec.Engine+' / '+ec.CacheNodeType,ec.CacheClusterStatus||'',ec.NumCacheNodes+' nodes']);
+    rows.push([_a(ec),_r(ec),ec.VpcId||'','Redis Cache',ec.CacheClusterId,ec.CacheClusterId,ec.Engine+' / '+ec.CacheNodeType,ec.CacheClusterStatus||'',ec.NumCacheNodes+' nodes']);
   });
   _af(c.redshiftClusters).forEach(function(rs){
-    rows.push([_a(rs),_r(rs),rs.VpcId||'','Redshift',rs.ClusterIdentifier,rs.ClusterIdentifier,rs.NodeType,rs.ClusterStatus||'',rs.NumberOfNodes+' nodes']);
+    rows.push([_a(rs),_r(rs),rs.VpcId||'','AKS Cluster',rs.ClusterIdentifier,rs.ClusterIdentifier,rs.NodeType,rs.ClusterStatus||'',rs.NumberOfNodes+' nodes']);
   });
   _af(c.s3bk).forEach(function(b){
     rows.push([_a(b),_r(b),'','Storage Account',b.Name,b.Name,'','',b.CreationDate||'']);
   });
   (c.peerings||[]).forEach(function(p){
     var req=p.RequesterVpcInfo||{};var acc=p.AccepterVpcInfo||{};
-    rows.push([_a(p),_r(p),req.VpcId||'','VPC Peering',p.VpcPeeringConnectionId,_rptTagName(p),req.CidrBlock+' <> '+acc.CidrBlock,p.Status?p.Status.Code:'','']);
+    rows.push([_a(p),_r(p),req.VpcId||'','VNet Peering',p.VpcPeeringConnectionId,_rptTagName(p),req.CidrBlock+' <> '+acc.CidrBlock,p.Status?p.Status.Code:'','']);
   });
   (c.zones||[]).forEach(function(z){
     var recs=c.recsByZone&&c.recsByZone[z.Id]?c.recsByZone[z.Id].length:z.ResourceRecordSetCount||0;
     var vis=z.Config&&z.Config.PrivateZone?'private':'public';
-    rows.push([_a(z),_r(z),'','Route 53',z.Id,z.Name||z.Id,recs+' records',vis,'']);
+    rows.push([_a(z),_r(z),'','DNS Zone',z.Id,z.Name||z.Id,recs+' records',vis,'']);
   });
   (c.wafAcls||[]).forEach(function(w){
     var ruleCount=(w.Rules||[]).length;
     rows.push([_a(w),_r(w),'','WAF',w.Id||w.Name,w.Name||w.Id||'',ruleCount+' rules','','']);
   });
   (c.cfDistributions||[]).forEach(function(cf){
-    rows.push([_a(cf),_r(cf),'','CloudFront',cf.Id,cf.DomainName||cf.Id,cf.Status||'','','']);
+    rows.push([_a(cf),_r(cf),'','Front Door',cf.Id,cf.DomainName||cf.Id,cf.Status||'','','']);
   });
   (c.vpns||[]).forEach(function(v){
     rows.push([_a(v),_r(v),'','VPN',v.VpnConnectionId,_rptTagName(v)||(v.VpnConnectionId),v.Type||'',v.State||'','']);
@@ -21469,7 +21469,7 @@ function _rptBuildXlsxInventory(wb){
     rows.push([_a(t),_r(t),t.VpcId||'','TGW Attachment',t.TransitGatewayAttachmentId||t.TransitGatewayId||'',_rptTagName(t)||'',t.ResourceType||'',t.State||'','']);
   });
   (c.tgs||[]).forEach(function(tg){
-    rows.push([_a(tg),_r(tg),tg.VpcId||'','Target Group',tg.TargetGroupName||'',tg.TargetGroupName||'',tg.Protocol+':'+tg.Port,tg.TargetType||'','']);
+    rows.push([_a(tg),_r(tg),tg.VpcId||'','Backend Pool',tg.TargetGroupName||'',tg.TargetGroupName||'',tg.Protocol+':'+tg.Port,tg.TargetType||'','']);
   });
   if(!rows.length) return;
   // Replace empty cells with "-" so XLSX has no blank gaps
@@ -23578,12 +23578,12 @@ document.getElementById('expVsdx').addEventListener('click',()=>{
 
   // --- gateway type styles (for legend and cross-VPC lines) ---
   const gwStyles={
-    'IGW':  {color:'#059669',pattern:1,label:'Internet Gateway',fill:'#ECFDF5',border:'#059669'},
+    'IGW':  {color:'#059669',pattern:1,label:'Azure Firewall',fill:'#ECFDF5',border:'#059669'},
     'NAT':  {color:'#D97706',pattern:2,label:'NAT Gateway',fill:'#FFFBEB',border:'#D97706'},
-    'TGW':  {color:'#2563EB',pattern:1,label:'Transit Gateway',fill:'#EFF6FF',border:'#2563EB'},
-    'VGW':  {color:'#7C3AED',pattern:4,label:'Virtual Private GW',fill:'#F5F3FF',border:'#7C3AED'},
-    'PCX':  {color:'#EA580C',pattern:2,label:'VPC Peering',fill:'#FFF7ED',border:'#EA580C'},
-    'VPCE': {color:'#0891B2',pattern:3,label:'VPC Endpoint',fill:'#ECFEFF',border:'#0891B2'},
+    'TGW':  {color:'#2563EB',pattern:1,label:'Virtual WAN',fill:'#EFF6FF',border:'#2563EB'},
+    'VGW':  {color:'#7C3AED',pattern:4,label:'VPN Gateway',fill:'#F5F3FF',border:'#7C3AED'},
+    'PCX':  {color:'#EA580C',pattern:2,label:'VNet Peering',fill:'#FFF7ED',border:'#EA580C'},
+    'VPCE': {color:'#0891B2',pattern:3,label:'Private Endpoint',fill:'#ECFEFF',border:'#0891B2'},
     'GW':   {color:'#6B7280',pattern:1,label:'Gateway',fill:'#F9FAFB',border:'#6B7280'}
   };
 
@@ -23633,8 +23633,8 @@ document.getElementById('expVsdx').addEventListener('click',()=>{
     lines.push((isPub?'[PUBLIC] ':'[PRIVATE] ')+gn(s,s.SubnetId));
     lines.push(s.CidrBlock+'  |  '+(s.AvailabilityZone||''));
     const parts=[];
-    if(si.length)parts.push(si.length+' EC2');
-    if(se.length)parts.push(se.length+' ENI');
+    if(si.length)parts.push(si.length+' VM');
+    if(se.length)parts.push(se.length+' NIC');
     if(sa.length)parts.push(sa.length+' ALB');
     if(parts.length)lines.push(parts.join(' | '));
     const rt=subRT[s.SubnetId];
@@ -25639,9 +25639,9 @@ function buildLucidExport(){
     
     let gwCustomData=[
       {key:'Gateway ID',value:gw.id},
-      {key:'Type',value:gw.type==='TGW'?'Transit Gateway':gw.type==='PCX'?'VPC Peering':'Gateway'},
+      {key:'Type',value:gw.type==='TGW'?'Virtual WAN':gw.type==='PCX'?'VNet Peering':'Gateway'},
       {key:'Name',value:nm},
-      {key:'Connected VPCs',value:String(connectedVpcs.size)}
+      {key:'Connected VNets',value:String(connectedVpcs.size)}
     ];
     
     // Add peering-specific info

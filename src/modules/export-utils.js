@@ -152,7 +152,7 @@ export function buildSubText(s, ctx) {
   lines.push(s.CidrBlock + '  |  ' + (s.AvailabilityZone || ''));
   const parts = [];
   if (si.length) parts.push(si.length + ' VM');
-  if (se.length) parts.push(se.length + ' ENI');
+  if (se.length) parts.push(se.length + ' NIC');
   if (sa.length) parts.push(sa.length + ' LB');
   if (parts.length) lines.push(parts.join(' | '));
   const rt = subRT[s.SubnetId];

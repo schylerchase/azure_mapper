@@ -31,7 +31,7 @@ var _INV_TYPE_COLORS = {
   'Storage Account': '#f472b6', 'DNS Zone': '#38bdf8', 'WAF Policy': '#fbbf24',
   'Front Door': '#818cf8', 'VNet Peering': '#c084fc', 'VPN Connection': '#2dd4bf',
   'vWAN': '#67e8f9', 'AKS': '#818cf8', 'Firewall': '#ef4444', 'Bastion': '#34d399',
-  'Load Balancer': '#3b82f6', 'Security Group': '#64748b'
+  'Load Balancer': '#3b82f6'
 };
 
 var _INV_NO_MAP_TYPES = { 'Storage Account': 1, 'DNS Zone': 1, 'WAF Policy': 1, 'Front Door': 1, 'Snapshot': 1, 'vWAN': 1 };

@@ -1970,10 +1970,10 @@ document.getElementById('expVsdx').addEventListener('click',()=>{
 
   // --- gateway type styles (for legend and cross-VNet lines) ---
   const gwStyles={
-    'IGW':  {color:'#059669',pattern:1,label:'Internet Gateway',fill:'#ECFDF5',border:'#059669'},
+    'IGW':  {color:'#059669',pattern:1,label:'Azure Firewall',fill:'#ECFDF5',border:'#059669'},
     'NAT':  {color:'#D97706',pattern:2,label:'NAT Gateway',fill:'#FFFBEB',border:'#D97706'},
-    'TGW':  {color:'#2563EB',pattern:1,label:'Transit Gateway',fill:'#EFF6FF',border:'#2563EB'},
-    'VGW':  {color:'#7C3AED',pattern:4,label:'Virtual Private GW',fill:'#F5F3FF',border:'#7C3AED'},
+    'TGW':  {color:'#2563EB',pattern:1,label:'Virtual WAN',fill:'#EFF6FF',border:'#2563EB'},
+    'VGW':  {color:'#7C3AED',pattern:4,label:'VPN Gateway',fill:'#F5F3FF',border:'#7C3AED'},
     'PCX':  {color:'#EA580C',pattern:2,label:'VNet Peering',fill:'#FFF7ED',border:'#EA580C'},
     'VPCE': {color:'#0891B2',pattern:3,label:'Private Endpoint',fill:'#ECFEFF',border:'#0891B2'},
     'GW':   {color:'#6B7280',pattern:1,label:'Gateway',fill:'#F9FAFB',border:'#6B7280'}
@@ -2026,7 +2026,7 @@ document.getElementById('expVsdx').addEventListener('click',()=>{
     lines.push(s.CidrBlock+'  |  '+(s.AvailabilityZone||''));
     const parts=[];
     if(si.length)parts.push(si.length+' VMs');
-    if(se.length)parts.push(se.length+' ENI');
+    if(se.length)parts.push(se.length+' NIC');
     if(sa.length)parts.push(sa.length+' ALB');
     if(parts.length)lines.push(parts.join(' | '));
     const rt=subRT[s.SubnetId];
@@ -2843,7 +2843,7 @@ function buildLandingZoneLayout(ctx){
     boundingBox:{x:EXT_X+30,y:extY+60,w:extW-60,h:60},
     text:NOTEXT,
     style:{stroke:{color:'#232F3E',width:2},fill:{type:'color',color:'#E2E8F0'}},
-    customData:[{key:'Type',value:'Internet Gateway / Public Access'},{key:'Description',value:'External internet connectivity'}]
+    customData:[{key:'Type',value:'Azure Firewall / Public Access'},{key:'Description',value:'External internet connectivity'}]
   });
   addIcon('INET',EXT_X+38,extY+72);
   shapes.push({
@@ -2860,7 +2860,7 @@ function buildLandingZoneLayout(ctx){
       boundingBox:{x:EXT_X+30,y:extY+140,w:extW-60,h:60},
       text:NOTEXT,
       style:{stroke:{color:'#7C3AED',width:2},fill:{type:'color',color:'#F5F3FF'}},
-      customData:[{key:'Type',value:'Virtual Private Gateway / VPN'},{key:'Description',value:'On-premises connectivity'}]
+      customData:[{key:'Type',value:'VPN Gateway'},{key:'Description',value:'On-premises connectivity'}]
     });
     addIcon('VGW',EXT_X+38,extY+152);
     shapes.push({
@@ -2879,13 +2879,13 @@ function buildLandingZoneLayout(ctx){
       boundingBox:{x:EXT_X+30,y:extY+220,w:extW-60,h:60},
       text:NOTEXT,
       style:{stroke:{color:'#EC4899',width:2},fill:{type:'color',color:'#FDF2F8'}},
-      customData:[{key:'Type',value:'Transit Gateway'},{key:'TGW IDs',value:tgwGws.map(g=>g.id).join(', ')}]
+      customData:[{key:'Type',value:'Virtual WAN'},{key:'TGW IDs',value:tgwGws.map(g=>g.id).join(', ')}]
     });
     addIcon('TGW',EXT_X+38,extY+232);
     shapes.push({
       id:'tgw_shared_lbl',type:'rectangle',
       boundingBox:{x:EXT_X+80,y:extY+232,w:extW-120,h:36},
-      text:'<p style="font-size:11pt;font-weight:bold;color:#EC4899;text-align:left">Transit Gateway</p>',
+      text:'<p style="font-size:11pt;font-weight:bold;color:#EC4899;text-align:left">Virtual WAN</p>',
       style:{stroke:{color:'#FFFFFF',width:0},fill:{type:'color',color:'#FFFFFF00'}}
     });
   }
@@ -2998,8 +2998,8 @@ function buildLandingZoneLayout(ctx){
   const legendItems=[
     {color:'#7C3AED',label:'Hub VNet',y:40},
     {color:'#3B82F6',label:'Spoke VNet',y:65},
-    {color:'#10B981',label:'Internet Gateway',y:90},
-    {color:'#EC4899',label:'Transit Gateway',y:115}
+    {color:'#10B981',label:'Azure Firewall',y:90},
+    {color:'#EC4899',label:'Virtual WAN',y:115}
   ];
   legendItems.forEach(item=>{
     shapes.push({
@@ -3497,7 +3497,7 @@ function buildLucidExport(){
         ie.forEach(e=>p1Attached.add(e.NetworkInterfaceId));
         const ch=[];
         if(_showNested){
-          ie.forEach(e=>ch.push({label:'ENI: '+e.NetworkInterfaceId.slice(-8)+(e.PrivateIpAddress?' \u00b7 '+e.PrivateIpAddress:'')}));
+          ie.forEach(e=>ch.push({label:'NIC: '+e.NetworkInterfaceId.slice(-8)+(e.PrivateIpAddress?' \u00b7 '+e.PrivateIpAddress:'')}));
           (volByInst[i.InstanceId]||[]).forEach(v=>{const sc=(snapByVol[v.VolumeId]||[]).length;ch.push({label:'VOL: '+v.Size+'GB '+(v.VolumeType||'')+(sc?' \u00b7 '+sc+' snap':'')})});
         }
         p1Res.push({detail:i.InstanceType,children:ch});
@@ -3573,7 +3573,7 @@ function buildLucidExport(){
         {key:'Security Groups',value:String(vnetSgs.length)},
         {key:'Route Tables',value:String(vnetRts.length)},
         {key:'VM Instances',value:String(vnetInsts.length)},
-        {key:'ENIs',value:String(vnetEnis.length)},
+        {key:'NICs',value:String(vnetEnis.length)},
         {key:'Private Endpoints',value:String(vnetVpces.length)}
       ]
     });
@@ -3622,7 +3622,7 @@ function buildLucidExport(){
           // Build gateway-specific customData
           let gwCustomData=[
             {key:'Gateway ID',value:gw.id},
-            {key:'Type',value:gw.type==='IGW'?'Internet Gateway':gw.type==='NAT'?'NAT Gateway':gw.type==='VGW'?'Virtual Private Gateway':gw.type},
+            {key:'Type',value:gw.type==='IGW'?'Azure Firewall':gw.type==='NAT'?'NAT Gateway':gw.type==='VGW'?'VPN Gateway':gw.type},
             {key:'Name',value:nm}
           ];
           
@@ -3789,7 +3789,7 @@ function buildLucidExport(){
           {key:'Route Table',value:rtName+(rt?' ('+rt.RouteTableId+')':'')},
           {key:'Routes',value:routes||'local only'},
           {key:'VM Instances',value:String(insts.length)},
-          {key:'ENIs',value:String(subEnis.length)},
+          {key:'NICs',value:String(subEnis.length)},
           {key:'Load Balancers',value:String(subAlbs.length)}
         ]
       });
@@ -3919,7 +3919,7 @@ function buildLucidExport(){
         style:{stroke:{color:gc,width:2},fill:{type:'color',color:gf}},
         customData:[
           {key:'Gateway ID',value:gw.id},
-          {key:'Type',value:gw.type==='IGW'?'Internet Gateway':gw.type==='NAT'?'NAT Gateway':'Virtual Private Gateway'},
+          {key:'Type',value:gw.type==='IGW'?'Azure Firewall':gw.type==='NAT'?'NAT Gateway':'VPN Gateway'},
           {key:'Name',value:nm},
           {key:'VNet',value:vi.vnet.VpcId}
         ]
@@ -4037,7 +4037,7 @@ function buildLucidExport(){
 
     let gwCustomData=[
       {key:'Gateway ID',value:gw.id},
-      {key:'Type',value:gw.type==='TGW'?'Transit Gateway':gw.type==='PCX'?'VNet Peering':'Gateway'},
+      {key:'Type',value:gw.type==='TGW'?'Virtual WAN':gw.type==='PCX'?'VNet Peering':'Gateway'},
       {key:'Name',value:nm},
       {key:'Connected VNets',value:String(connectedVnets.size)}
     ];
@@ -4459,7 +4459,7 @@ function buildLucidExport(){
   shapes.push({
     id:'legend_tgw_label',type:'rectangle',
     boundingBox:{x:legendX+62,y:legendY+36,w:150,h:20},
-    text:'<p style="font-size:9pt;color:#232F3E;text-align:left">Transit Gateway</p>',
+    text:'<p style="font-size:9pt;color:#232F3E;text-align:left">Virtual WAN</p>',
     style:{stroke:{color:'#FFFFFF',width:0},fill:{type:'color',color:'#FFFFFF'}}
   });
   // PCX line sample (dashed)
