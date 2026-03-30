@@ -6422,7 +6422,7 @@ function openSubnetPanel(sub,vpcId,lk){
       (rt.Routes||[]).forEach(r=>{
         const gw=r.GatewayId||r.NatGatewayId||r.TransitGatewayId||r.VpcPeeringConnectionId||r.VpcEndpointId||'';
         if(gw&&gw!=='local'){
-          const type=gw.startsWith('igw-')?'IGW':gw.startsWith('nat-')?'NAT':gw.startsWith('tgw-')?'TGW':gw.startsWith('pcx-')?'Peering':gw.startsWith('vpce-')?'VPCE':gw.startsWith('vgw-')?'VGW':'GW';
+          const type=_isIgwRoute(gw)?'Internet':_isNatRoute(gw)?'NAT':_isVpnRoute(gw)?'VPN':gw.startsWith('tgw-')?'vWAN':gw.startsWith('pcx-')?'Peering':gw.startsWith('vpce-')?'Private Endpoint':gw==='VnetLocal'?'VNet Local':'GW';
           if(!gwTargets.some(g=>g.id===gw)) gwTargets.push({id:gw,type:type,dest:r.DestinationCidrBlock||'',name:gn({Tags:((_rlCtx.firewalls||[]).concat(_rlCtx.natGateways||[]).find(x=>(x.InternetGatewayId||x.NatGatewayId||x.TransitGatewayId||'')===gw)||{}).Tags},gw)});
         }
       });
@@ -8774,6 +8774,12 @@ function renderExecutiveOverview(ctx){
   setTimeout(()=>d3.select('#zoomFit').dispatch('click'),100);
 }
 
+// Azure route helpers: detect internet/NAT/VPN routes from both AWS and Azure formats
+function _isIgwRoute(gwId){return gwId&&(gwId.startsWith('igw-')||gwId==='Internet')}
+function _isNatRoute(gwId){return gwId&&(gwId.startsWith('nat-')||gwId==='VirtualAppliance'||gwId==='NatGateway')}
+function _isVpnRoute(gwId){return gwId&&(gwId.startsWith('vgw-')||gwId==='VirtualNetworkGateway')}
+function _gwTypeLabel(gwId){if(_isIgwRoute(gwId))return'Internet';if(_isNatRoute(gwId))return'NAT/NVA';if(_isVpnRoute(gwId))return'VPN Gateway';if(gwId&&gwId.startsWith('tgw-'))return'Virtual WAN';if(gwId&&gwId.startsWith('pcx-'))return'VNet Peering';if(gwId==='VnetLocal')return'VNet Local';return gwId||'Unknown'}
+
 // Shared Azure normalization: maps Azure-native properties to internal format.
 // Called from both _renderMapInner (textarea parse) and _buildRlCtxFromData (multi-view).
 function _normalizeAzureResources(d){
@@ -8977,7 +8983,7 @@ function _renderMapInner(){
 
   // discover gateways from route tables
   rts.forEach(rt=>{
-    const hasIgw=(rt.Routes||[]).some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');
+    const hasIgw=(rt.Routes||[]).some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');
     (rt.Associations||[]).forEach(a=>{if(a.SubnetId){subRT[a.SubnetId]=rt;if(hasIgw)pubSubs.add(a.SubnetId)}});
     (rt.Routes||[]).forEach(r=>{
       if(r.GatewayId&&r.GatewayId!=='local')gwSet.set(r.GatewayId,{type:clsGw(r.GatewayId),id:r.GatewayId,vpcId:rt.VpcId});
@@ -8996,7 +9002,7 @@ function _renderMapInner(){
   subnets.forEach(s=>{
     if(!subRT[s.SubnetId]&&mainRT[s.VpcId]){
       subRT[s.SubnetId]=mainRT[s.VpcId];
-      const hasIgw=(mainRT[s.VpcId].Routes||[]).some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');
+      const hasIgw=(mainRT[s.VpcId].Routes||[]).some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');
       if(hasIgw)pubSubs.add(s.SubnetId);
     }
   });
@@ -12693,7 +12699,7 @@ function _buildRlCtxFromTextareas(){
     const vpcIds=new Set(vpcs.map(v=>v.VpcId));
     subnets=subnets.filter(s=>vpcIds.has(s.VpcId));
     const pubSubs=new Set();
-    rts.forEach(rt=>{const hasIgw=rt.Routes&&rt.Routes.some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');if(hasIgw)(rt.Associations||[]).forEach(a=>{if(a.SubnetId)pubSubs.add(a.SubnetId)})});
+    rts.forEach(rt=>{const hasIgw=rt.Routes&&rt.Routes.some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');if(hasIgw)(rt.Associations||[]).forEach(a=>{if(a.SubnetId)pubSubs.add(a.SubnetId)})});
 
     const igws=[],nats=[],vpces=[];
     igwRaw.forEach(g=>{(g.Attachments||[]).forEach(a=>{if(vpcIds.has(a.VpcId))igws.push(Object.assign({},g,{_vpcId:a.VpcId}))})});
@@ -12829,7 +12835,7 @@ function _buildRlCtxFromData(textareas, accountLabel){
     const vpcIds=new Set(vpcs.map(v=>v.VpcId));
     subnets=subnets.filter(s=>vpcIds.has(s.VpcId));
     const pubSubs=new Set();
-    rts.forEach(rt=>{const hasIgw=rt.Routes&&rt.Routes.some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');if(hasIgw)(rt.Associations||[]).forEach(a=>{if(a.SubnetId)pubSubs.add(a.SubnetId)})});
+    rts.forEach(rt=>{const hasIgw=rt.Routes&&rt.Routes.some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');if(hasIgw)(rt.Associations||[]).forEach(a=>{if(a.SubnetId)pubSubs.add(a.SubnetId)})});
 
     const igws=[],nats=[],vpces=[];
     igwRaw.forEach(g=>{(g.Attachments||[]).forEach(a=>{if(vpcIds.has(a.VpcId))igws.push(Object.assign({},g,{_vpcId:a.VpcId}))})});
@@ -14889,7 +14895,7 @@ function evaluateRouteTable(rt, destCidr){
   });
   if(!bestMatch) return {target:'blackhole',type:'blackhole',detail:'No matching route'};
   if(bestMatch.State==='blackhole') return {target:'blackhole',type:'blackhole',detail:'Route is blackholed'};
-  if(bestMatch.GatewayId&&bestMatch.GatewayId.startsWith('igw-')) return {target:bestMatch.GatewayId,type:'igw'};
+  if(bestMatch.GatewayId&&bestMatch._isIgwRoute(GatewayId)) return {target:bestMatch.GatewayId,type:'igw'};
   if(bestMatch.NatGatewayId) return {target:bestMatch.NatGatewayId,type:'nat'};
   if(bestMatch.VpcPeeringConnectionId) return {target:bestMatch.VpcPeeringConnectionId,type:'pcx'};
   if(bestMatch.TransitGatewayId) return {target:bestMatch.TransitGatewayId,type:'tgw'};
@@ -15112,87 +15118,88 @@ function _resolveClickTarget(el){
   return null;
 }
 
-// --- Internet ↔ Resource trace functions ---
+// --- Internet to Resource trace (Azure model: Public IP + NSG, no IGW/NACL) ---
 function _traceInternetToResource(target, config, ctx, opts){
   var path=[];var hopN=1;
   var tgtPos=_resolveNetworkPosition(target.type, target.id, ctx);
   if(!tgtPos) return {path:[{hop:1,type:'error',id:'-',action:'block',detail:'Cannot resolve target'}],blocked:{hop:1,reason:'Target not found'}};
   path.push({hop:hopN++,type:'source',id:'Internet',action:'allow',detail:'Source: Internet (0.0.0.0/0)'});
-  // Check IGW exists for this VPC
-  var vpcId=tgtPos.vpcId;
-  var igw=(ctx.igws||[]).find(function(g){return (g.Attachments||[]).some(function(a){return a.VpcId===vpcId})});
-  if(!igw){
-    path.push({hop:hopN++,type:'igw-check',id:'No IGW',action:'block',detail:'No Internet Gateway attached to VPC '+vpcId});
-    path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'block',detail:'Target unreachable',subnetId:tgtPos.subnetId});
-    return {path:path,blocked:{hop:2,reason:'No Internet Gateway in target VPC',suggestion:'Attach an Internet Gateway to VPC '+vpcId}};
-  }
-  path.push({hop:hopN++,type:'igw-check',id:igw.InternetGatewayId||'IGW',action:'allow',detail:'Internet Gateway '+igw.InternetGatewayId+' attached to VPC'});
-  // Check target in public subnet (has IGW route)
+  // Azure: check if target has a Public IP or is behind an App Gateway/LB (internet access is implicit, no IGW needed)
   var isPublic=ctx.pubSubs&&ctx.pubSubs.has(tgtPos.subnetId);
-  if(!isPublic){
-    path.push({hop:hopN++,type:'route-table',id:'No IGW route',action:'block',detail:'Target subnet '+tgtPos.subnetId+' has no route to IGW (private subnet)'});
+  var hasPublicIp=tgtPos.hasPublicIp||false;
+  if(!isPublic&&!hasPublicIp){
+    path.push({hop:hopN++,type:'public-ip-check',id:'No Public IP',action:'block',detail:'Target has no Public IP and subnet has no internet route'});
     path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'block',detail:'Target in private subnet',subnetId:tgtPos.subnetId});
-    return {path:path,blocked:{hop:hopN-2,reason:'Target is in a private subnet with no IGW route',suggestion:'Move resource to a public subnet or use an ALB/NAT'}};
+    return {path:path,blocked:{hop:hopN-2,reason:'Target is in a private subnet with no Public IP',suggestion:'Assign a Public IP or place behind an App Gateway/Load Balancer'}};
   }
-  path.push({hop:hopN++,type:'route-table',id:'IGW route',action:'allow',detail:'Target subnet has route to Internet Gateway'});
-  // NACL inbound check
-  var tgtNacl=(ctx.subNacl||{})[tgtPos.subnetId];
-  var naclOpts=opts&&opts.discovery?{assumeAllow:true}:null;
-  var naclIn=evaluateNACL(tgtNacl,'inbound',config.protocol,config.port,'0.0.0.0/0',naclOpts);
-  path.push({hop:hopN++,type:'nacl-inbound',id:tgtNacl?(tgtNacl.NetworkAclId||'Subnet NSG'):'Default NACL',action:naclIn.action,detail:'Target subnet NACL inbound from Internet',rule:naclIn.rule});
-  if(naclIn.action==='deny'){
-    path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'block',detail:'Blocked by NACL',subnetId:tgtPos.subnetId});
-    return {path:path,blocked:{hop:hopN-2,reason:'NACL denies inbound from Internet',suggestion:'Add NACL inbound rule allowing '+config.protocol+'/'+config.port+' from 0.0.0.0/0'}};
+  path.push({hop:hopN++,type:'public-ip-check',id:isPublic?'Public subnet':'Public IP',action:'allow',detail:isPublic?'Subnet has internet route':'Resource has Public IP assigned'});
+  // NSG inbound check (subnet-level NSG): replaces NACL in Azure
+  var subNsg=(ctx.nsgByVnet||ctx.subNacl||{})[tgtPos.subnetId];
+  if(subNsg){
+    var sgOpts1=opts&&opts.discovery?{assumeAllow:true}:null;
+    var nsgIn=evaluateSG([subNsg],'inbound',config.protocol,config.port,'0.0.0.0/0',sgOpts1);
+    path.push({hop:hopN++,type:'sg-inbound',id:'Subnet NSG',action:nsgIn.action,detail:'Subnet NSG inbound from Internet',rule:nsgIn.rule});
+    if(nsgIn.action==='deny'){
+      path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'block',detail:'Blocked by Subnet NSG',subnetId:tgtPos.subnetId});
+      return {path:path,blocked:{hop:hopN-2,reason:'Subnet NSG denies inbound '+config.protocol+'/'+config.port,suggestion:'Add NSG inbound rule allowing '+config.protocol+'/'+config.port+' from 0.0.0.0/0'}};
+    }
   }
-  // SG inbound check: in discovery mode, skip SG when no SG data attached
+  // NIC-level NSG check
   var sgOpts=opts&&opts.discovery?{assumeAllow:true}:null;
   var sgIn=evaluateSG(tgtPos.sgs,'inbound',config.protocol,config.port,'0.0.0.0/0',sgOpts);
-  path.push({hop:hopN++,type:'sg-inbound',id:'Target SG',action:sgIn.action,detail:'Security Group inbound from Internet',rule:sgIn.rule});
+  path.push({hop:hopN++,type:'sg-inbound',id:'NIC NSG',action:sgIn.action,detail:'NIC NSG inbound from Internet',rule:sgIn.rule});
   if(sgIn.action==='deny'){
-    path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'block',detail:'Blocked by SG',subnetId:tgtPos.subnetId});
-    return {path:path,blocked:{hop:hopN-2,reason:'Security group denies inbound '+config.protocol+'/'+config.port+' from Internet',suggestion:'Add SG inbound rule allowing '+config.protocol+'/'+config.port+' from 0.0.0.0/0'}};
+    path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'block',detail:'Blocked by NIC NSG',subnetId:tgtPos.subnetId});
+    return {path:path,blocked:{hop:hopN-2,reason:'NIC NSG denies inbound '+config.protocol+'/'+config.port+' from Internet',suggestion:'Add NSG inbound rule allowing '+config.protocol+'/'+config.port+' from 0.0.0.0/0'}};
   }
   path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'allow',detail:'Target: '+(tgtPos.name||target.id)+' ('+target.type+')',subnetId:tgtPos.subnetId});
   return {path:path,blocked:null};
 }
 
+// --- Resource to Internet trace (Azure model: NSG outbound + route table, no NACL) ---
 function _traceResourceToInternet(source, config, ctx, opts){
   var path=[];var hopN=1;
   var srcPos=_resolveNetworkPosition(source.type, source.id, ctx);
   if(!srcPos) return {path:[{hop:1,type:'error',id:'-',action:'block',detail:'Cannot resolve source'}],blocked:{hop:1,reason:'Source not found'}};
   path.push({hop:hopN++,type:'source',id:srcPos.name||source.id,action:'allow',detail:'Source: '+(srcPos.name||source.id)+' ('+source.type+')',subnetId:srcPos.subnetId});
-  // SG outbound check: in discovery mode, skip SG when no SG data attached
+  // NIC NSG outbound check
   var sgOpts=opts&&opts.discovery?{assumeAllow:true}:null;
   var sgOut=evaluateSG(srcPos.sgs,'outbound',config.protocol,config.port,'0.0.0.0/0',sgOpts);
-  path.push({hop:hopN++,type:'sg-outbound',id:'Source SG',action:sgOut.action,detail:'SG outbound to Internet',rule:sgOut.rule});
+  path.push({hop:hopN++,type:'sg-outbound',id:'NIC NSG',action:sgOut.action,detail:'NIC NSG outbound to Internet',rule:sgOut.rule});
   if(sgOut.action==='deny'){
-    path.push({hop:hopN++,type:'target',id:'Internet',action:'block',detail:'Blocked by SG'});
-    return {path:path,blocked:{hop:2,reason:'Security group denies outbound',suggestion:'Add SG outbound rule allowing '+config.protocol+'/'+config.port+' to 0.0.0.0/0'}};
+    path.push({hop:hopN++,type:'target',id:'Internet',action:'block',detail:'Blocked by NIC NSG'});
+    return {path:path,blocked:{hop:2,reason:'NIC NSG denies outbound',suggestion:'Add NSG outbound rule allowing '+config.protocol+'/'+config.port+' to 0.0.0.0/0'}};
   }
-  // NACL outbound check
-  var srcNacl=(ctx.subNacl||{})[srcPos.subnetId];
-  var naclOpts=opts&&opts.discovery?{assumeAllow:true}:null;
-  var naclOut=evaluateNACL(srcNacl,'outbound',config.protocol,config.port,'0.0.0.0/0',naclOpts);
-  path.push({hop:hopN++,type:'nacl-outbound',id:srcNacl?(srcNacl.NetworkAclId||'Subnet NSG'):'Default NACL',action:naclOut.action,detail:'Source subnet NACL outbound to Internet',rule:naclOut.rule});
-  if(naclOut.action==='deny'){
-    path.push({hop:hopN++,type:'target',id:'Internet',action:'block',detail:'Blocked by NACL'});
-    return {path:path,blocked:{hop:hopN-2,reason:'NACL denies outbound to Internet',suggestion:'Add NACL outbound rule allowing '+config.protocol+'/'+config.port}};
+  // Subnet NSG outbound check
+  var subNsg=(ctx.nsgByVnet||ctx.subNacl||{})[srcPos.subnetId];
+  if(subNsg){
+    var sgOpts2=opts&&opts.discovery?{assumeAllow:true}:null;
+    var nsgOut=evaluateSG([subNsg],'outbound',config.protocol,config.port,'0.0.0.0/0',sgOpts2);
+    path.push({hop:hopN++,type:'sg-outbound',id:'Subnet NSG',action:nsgOut.action,detail:'Subnet NSG outbound to Internet',rule:nsgOut.rule});
+    if(nsgOut.action==='deny'){
+      path.push({hop:hopN++,type:'target',id:'Internet',action:'block',detail:'Blocked by Subnet NSG'});
+      return {path:path,blocked:{hop:hopN-2,reason:'Subnet NSG denies outbound',suggestion:'Add NSG outbound rule allowing '+config.protocol+'/'+config.port}};
+    }
   }
-  // Route table check for IGW or NAT route
+  // Route table check: Internet or NAT route
   var srcRT=(ctx.subRT||{})[srcPos.subnetId];
-  var hasIgwRoute=false;var hasNatRoute=false;var routeTarget='';
+  var hasInternetRoute=false;var hasNatRoute=false;var routeTarget='';
   if(srcRT&&srcRT.Routes){
     srcRT.Routes.forEach(function(r){
-      if(r.GatewayId&&r.GatewayId.startsWith('igw-')){hasIgwRoute=true;routeTarget=r.GatewayId}
-      if(r.NatGatewayId){hasNatRoute=true;routeTarget=r.NatGatewayId}
+      if(_isIgwRoute(r.GatewayId)){hasInternetRoute=true;routeTarget=_gwTypeLabel(r.GatewayId)}
+      if(r.NatGatewayId||_isNatRoute(r.GatewayId)){hasNatRoute=true;routeTarget=r.NatGatewayId||_gwTypeLabel(r.GatewayId)}
     });
   }
-  if(hasIgwRoute||hasNatRoute){
-    path.push({hop:hopN++,type:'route-table',id:srcRT?(srcRT.RouteTableId||'RT'):'RT',action:'allow',detail:'Route to Internet via '+(hasIgwRoute?'IGW':'NAT')+' ('+routeTarget+')',rule:'0.0.0.0/0 → '+routeTarget});
+  // Azure has implicit default route to Internet; only block if explicit UDR blocks it
+  if(hasInternetRoute||hasNatRoute){
+    path.push({hop:hopN++,type:'route-table',id:srcRT?(srcRT.RouteTableId||'UDR'):'Default route',action:'allow',detail:'Route to Internet via '+routeTarget,rule:'0.0.0.0/0 -> '+routeTarget});
+  } else if(srcRT&&srcRT.Routes&&srcRT.Routes.some(function(r){return r.DestinationCidrBlock==='0.0.0.0/0'&&r.GatewayId==='None'})){
+    path.push({hop:hopN++,type:'route-table',id:'Blackhole',action:'block',detail:'UDR has 0.0.0.0/0 -> None (blackhole route)'});
+    path.push({hop:hopN++,type:'target',id:'Internet',action:'block',detail:'Internet route blackholed'});
+    return {path:path,blocked:{hop:hopN-2,reason:'UDR blackholes internet traffic',suggestion:'Remove or modify the 0.0.0.0/0 -> None route'}};
   } else {
-    path.push({hop:hopN++,type:'route-table',id:'No route',action:'block',detail:'No route to Internet (no IGW or NAT Gateway route in route table)'});
-    path.push({hop:hopN++,type:'target',id:'Internet',action:'block',detail:'No Internet route'});
-    return {path:path,blocked:{hop:hopN-2,reason:'No route to Internet in route table',suggestion:'Add a route 0.0.0.0/0 → IGW or NAT Gateway'}};
+    // Azure default: implicit internet access via system route
+    path.push({hop:hopN++,type:'route-table',id:'System route',action:'allow',detail:'Azure default system route to Internet (no UDR override)'});
   }
   path.push({hop:hopN++,type:'target',id:'Internet',action:'allow',detail:'Target: Internet (0.0.0.0/0)'});
   return {path:path,blocked:null};
@@ -23480,11 +23487,11 @@ document.getElementById('expVsdx').addEventListener('click',()=>{
   const volBySub={};volumes.forEach(v=>{const att=(v.Attachments||[])[0];if(att&&att.InstanceId){if(knownInstIds2.has(att.InstanceId))return;const sid=instSubFromEni2[att.InstanceId];if(sid)(volBySub[sid]=volBySub[sid]||[]).push(v)}});
   const pubSubs=new Set();
   rts.forEach(rt=>{
-    const hasIgw=(rt.Routes||[]).some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');
+    const hasIgw=(rt.Routes||[]).some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');
     (rt.Associations||[]).forEach(a=>{if(a.SubnetId&&hasIgw)pubSubs.add(a.SubnetId)});
   });
   subnets.forEach(s=>{if(!pubSubs.has(s.SubnetId)&&mainRT[s.VpcId]){
-    const hasIgw=(mainRT[s.VpcId].Routes||[]).some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');
+    const hasIgw=(mainRT[s.VpcId].Routes||[]).some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');
     if(hasIgw)pubSubs.add(s.SubnetId);
   }});
 
@@ -24881,11 +24888,11 @@ function buildLucidExport(){
   const cfByAlb={};cfDistributions.forEach(cf=>{(cf.Origins?.Items||[]).forEach(o=>{const dn=o.DomainName||'';albs.forEach(lb=>{if(lb.DNSName&&dn.includes(lb.DNSName))(cfByAlb[lb.LoadBalancerArn]=cfByAlb[lb.LoadBalancerArn]||[]).push(cf)})})});
   const pubSubs=new Set();
   rts.forEach(rt=>{
-    const hasIgw=(rt.Routes||[]).some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');
+    const hasIgw=(rt.Routes||[]).some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');
     (rt.Associations||[]).forEach(a=>{if(a.SubnetId&&hasIgw)pubSubs.add(a.SubnetId)});
   });
   subnets.forEach(s=>{if(!pubSubs.has(s.SubnetId)&&exMainRT[s.VpcId]){
-    const hasIgw=(exMainRT[s.VpcId].Routes||[]).some(r=>r.GatewayId&&r.GatewayId.startsWith('igw-')&&r.State!=='blackhole');
+    const hasIgw=(exMainRT[s.VpcId].Routes||[]).some(r=>_isIgwRoute(r.GatewayId)&&r.State!=='blackhole');
     if(hasIgw)pubSubs.add(s.SubnetId);
   }});
 
@@ -25515,7 +25522,7 @@ function buildLucidExport(){
     (rt.Routes||[]).forEach(r=>{
       // Check for IGW, NAT, VGW routes
       let gwId=null,gwType=null;
-      if(r.GatewayId?.startsWith('igw-')){gwId=r.GatewayId;gwType='IGW';}
+      if(_isIgwRoute(r.GatewayId)){gwId=r.GatewayId;gwType='IGW';}
       else if(r.NatGatewayId){gwId=r.NatGatewayId;gwType='NAT';}
       else if(r.GatewayId?.startsWith('vgw-')){gwId=r.GatewayId;gwType='VGW';}
       
