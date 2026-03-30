@@ -1780,7 +1780,10 @@ function _renderMapInner(){
     });
     if(gwLabelRecs.length>1){
       gwLabelRecs.sort((a,b)=>a.y-b.y||a.x-b.x);
-      _resolveCollisions(gwLabelRecs,{strategy:'shift-y',padding:3});
+      // Pass 1: vertical shift (resolves stacked labels)
+      _resolveCollisions(gwLabelRecs,{strategy:'shift-y',padding:3,maxIter:4});
+      // Pass 2: horizontal shift for remaining overlaps (resolves side-by-side labels)
+      _resolveCollisions(gwLabelRecs,{strategy:'shift-x',padding:4,maxIter:4});
       _applyLabelPositions(gwLabelRecs);
     }
   }
@@ -2427,9 +2430,14 @@ function _renderMapInner(){
           const a=allLabels[i],b=allLabels[j];
           if(b.y>a.y+a.h+4)break;// past vertical range, no more overlaps possible
           if(_rectsOverlap(a,b,2)){
-            // Shift down if vertically overlapping
             const overlapY=(a.y+a.h+4)-b.y;
-            if(overlapY>0){b.y+=overlapY;b.textNode.attr('y',b.y+b.h)}
+            const overlapX=(a.x+a.w+4)-b.x;
+            // Prefer vertical shift; use horizontal shift when labels are at similar Y
+            if(overlapY>0 && overlapY<=overlapX){
+              b.y+=overlapY;b.textNode.attr('y',b.y+b.h);
+            } else if(overlapX>0){
+              b.x+=overlapX;b.textNode.attr('x',b.x+(b.w||0)/2);
+            }
           }
         }
       }
