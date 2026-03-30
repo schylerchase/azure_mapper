@@ -8936,6 +8936,8 @@ function _renderMapInner(){
   if(iamRaw&&!_iamData)_iamData=parseIAMData(iamRaw);
   function tagResource(r){if(!r)return r;r._subscriptionId=detectAccountId(r)||userAccount||'default';r._region=detectRegion(r)||'unknown';return r}
   [vpcs,subnets,igws,nats,sgs,instances,albs,rdsInstances,ecsServices,lambdaFns,peerings].forEach(arr=>arr.forEach(tagResource));
+  // Azure normalization (shared with _buildRlCtxFromData)
+  _normalizeAzureResources({vpcs,subnets,rts,sgs,enis,nats,vpces,instances,albs,tgs,peerings,vpns,volumes,snapshots,s3bk,zones,wafAcls,rdsInstances,ecsServices,lambdaFns,ecacheClusters,redshiftClusters,tgwAttachments,cfDistributions});
   } // end else (textarea parse path)
   console.log('[PERF] parse phase: '+(performance.now()-_t0).toFixed(1)+'ms');
   const _t1=performance.now();
