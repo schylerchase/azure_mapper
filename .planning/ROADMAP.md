@@ -55,6 +55,11 @@ Plans:
 
 **Requirements:** R3.1-R3.4
 **Estimate:** 1-2 sessions
+**Plans:** 2 plans
+
+Plans:
+- [ ] 04-01-PLAN.md -- Bundle audit, lazy-load demo-data + iac-generator, render timing instrumentation
+- [ ] 04-02-PLAN.md -- Consolidate compliance engine NSG multi-pass + defer compliance to requestIdleCallback
 
 ## Phase 5: Release Preparation
 **Goal:** Version bump, changelog, packaging, deployment
