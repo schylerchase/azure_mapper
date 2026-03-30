@@ -136,8 +136,8 @@ function _onSearchInput(e){
   // Notes are dynamic: search them live (typically small set)
   _getAllNotes().forEach(function(n){if(matches.length>=30)return;if((n.text||'').toLowerCase().includes(q)||(_getResourceName(n.resourceId)||'').toLowerCase().includes(q))matches.push({type:'Note',name:(n.text||'').slice(0,50),id:n.resourceId,extra:n.category||'',acct:''})});
   const isMA=_rlCtx._multiAccount;
-  let h='';matches.forEach(m=>{const acctBadge=isMA&&m.acct&&m.acct!=='default'?'<span style="font-size:8px;padding:1px 5px;border-radius:3px;background:'+( getAccountColor(m.acct)||'var(--bg-tertiary)')+';color:#000;font-weight:600;white-space:nowrap">'+esc(m.acct)+'</span>':'';h+='<div class="search-result-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" data-rid="'+esc(m.id)+'" data-rtype="'+esc(m.type)+'"><span style="font-size:9px;color:var(--accent-cyan);font-weight:600;width:70px">'+esc(m.type)+'</span><span style="flex:1;font-size:12px;color:var(--text-primary)">'+esc(m.name)+'</span>'+acctBadge+'<span style="font-size:10px;color:var(--text-muted)">'+esc(m.extra)+'</span></div>'});
-  if(!matches.length)h='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px">No results</div>';
+  let h='';matches.forEach(m=>{const acctBadge=isMA&&m.acct&&m.acct!=='default'?'<span style="font-size:calc(8px * var(--txt-scale,1));padding:1px 5px;border-radius:3px;background:'+( getAccountColor(m.acct)||'var(--bg-tertiary)')+';color:#000;font-weight:600;white-space:nowrap">'+esc(m.acct)+'</span>':'';h+='<div class="search-result-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" data-rid="'+esc(m.id)+'" data-rtype="'+esc(m.type)+'"><span style="font-size:calc(9px * var(--txt-scale,1));color:var(--accent-cyan);font-weight:600;width:70px">'+esc(m.type)+'</span><span style="flex:1;font-size:calc(12px * var(--txt-scale,1));color:var(--text-primary)">'+esc(m.name)+'</span>'+acctBadge+'<span style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">'+esc(m.extra)+'</span></div>'});
+  if(!matches.length)h='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:calc(12px * var(--txt-scale,1))">No results</div>';
   res.innerHTML=h;
   // Delegated click handler: replaces inline onclick attributes (CSP-safe)
   res.querySelectorAll('.search-result-item').forEach(function(el){
@@ -300,13 +300,13 @@ function _openResourceSpotlight(rid){
     h+='<div class="spotlight-section"><div class="spotlight-section-title">Compliance ('+info.findings.length+')</div>';
     info.findings.slice(0,5).forEach(function(f){
       var sc={CRITICAL:'#ef4444',HIGH:'#f97316',MEDIUM:'#eab308',LOW:'#3b82f6'}[f.severity]||'#64748b';
-      h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:10px">';
+      h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:calc(10px * var(--txt-scale,1))">';
       h+='<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+sc+';flex-shrink:0"></span>';
       h+='<span style="color:'+sc+';font-weight:600;width:55px;flex-shrink:0">'+_escHtml(f.severity)+'</span>';
       h+='<span style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_escHtml(f.message)+'</span>';
       h+='</div>';
     });
-    if(info.findings.length>5) h+='<div style="font-size:9px;color:var(--text-muted);padding-top:4px">+'+(info.findings.length-5)+' more findings</div>';
+    if(info.findings.length>5) h+='<div style="font-size:calc(9px * var(--txt-scale,1));color:var(--text-muted);padding-top:4px">+'+(info.findings.length-5)+' more findings</div>';
     h+='</div>';
   }
   // Related resources

@@ -1214,7 +1214,7 @@ function showDependencies(resourceId){
   // Group by depth
   const byDepth={};blast.all.forEach(e=>{(byDepth[e.depth]=byDepth[e.depth]||[]).push(e)});
   h+='<div class="dep-tree">';
-  h+='<div class="dep-node dep-depth-0" style="border-left-color:var(--accent-cyan);font-weight:600"><span class="dep-type">'+resType+'</span>'+_escHtml(resName)+' <span style="color:var(--text-muted);font-size:9px">'+resourceId+'</span></div>';
+  h+='<div class="dep-node dep-depth-0" style="border-left-color:var(--accent-cyan);font-weight:600"><span class="dep-type">'+resType+'</span>'+_escHtml(resName)+' <span style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale,1))">'+resourceId+'</span></div>';
   Object.keys(byDepth).sort((a,b)=>a-b).forEach(d=>{
     byDepth[d].sort((a,b)=>{const o={hard:0,soft:1,config:2};return(o[a.strength]||3)-(o[b.strength]||3)}).forEach(e=>{
       const depCls=Math.min(parseInt(d),3);
@@ -1222,7 +1222,7 @@ function showDependencies(resourceId){
       h+='<div class="dep-node dep-'+e.strength+' dep-depth-'+depCls+'" data-id="'+e.id+'" title="'+e.id+'"><span class="dep-type">'+type+'</span>'+_escHtml(name)+' <span class="dep-rel">'+e.rel+'</span></div>';
     });
   });
-  if(!blast.all.length)h+='<div style="padding:20px;color:var(--text-muted);font-size:12px;text-align:center">No dependencies found for this resource</div>';
+  if(!blast.all.length)h+='<div style="padding:20px;color:var(--text-muted);font-size:calc(12px * var(--txt-scale,1));text-align:center">No dependencies found for this resource</div>';
   h+='</div>';
   body.innerHTML=h;
   // Click to zoom
@@ -1385,8 +1385,8 @@ function _renderBUDRDash(){
   const counts=_getBUDRTierCounts();
   const total=_budrAssessments.length;
   // Toolbar: search + sort + tier pills
-  let th='<input id="budrSearch" type="text" placeholder="Filter by name, ID, type..." value="'+_escHtml(st.search)+'" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);padding:4px 10px;border-radius:4px;font-size:11px;font-family:Segoe UI,system-ui,sans-serif;width:200px">';
-  th+='<select id="budrSort" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-secondary);padding:4px 8px;border-radius:4px;font-size:10px;font-family:Segoe UI,system-ui,sans-serif">';
+  let th='<input id="budrSearch" type="text" placeholder="Filter by name, ID, type..." value="'+_escHtml(st.search)+'" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);padding:4px 10px;border-radius:4px;font-size:calc(11px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;width:200px">';
+  th+='<select id="budrSort" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-secondary);padding:4px 8px;border-radius:4px;font-size:calc(10px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif">';
   th+='<option value="tier"'+(st.sort==='tier'?' selected':'')+'>Sort: Tier</option>';
   th+='<option value="name"'+(st.sort==='name'?' selected':'')+'>Sort: Name</option>';
   th+='<option value="type"'+(st.sort==='type'?' selected':'')+'>Sort: Type</option>';
@@ -1503,7 +1503,7 @@ function _renderBUDRDash(){
   let fh='<button id="budrExportCSV">Export CSV</button>';
   fh+='<button id="budrExportJSON">Export JSON</button>';
   if(_isElectron) fh+='<button id="budrExportXLSX">Export XLSX</button>';
-  fh+='<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">'+items.length+' of '+total+' resources</span>';
+  fh+='<span style="margin-left:auto;font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">'+items.length+' of '+total+' resources</span>';
   footer.innerHTML=fh;
   // Wire export listeners
   document.getElementById('budrExportCSV').addEventListener('click',function(){
@@ -1578,7 +1578,7 @@ function _renderClassificationTab(){
     th+='<select id="govPerPage">';
     [25,50,100,0].forEach(function(v){th+='<option value="'+v+'"'+(st.perPage===v?' selected':'')+'>'+(v||'All')+'</option>'});
     th+='</select>';
-    th+='<button id="govRulesBtn" style="margin-left:auto;background:rgba(139,92,246,.1);border:1px solid #8b5cf6;color:#8b5cf6;padding:4px 12px;border-radius:4px;font-size:10px;font-family:Segoe UI,system-ui,sans-serif;cursor:pointer">Configure Rules</button>';
+    th+='<button id="govRulesBtn" style="margin-left:auto;background:rgba(139,92,246,.1);border:1px solid #8b5cf6;color:#8b5cf6;padding:4px 12px;border-radius:4px;font-size:calc(10px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;cursor:pointer">Configure Rules</button>';
     tb.innerHTML=th;
     document.getElementById('govSearch').addEventListener('input',function(){st.search=this.value;st.page=1;_renderClassificationTab()});
     document.getElementById('govFilter').addEventListener('change',function(){st.filter=this.value;st.page=1;_renderClassificationTab()});
@@ -1630,8 +1630,8 @@ function _renderClassificationTab(){
     bh+='<td><span class="gov-tier-badge '+r.tier+'">'+r.tier+'</span></td>';
     bh+='<td>'+_escHtml(r.rpo)+'</td>';
     bh+='<td>'+_escHtml(r.rto)+'</td>';
-    bh+='<td style="font-size:10px;color:var(--text-muted)">'+_escHtml(r.vnetName||'—')+'</td>';
-    bh+='<td style="font-size:9px;color:var(--text-muted)">'+(r.auto?'Auto':'<span style="color:#8b5cf6">Manual</span>')+'</td>';
+    bh+='<td style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">'+_escHtml(r.vnetName||'—')+'</td>';
+    bh+='<td style="font-size:calc(9px * var(--txt-scale,1));color:var(--text-muted)">'+(r.auto?'Auto':'<span style="color:#8b5cf6">Manual</span>')+'</td>';
     bh+='<td><select class="gov-override-select" data-res-id="'+_escHtml(r.id)+'">';
     ['critical','high','medium','low'].forEach(function(t){bh+='<option value="'+t+'"'+(r.tier===t?' selected':'')+'>'+t+'</option>'});
     bh+='</select></td>';
@@ -1643,10 +1643,10 @@ function _renderClassificationTab(){
   // Footer
   let fh='<button id="govExportCSV">Export CSV</button>';
   fh+='<button id="govExportJSON">Export JSON</button>';
-  fh+='<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">'+items.length+' of '+_classificationData.length+'</span>';
+  fh+='<span style="margin-left:auto;font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">'+items.length+' of '+_classificationData.length+'</span>';
   if(totalPages>1){
     fh+='<button id="govPrev"'+(st.page<=1?' disabled':'')+'>← Prev</button>';
-    fh+='<span style="font-size:10px;color:var(--text-muted)">Page '+st.page+' of '+totalPages+'</span>';
+    fh+='<span style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">Page '+st.page+' of '+totalPages+'</span>';
     fh+='<button id="govNext"'+(st.page>=totalPages?' disabled':'')+'>Next →</button>';
   }
   footer.innerHTML=fh;
@@ -1725,7 +1725,7 @@ function _renderIAMTab(){
     document.getElementById('govPerPage').addEventListener('change',function(){st.perPage=parseInt(this.value)||0;st.page=1;_renderIAMTab()});
   }
   if(!_iamReviewData.length){
-    body.innerHTML='<div style="text-align:center;padding:60px;color:var(--text-muted);font-family:Segoe UI,system-ui,sans-serif"><p style="font-size:14px">No IAM data loaded</p><p style="font-size:11px">Paste Entra ID / RBAC role assignment data (from <code>az role assignment list --all</code>) in the IAM section of the left panel, then re-render.</p></div>';
+    body.innerHTML='<div style="text-align:center;padding:60px;color:var(--text-muted);font-family:Segoe UI,system-ui,sans-serif"><p style="font-size:calc(14px * var(--txt-scale,1))">No IAM data loaded</p><p style="font-size:calc(11px * var(--txt-scale,1))">Paste Entra ID / RBAC role assignment data (from <code>az role assignment list --all</code>) in the IAM section of the left panel, then re-render.</p></div>';
     footer.innerHTML='';
     return;
   }
@@ -1772,8 +1772,8 @@ function _renderIAMTab(){
     bh+='<tr data-iam-row="'+rowId+'" style="cursor:pointer">';
     bh+='<td style="color:var(--accent-cyan)">'+_escHtml(r.name)+'</td>';
     bh+='<td>'+_escHtml(r.type)+'</td>';
-    bh+='<td style="font-size:10px">'+(r.created?r.created.toISOString().split('T')[0]:'—')+'</td>';
-    bh+='<td style="font-size:10px">'+(r.lastUsed?r.lastUsed.toISOString().split('T')[0]:'Never')+'</td>';
+    bh+='<td style="font-size:calc(10px * var(--txt-scale,1))">'+(r.created?r.created.toISOString().split('T')[0]:'—')+'</td>';
+    bh+='<td style="font-size:calc(10px * var(--txt-scale,1))">'+(r.lastUsed?r.lastUsed.toISOString().split('T')[0]:'Never')+'</td>';
     bh+='<td style="text-align:center">'+r.policies+'</td>';
     bh+='<td>'+(r.isAdmin?'<span class="gov-admin-badge">Admin</span>':'—')+'</td>';
     bh+='<td>'+(r.findings.length>0?'<span class="gov-finding-badge">'+r.findings.length+'</span>':'—')+'</td>';
@@ -1781,10 +1781,10 @@ function _renderIAMTab(){
     bh+='</tr>';
     // Expandable detail row
     bh+='<tr><td colspan="'+cols.length+'" class="gov-iam-expand" id="'+rowId+'-exp">';
-    bh+='<div style="margin-bottom:6px"><b>ARN:</b> <code style="font-size:10px;background:var(--bg-input);padding:2px 6px;border-radius:3px">'+_escHtml(r.arn)+'</code></div>';
-    if(r.policyNames&&r.policyNames.length) bh+='<div style="margin-bottom:6px"><b>Policies:</b> '+r.policyNames.map(function(p){return '<code style="font-size:9px;background:var(--bg-input);padding:1px 4px;border-radius:2px;margin-right:3px">'+_escHtml(p)+'</code>'}).join('')+'</div>';
-    if(r.permBoundary) bh+='<div style="margin-bottom:6px"><b>Permission Boundary:</b> <code style="font-size:9px">'+_escHtml(r.permBoundary)+'</code></div>';
-    if(r.crossAccounts.length) bh+='<div style="margin-bottom:6px"><b>Cross-Account Trusts:</b> '+r.crossAccounts.map(function(a){return '<code style="font-size:10px;background:rgba(245,158,11,.1);padding:1px 4px;border-radius:2px;margin-right:3px">'+_escHtml(a)+'</code>'}).join('')+'</div>';
+    bh+='<div style="margin-bottom:6px"><b>ARN:</b> <code style="font-size:calc(10px * var(--txt-scale,1));background:var(--bg-input);padding:2px 6px;border-radius:3px">'+_escHtml(r.arn)+'</code></div>';
+    if(r.policyNames&&r.policyNames.length) bh+='<div style="margin-bottom:6px"><b>Policies:</b> '+r.policyNames.map(function(p){return '<code style="font-size:calc(9px * var(--txt-scale,1));background:var(--bg-input);padding:1px 4px;border-radius:2px;margin-right:3px">'+_escHtml(p)+'</code>'}).join('')+'</div>';
+    if(r.permBoundary) bh+='<div style="margin-bottom:6px"><b>Permission Boundary:</b> <code style="font-size:calc(9px * var(--txt-scale,1))">'+_escHtml(r.permBoundary)+'</code></div>';
+    if(r.crossAccounts.length) bh+='<div style="margin-bottom:6px"><b>Cross-Account Trusts:</b> '+r.crossAccounts.map(function(a){return '<code style="font-size:calc(10px * var(--txt-scale,1));background:rgba(245,158,11,.1);padding:1px 4px;border-radius:2px;margin-right:3px">'+_escHtml(a)+'</code>'}).join('')+'</div>';
     if(r.type==='User'){
       bh+='<div style="margin-bottom:6px"><b>MFA:</b> '+(r.hasMFA?'<span style="color:#10b981">✓ Enabled</span>':'<span style="color:#ef4444">✗ Disabled</span>')+'</div>';
       if(r.hasConsole) bh+='<div style="margin-bottom:6px"><b>Console Access:</b> <span style="color:#f59e0b">Enabled</span></div>';
@@ -1794,7 +1794,7 @@ function _renderIAMTab(){
       bh+='<div><b>Findings ('+r.findings.length+'):</b><ul style="margin:4px 0 0;padding-left:20px;list-style:none">';
       r.findings.forEach(function(f){
         const sColor=f.severity==='CRITICAL'?'#ef4444':f.severity==='HIGH'?'#f97316':f.severity==='MEDIUM'?'#eab308':'#3b82f6';
-        bh+='<li style="font-size:10px;color:var(--text-secondary);margin:3px 0"><span style="font-size:8px;font-weight:700;padding:1px 4px;border-radius:2px;background:rgba(0,0,0,.2);color:'+sColor+';margin-right:4px">'+f.severity+'</span>'+_escHtml(f.message)+'</li>';
+        bh+='<li style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-secondary);margin:3px 0"><span style="font-size:calc(8px * var(--txt-scale,1));font-weight:700;padding:1px 4px;border-radius:2px;background:rgba(0,0,0,.2);color:'+sColor+';margin-right:4px">'+f.severity+'</span>'+_escHtml(f.message)+'</li>';
       });
       bh+='</ul></div>';
     }
@@ -1806,10 +1806,10 @@ function _renderIAMTab(){
   // Footer
   let fh='<button id="govExportCSV">Export CSV</button>';
   fh+='<button id="govExportJSON">Export JSON</button>';
-  fh+='<span style="margin-left:auto;font-size:10px;color:var(--text-muted)">'+items.length+' of '+_iamReviewData.length+'</span>';
+  fh+='<span style="margin-left:auto;font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">'+items.length+' of '+_iamReviewData.length+'</span>';
   if(totalPages>1){
     fh+='<button id="govPrev"'+(st.page<=1?' disabled':'')+'>← Prev</button>';
-    fh+='<span style="font-size:10px;color:var(--text-muted)">Page '+st.page+' of '+totalPages+'</span>';
+    fh+='<span style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">Page '+st.page+' of '+totalPages+'</span>';
     fh+='<button id="govNext"'+(st.page>=totalPages?' disabled':'')+'>Next →</button>';
   }
   footer.innerHTML=fh;
@@ -1963,7 +1963,7 @@ function _openRulesEditor(){
     ph+='<div class="gov-preview-card" style="margin-top:10px"><h5>Sample Resources</h5><div class="gov-preview-sample">';
     p.samples.forEach(function(s){
       const tc=_TIER_RPO_RTO[s.tier]||{color:'#64748b'};
-      ph+='<div class="gov-preview-sample-row"><span class="name">'+_escHtml(s.name)+'</span><span class="type">'+_escHtml(s.type)+'</span><span class="gov-tier-badge '+s.tier+'" style="font-size:8px;padding:1px 5px">'+s.tier+'</span></div>';
+      ph+='<div class="gov-preview-sample-row"><span class="name">'+_escHtml(s.name)+'</span><span class="type">'+_escHtml(s.type)+'</span><span class="gov-tier-badge '+s.tier+'" style="font-size:calc(8px * var(--txt-scale,1));padding:1px 5px">'+s.tier+'</span></div>';
     });
     ph+='</div></div>';
     el.innerHTML=ph;
@@ -1995,7 +1995,7 @@ function _openRulesEditor(){
         h+='<button class="gov-rule-del" data-del-idx="'+i+'" title="Delete rule">✕</button>';
         h+='</div>';
       });
-      h+='<div style="padding:4px 0 8px 34px"><button class="gov-rule-add-scope" data-add-scope="'+scope+'" style="background:none;border:1px dashed var(--border);border-radius:3px;padding:3px 10px;font-size:9px;font-family:Segoe UI,system-ui,sans-serif;color:var(--text-muted);cursor:pointer;transition:all .15s">+ Add '+((scopeLabels[scope]||scope).replace(' Rules',''))+' Rule</button></div>';
+      h+='<div style="padding:4px 0 8px 34px"><button class="gov-rule-add-scope" data-add-scope="'+scope+'" style="background:none;border:1px dashed var(--border);border-radius:3px;padding:3px 10px;font-size:calc(9px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;color:var(--text-muted);cursor:pointer;transition:all .15s">+ Add '+((scopeLabels[scope]||scope).replace(' Rules',''))+' Rule</button></div>';
       h+='</div></div>';
     });
     list.innerHTML=h;
@@ -2078,7 +2078,7 @@ function _openRulesEditor(){
   h+='<button id="govRulesClose">Close</button>';
   h+='</div></div>';
   h+='<div class="gov-rules-content">';
-  h+='<div class="gov-rules-left"><p style="font-size:10px;color:var(--text-muted);margin:0 0 12px;line-height:1.5">Regex patterns matched against scope. Higher weight wins when multiple rules match. Toggle rules on/off to test without deleting.</p>';
+  h+='<div class="gov-rules-left"><p style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted);margin:0 0 12px;line-height:1.5">Regex patterns matched against scope. Higher weight wins when multiple rules match. Toggle rules on/off to test without deleting.</p>';
   h+='<div id="govRulesList"></div></div>';
   h+='<div class="gov-rules-right"><h4>Live Preview</h4><div id="govRulesPreview"></div></div>';
   h+='</div>';

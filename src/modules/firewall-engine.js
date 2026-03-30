@@ -560,7 +560,7 @@ function _fwOpenFullEditor(type, resourceId, sub, vnetId, lk){
     const vnetSpan=document.createElement('span');
     vnetSpan.className='fw-link';
     vnetSpan.id='fwFpVnetLink';
-    vnetSpan.style.cssText='font-size:10px;font-weight:400;margin-left:6px';
+    vnetSpan.style.cssText='font-size:calc(10px * var(--txt-scale,1));font-weight:400;margin-left:6px';
     vnetSpan.textContent=vnetLabel;
     titleEl.appendChild(vnetSpan);
   }
@@ -600,7 +600,7 @@ function _fwRefreshFullPanel(){
     h+=_fwRenderNsgDirection(nsg, _fwFpDir, _fwFpSub);
     const warns=_fwCheckNsgShadow(nsg, _fwFpDir.toLowerCase());
     if(warns.length){
-      h+='<div style="margin-top:6px;padding:4px 6px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:4px;font-size:10px;font-family:Segoe UI,system-ui,sans-serif">';
+      h+='<div style="margin-top:6px;padding:4px 6px;background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:4px;font-size:calc(10px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif">';
       h+='<div style="color:var(--accent-orange);font-weight:600;margin-bottom:2px">Shadow Warnings</div>';
       warns.forEach(function(w){h+='<div style="color:var(--text-muted);margin:1px 0">'+_escHtml(w)+'</div>'});
       h+='</div>';
@@ -633,14 +633,14 @@ function _fwRefreshFullPanel(){
   const _fpResComp=_fpCompLookup[_fwFpResId];
   if(_fpResComp&&_fpResComp.findings.length){
     h+='<div class="fw-fp-compliance">';
-    h+='<div style="font-size:11px;font-weight:600;color:var(--accent-orange);margin-bottom:8px">Compliance Findings ('+_fpResComp.count+')</div>';
+    h+='<div style="font-size:calc(11px * var(--txt-scale,1));font-weight:600;color:var(--accent-orange);margin-bottom:8px">Compliance Findings ('+_fpResComp.count+')</div>';
     _fpResComp.findings.forEach(function(f){
       h+='<div class="fw-fp-finding sev-'+f.severity+'">';
-      h+='<span class="sev-badge sev-'+f.severity+'" style="font-size:8px;padding:1px 5px;margin-right:6px">'+f.severity+'</span>';
+      h+='<span class="sev-badge sev-'+f.severity+'" style="font-size:calc(8px * var(--txt-scale,1));padding:1px 5px;margin-right:6px">'+f.severity+'</span>';
       h+='<span class="fw-finding-ctrl" data-fw-ctrl="'+_escHtml(f.control)+'">'+_escHtml(f.control)+'</span>';
-      if(f.ckv) h+=' <span style="opacity:.5;font-size:8px">('+_escHtml(f.ckv)+')</span>';
-      h+='<div style="margin:4px 0 2px;color:var(--text-secondary);font-size:10px">'+_escHtml(f.message)+'</div>';
-      h+='<div style="color:var(--text-muted);font-size:9px">Remediation: '+_escHtml(f.remediation)+'</div>';
+      if(f.ckv) h+=' <span style="opacity:.5;font-size:calc(8px * var(--txt-scale,1))">('+_escHtml(f.ckv)+')</span>';
+      h+='<div style="margin:4px 0 2px;color:var(--text-secondary);font-size:calc(10px * var(--txt-scale,1))">'+_escHtml(f.message)+'</div>';
+      h+='<div style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale,1))">Remediation: '+_escHtml(f.remediation)+'</div>';
       h+='</div>';
     });
     h+='</div>';
@@ -673,29 +673,29 @@ function _fwRefreshFullPanel(){
         .filter(function(r){return (r.direction||'').toLowerCase()===vDir})
         .sort(function(a,b){return a.priority-b.priority});
       const vLabel=_fwFpDir==='Inbound'?'INBOUND':'OUTBOUND';
-      vH+='<div style="font-size:10px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;font-family:Segoe UI,system-ui,sans-serif">'+vLabel+' FLOW</div>';
+      vH+='<div style="font-size:calc(10px * var(--txt-scale,1));font-weight:600;color:var(--text-secondary);margin-bottom:6px;font-family:Segoe UI,system-ui,sans-serif">'+vLabel+' FLOW</div>';
       vRules.forEach(function(r){
         const cls=(r.access||'').toLowerCase()==='allow'?'allow':'deny';
         const proto=_fwProtoLabel(r.protocol);
         const port=r.destinationPortRange||'*';
         vH+='<div class="fw-edit-row" style="padding:2px 0">';
         vH+='<div class="fw-arrow '+cls+'"><div class="fw-arrow-line"></div><div class="fw-arrow-head"></div></div>';
-        vH+='<span style="font-size:9px;color:var(--text-muted)">P'+r.priority+' '+proto+' '+_escHtml(port)+' '+r.access+'</span>';
+        vH+='<span style="font-size:calc(9px * var(--txt-scale,1));color:var(--text-muted)">P'+r.priority+' '+proto+' '+_escHtml(port)+' '+r.access+'</span>';
         vH+='</div>';
       });
-      vH+='<div class="fw-edit-row" style="padding:2px 0;opacity:.4"><div class="fw-arrow deny"><div class="fw-arrow-line"></div><div class="fw-arrow-head"></div></div><span style="font-size:9px;color:var(--text-muted)">P65500 DENY ALL</span></div>';
+      vH+='<div class="fw-edit-row" style="padding:2px 0;opacity:.4"><div class="fw-arrow deny"><div class="fw-arrow-line"></div><div class="fw-arrow-head"></div></div><span style="font-size:calc(9px * var(--txt-scale,1));color:var(--text-muted)">P65500 DENY ALL</span></div>';
     }
   } else if(_fwFpType==='udr'){
     const vRt=(_rlCtx.udrs||[]).find(function(r){return (r.id||r.name)===_fwFpResId});
     if(vRt){
-      vH+='<div style="font-size:10px;font-weight:600;color:var(--text-secondary);margin-bottom:6px;font-family:Segoe UI,system-ui,sans-serif">ROUTE FLOW</div>';
+      vH+='<div style="font-size:calc(10px * var(--txt-scale,1));font-weight:600;color:var(--text-secondary);margin-bottom:6px;font-family:Segoe UI,system-ui,sans-serif">ROUTE FLOW</div>';
       (vRt.routes||[]).forEach(function(r){
         const dest=r.addressPrefix||'?';
         const hop=r.nextHopType||'None';
         const hopAddr=r.nextHopIpAddress?' ('+r.nextHopIpAddress+')':'';
         vH+='<div class="fw-edit-row" style="padding:2px 0">';
         vH+='<div class="fw-arrow allow"><div class="fw-arrow-line"></div><div class="fw-arrow-head"></div></div>';
-        vH+='<span style="font-size:9px;color:var(--text-muted)">'+_escHtml(dest)+' &rarr; '+_escHtml(hop+hopAddr)+'</span>';
+        vH+='<span style="font-size:calc(9px * var(--txt-scale,1));color:var(--text-muted)">'+_escHtml(dest)+' &rarr; '+_escHtml(hop+hopAddr)+'</span>';
         vH+='</div>';
       });
     }
@@ -1001,9 +1001,9 @@ function _renderFirewallTab(){
   const sortOpts=[{k:'type',l:'Sort: Type'},{k:'name',l:'Sort: Name'},{k:'severity',l:'Sort: Severity'},{k:'rules',l:'Sort: Rules'}];
   let sortHtml='';sortOpts.forEach(function(o){sortHtml+='<option value="'+o.k+'"'+(_fwDashState.sort===o.k?' selected':'')+'>'+o.l+'</option>'});
   tb.innerHTML='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
-    '<input id="fwDashSearch" type="text" placeholder="Search resources..." value="'+_escHtml(_fwDashState.search)+'" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);padding:4px 10px;border-radius:4px;font-size:11px;font-family:Segoe UI,system-ui,sans-serif;width:180px">'+
-    '<select id="fwDashVnetFilter" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-secondary);padding:4px 8px;border-radius:4px;font-size:10px;font-family:Segoe UI,system-ui,sans-serif">'+vnetOpts+'</select>'+
-    '<select id="fwDashSort" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-secondary);padding:4px 8px;border-radius:4px;font-size:10px;font-family:Segoe UI,system-ui,sans-serif">'+sortHtml+'</select>'+
+    '<input id="fwDashSearch" type="text" placeholder="Search resources..." value="'+_escHtml(_fwDashState.search)+'" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);padding:4px 10px;border-radius:4px;font-size:calc(11px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;width:180px">'+
+    '<select id="fwDashVnetFilter" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-secondary);padding:4px 8px;border-radius:4px;font-size:calc(10px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif">'+vnetOpts+'</select>'+
+    '<select id="fwDashSort" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-secondary);padding:4px 8px;border-radius:4px;font-size:calc(10px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif">'+sortHtml+'</select>'+
     '<div id="fwDashPills" style="display:flex;gap:4px;margin-left:auto"></div>'+
     '</div>';
   document.getElementById('fwDashVnetFilter').value=_fwDashState.vnetFilter;
@@ -1115,7 +1115,7 @@ function _fwDashRender(){
       cf==='open'?'No NSGs with open Internet ingress':
       _fwDashState.search?'No resources match "'+_escHtml(_fwDashState.search)+'"':
       'No firewall resources found';
-    body.innerHTML=h+'<div style="padding:60px 20px;text-align:center;color:var(--text-muted);font-family:Segoe UI,system-ui,sans-serif;font-size:12px">'+emptyMsg+'</div>';
+    body.innerHTML=h+'<div style="padding:60px 20px;text-align:center;color:var(--text-muted);font-family:Segoe UI,system-ui,sans-serif;font-size:calc(12px * var(--txt-scale,1))">'+emptyMsg+'</div>';
     _fwWireCards(body);_fwRenderFooter(filtered.length,rows.length);
     return;
   }
@@ -1134,16 +1134,16 @@ function _fwDashRender(){
     h+='<tr class="'+trCls+'" style="cursor:pointer;border-left-color:'+sevColor+'" data-fw-idx="'+idx+'">';
     h+='<td><span class="fw-type-badge '+r.type+'">'+(r.type==='nsg'?'NSG':'UDR')+'</span></td>';
     h+='<td><span class="fw-link" data-fw-action="open" data-fw-type="'+r.type+'" data-fw-id="'+esc(r.id)+'" data-fw-vnet="'+esc(r.vnet||'')+'">'+esc(r.name)+'</span>';
-    if(r.desc) h+='<br><span style="font-size:9px;color:var(--text-muted)">'+esc(r.desc.substring(0,60))+'</span>';
+    if(r.desc) h+='<br><span style="font-size:calc(9px * var(--txt-scale,1));color:var(--text-muted)">'+esc(r.desc.substring(0,60))+'</span>';
     h+='</td>';
     const vnetObj=(_rlCtx.vnets||[]).find(function(v){return v.id===r.vnet});
     const vnetLabel=vnetObj?(vnetObj.name||r.vnet):(r.vnet||'--');
     h+='<td><span class="fw-link" data-fw-action="zoom-vnet" data-fw-vnet="'+esc(r.vnet||'')+'">'+esc(vnetLabel)+'</span></td>';
-    h+='<td style="font-size:10px">'+r.rulesLabel+'</td>';
+    h+='<td style="font-size:calc(10px * var(--txt-scale,1))">'+r.rulesLabel+'</td>';
     if(r.comp){
-      h+='<td><span class="sev-badge sev-'+r.comp.worst+'" style="font-size:8px;padding:1px 5px">'+r.comp.worst+'</span> <span style="font-size:9px;color:var(--text-muted)">'+r.comp.count+'</span></td>';
+      h+='<td><span class="sev-badge sev-'+r.comp.worst+'" style="font-size:calc(8px * var(--txt-scale,1));padding:1px 5px">'+r.comp.worst+'</span> <span style="font-size:calc(9px * var(--txt-scale,1));color:var(--text-muted)">'+r.comp.count+'</span></td>';
     } else {
-      h+='<td><span style="color:var(--text-muted);font-size:9px">--</span></td>';
+      h+='<td><span style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale,1))">--</span></td>';
     }
     if(r.edits){
       h+='<td><span class="fw-edit-badge">'+r.edits+'</span></td>';
@@ -1206,11 +1206,11 @@ function _fwRenderFooter(shown,total){
   const totalEdits=_fwEdits?_fwEdits.length:0;
   const footer=document.getElementById('udashFooter');
   footer.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;width:100%">'+
-    '<span style="font-size:10px;color:var(--text-muted)">'+(totalEdits?totalEdits+' edit'+(totalEdits>1?'s':'')+' pending':'No pending edits')+
+    '<span style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted)">'+(totalEdits?totalEdits+' edit'+(totalEdits>1?'s':'')+' pending':'No pending edits')+
     ' | '+shown+' of '+total+' resources</span>'+
     '<div style="display:flex;gap:6px">'+
-      '<button id="fwDashExportAll" style="background:rgba(34,211,238,.1);border:1px solid var(--accent-cyan);color:var(--accent-cyan);padding:4px 10px;border-radius:4px;font-size:9px;font-family:Segoe UI,system-ui,sans-serif;cursor:pointer">Export All CLI</button>'+
-      '<button id="fwDashResetAll" style="background:rgba(239,68,68,.1);border:1px solid var(--accent-red);color:var(--accent-red);padding:4px 10px;border-radius:4px;font-size:9px;font-family:Segoe UI,system-ui,sans-serif;cursor:pointer">Reset All</button>'+
+      '<button id="fwDashExportAll" style="background:rgba(34,211,238,.1);border:1px solid var(--accent-cyan);color:var(--accent-cyan);padding:4px 10px;border-radius:4px;font-size:calc(9px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;cursor:pointer">Export All CLI</button>'+
+      '<button id="fwDashResetAll" style="background:rgba(239,68,68,.1);border:1px solid var(--accent-red);color:var(--accent-red);padding:4px 10px;border-radius:4px;font-size:calc(9px * var(--txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;cursor:pointer">Reset All</button>'+
     '</div></div>';
   document.getElementById('fwDashExportAll').addEventListener('click',function(){
     if(!_fwEdits||!_fwEdits.length){alert('No edits to export');return}

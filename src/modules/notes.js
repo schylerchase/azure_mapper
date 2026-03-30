@@ -87,17 +87,17 @@ function _renderNotesPanel(){
   if(catFilter!=='all')all=all.filter(n=>n.category===catFilter);
   if(searchQ)all=all.filter(n=>(n.text||'').toLowerCase().includes(searchQ)||(n.resourceId||'').toLowerCase().includes(searchQ)||(_getResourceName(n.resourceId)||'').toLowerCase().includes(searchQ));
   document.getElementById('noteCount').textContent=Object.keys(_annotations).length>0?_getAllNotes().length+' note(s)':'';
-  let h='<div class="note-form" id="noteAddForm" style="display:none"><textarea id="noteNewText" placeholder="Add a note..."></textarea><div class="note-form-row"><select id="noteNewCat">'+_NOTE_CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select><label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px"><input type="checkbox" id="noteNewPinned"> Pin</label><input type="text" id="noteNewAuthor" placeholder="Your name" value="'+(_annotationAuthor||'').replace(/"/g,'&quot;')+'" style="width:100px"><button class="btn-save" id="noteAddSave">Add</button><button class="btn-cancel" id="noteAddCancel">Cancel</button></div><select id="noteNewResource" style="margin-top:6px;width:100%"><option value="">-- Select resource --</option></select></div>';
-  if(!all.length&&!Object.keys(_annotations).length){h+='<div style="padding:40px 20px;text-align:center;color:var(--text-muted);font-size:12px">No annotations yet.<br>Click a resource on the map, then use "Add Note" in the detail panel.<br>Or click the + button above.</div>';
-  }else if(!all.length){h+='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px">No notes match filters</div>';
+  let h='<div class="note-form" id="noteAddForm" style="display:none"><textarea id="noteNewText" placeholder="Add a note..."></textarea><div class="note-form-row"><select id="noteNewCat">'+_NOTE_CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select><label style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted);display:flex;align-items:center;gap:4px"><input type="checkbox" id="noteNewPinned"> Pin</label><input type="text" id="noteNewAuthor" placeholder="Your name" value="'+(_annotationAuthor||'').replace(/"/g,'&quot;')+'" style="width:100px"><button class="btn-save" id="noteAddSave">Add</button><button class="btn-cancel" id="noteAddCancel">Cancel</button></div><select id="noteNewResource" style="margin-top:6px;width:100%"><option value="">-- Select resource --</option></select></div>';
+  if(!all.length&&!Object.keys(_annotations).length){h+='<div style="padding:40px 20px;text-align:center;color:var(--text-muted);font-size:calc(12px * var(--txt-scale,1))">No annotations yet.<br>Click a resource on the map, then use "Add Note" in the detail panel.<br>Or click the + button above.</div>';
+  }else if(!all.length){h+='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:calc(12px * var(--txt-scale,1))">No notes match filters</div>';
   }else{
     all.forEach(n=>{
       const orphaned=_isOrphaned(n.resourceId);
       const rName=_getResourceName(n.resourceId);
       h+='<div class="note-card'+(orphaned?' note-orphaned':'')+'" data-rid="'+_escHtml(n.resourceId)+'" data-ni="'+n.noteIndex+'">';
       h+='<div class="note-card-hdr"><span class="note-cat-badge cat-'+_escHtml(n.category)+'">'+_escHtml(n.category)+'</span>';
-      if(n.pinned)h+='<span style="font-size:8px;color:var(--accent-orange)">PINNED</span>';
-      if(orphaned)h+='<span style="font-size:8px;color:var(--accent-orange)">ORPHANED</span>';
+      if(n.pinned)h+='<span style="font-size:calc(8px * var(--txt-scale,1));color:var(--accent-orange)">PINNED</span>';
+      if(orphaned)h+='<span style="font-size:calc(8px * var(--txt-scale,1));color:var(--accent-orange)">ORPHANED</span>';
       h+='<span class="note-resource" title="'+_escHtml(n.resourceId)+'">'+_escHtml(rName)+'</span></div>';
       h+='<div class="note-text">'+_escHtml(n.text)+'</div>';
       h+='<div class="note-meta"><span>'+_escHtml(n.author||'Anonymous')+'</span><span>'+_relTime(n.updated||n.created)+'</span></div>';
@@ -141,7 +141,7 @@ function _showEditNote(rid,ni){
   const notes=_annotations[rid];if(!notes||!notes[ni])return;
   const n=notes[ni];
   const card=document.querySelector('.note-card[data-rid="'+rid+'"][data-ni="'+ni+'"]');if(!card)return;
-  card.innerHTML='<div class="note-form" style="display:block"><textarea id="noteEditText" style="width:100%">'+_escHtml(n.text)+'</textarea><div class="note-form-row"><select id="noteEditCat">'+_NOTE_CATEGORIES.map(c=>'<option value="'+c+'"'+(c===n.category?' selected':'')+'>'+c+'</option>').join('')+'</select><label style="font-size:10px;color:var(--text-muted);display:flex;align-items:center;gap:4px"><input type="checkbox" id="noteEditPinned" '+(n.pinned?'checked':'')+'> Pin</label><button class="btn-save" id="noteEditSave">Save</button><button class="btn-cancel" id="noteEditCancel">Cancel</button></div></div>';
+  card.innerHTML='<div class="note-form" style="display:block"><textarea id="noteEditText" style="width:100%">'+_escHtml(n.text)+'</textarea><div class="note-form-row"><select id="noteEditCat">'+_NOTE_CATEGORIES.map(c=>'<option value="'+c+'"'+(c===n.category?' selected':'')+'>'+c+'</option>').join('')+'</select><label style="font-size:calc(10px * var(--txt-scale,1));color:var(--text-muted);display:flex;align-items:center;gap:4px"><input type="checkbox" id="noteEditPinned" '+(n.pinned?'checked':'')+'> Pin</label><button class="btn-save" id="noteEditSave">Save</button><button class="btn-cancel" id="noteEditCancel">Cancel</button></div></div>';
   document.getElementById('noteEditSave').addEventListener('click',()=>{updateAnnotation(rid,ni,document.getElementById('noteEditText').value,document.getElementById('noteEditCat').value,document.getElementById('noteEditPinned').checked)});
   document.getElementById('noteEditCancel').addEventListener('click',()=>{_renderNotesPanel()});
 }

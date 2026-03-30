@@ -88,13 +88,13 @@ function _openResourceSpotlight(rid){
     h+='<div class="spotlight-section"><div class="spotlight-section-title">Compliance ('+info.findings.length+')</div>';
     info.findings.slice(0,5).forEach(function(f){
       var sc={CRITICAL:'#ef4444',HIGH:'#f97316',MEDIUM:'#eab308',LOW:'#3b82f6'}[f.severity]||'#64748b';
-      h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:10px">';
+      h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:calc(10px * var(--txt-scale,1) * var(--dp-txt-scale,1))">';
       h+='<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+sc+';flex-shrink:0"></span>';
       h+='<span style="color:'+sc+';font-weight:600;width:55px;flex-shrink:0">'+_escHtml(f.severity)+'</span>';
       h+='<span style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_escHtml(f.message)+'</span>';
       h+='</div>';
     });
-    if(info.findings.length>5) h+='<div style="font-size:9px;color:var(--text-muted);padding-top:4px">+'+(info.findings.length-5)+' more findings</div>';
+    if(info.findings.length>5) h+='<div style="font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1));color:var(--text-muted);padding-top:4px">+'+(info.findings.length-5)+' more findings</div>';
     h+='</div>';
   }
   // Related resources
@@ -401,7 +401,7 @@ function _dpBackBtnHtml(){
 var _dpTypeColors={VM:'#f97316',SQL:'#a78bfa','Function App':'#10b981',VNet:'#60a5fa',NSG:'#f59e0b',PE:'#a78bfa'};
 function _dpTypeBadge(type){
   var tc=_dpTypeColors[type]||'#22d3ee';
-  return '<span style="display:inline-block;font-size:9px;font-weight:600;padding:2px 8px;border-radius:4px;margin-right:8px;background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44;vertical-align:middle">'+esc(type)+'</span>';
+  return '<span style="display:inline-block;font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1));font-weight:600;padding:2px 8px;border-radius:4px;margin-right:8px;background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44;vertical-align:middle">'+esc(type)+'</span>';
 }
 
 // === SEARCH -> DETAIL PANEL DISPATCH ===
@@ -468,7 +468,7 @@ function _openDetailForSearch(type,id){
       subs.forEach(s=>{
         const sn=gn(s,s.id);const isPub=_rlCtx.pubSubs&&_rlCtx.pubSubs.has(s.id);
         const sCidr=s.properties&&s.properties.addressPrefix||'';
-        h+='<div style="padding:4px 0;cursor:pointer;color:var(--accent-cyan);font-size:calc(11px * var(--dp-txt-scale,1))" onclick="_openDetailForSearch(\'Subnet\',\''+esc(s.id)+'\');_zoomToElement(\''+esc(s.id)+'\')">'+_escHtml(sn)+' <span style="color:var(--text-muted);font-size:9px">'+(isPub?'PUB':'PRV')+' '+esc(sCidr)+'</span></div>';
+        h+='<div style="padding:4px 0;cursor:pointer;color:var(--accent-cyan);font-size:calc(11px * var(--dp-txt-scale,1))" onclick="_openDetailForSearch(\'Subnet\',\''+esc(s.id)+'\');_zoomToElement(\''+esc(s.id)+'\')">'+_escHtml(sn)+' <span style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1))">'+(isPub?'PUB':'PRV')+' '+esc(sCidr)+'</span></div>';
       });
       h+='</div></div>';
     }
@@ -507,7 +507,7 @@ function _openDetailForSearch(type,id){
       nsgIds.forEach(nsgId=>{
         const nsg=(_rlCtx.nsgs||[]).find(s=>s.id===nsgId);
         const nsgName=nsg&&nsg.name||nsgId;
-        h+='<div style="padding:4px 0;cursor:pointer;color:var(--accent-cyan);font-size:calc(11px * var(--dp-txt-scale,1))" onclick="_openDetailForSearch(\'NSG\',\''+esc(nsgId)+'\')">'+esc(nsgName)+' <span style="color:var(--text-muted);font-size:9px">'+esc(nsgId)+'</span></div>';
+        h+='<div style="padding:4px 0;cursor:pointer;color:var(--accent-cyan);font-size:calc(11px * var(--dp-txt-scale,1))" onclick="_openDetailForSearch(\'NSG\',\''+esc(nsgId)+'\')">'+esc(nsgName)+' <span style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1))">'+esc(nsgId)+'</span></div>';
       });
       h+='</div></div>';
     }
