@@ -65,7 +65,7 @@ function _isOrphaned(rid){
     (_rlCtx.subnets||[]).forEach(x=>s.add(x.id));
     (_rlCtx.vms||[]).forEach(x=>s.add(x.id));
     (_rlCtx.firewalls||[]).forEach(x=>s.add(x.id));
-    (_rlCtx.nats||[]).forEach(x=>s.add(x.id));
+    (_rlCtx.natGateways||[]).forEach(x=>s.add(x.id));
     (_rlCtx.privateEndpoints||[]).forEach(x=>s.add(x.id));
     (_rlCtx.sqlServers||[]).forEach(x=>s.add(x.id||x.name));
     (_rlCtx.functionApps||[]).forEach(x=>s.add(x.id||x.name));

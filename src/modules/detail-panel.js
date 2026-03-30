@@ -321,8 +321,8 @@ function _gatherResourceInfo(rid){
     if(sgVnetId) info.related.push({id:sgVnetId,name:sgVnetId,type:'VNet'});
     // VMs using this NSG
     (_rlCtx.vms||[]).filter(function(i){return _vmNsgIds(i).indexOf(sg.id)!==-1}).slice(0,6).forEach(function(i){info.nearby.push({id:i.id,name:gn2(i,i.id),type:'VM'})});
-  } else if((_rlCtx.nats||[]).find(function(g){return g.id===rid||g.name===rid})){
-    var nat=(_rlCtx.nats||[]).find(function(g){return g.id===rid||g.name===rid});
+  } else if((_rlCtx.natGateways||[]).find(function(g){return g.id===rid||g.name===rid})){
+    var nat=(_rlCtx.natGateways||[]).find(function(g){return g.id===rid||g.name===rid});
     info.type='NAT';info.name=gn2(nat,rid);
     var natSubnet=nat.properties&&nat.properties.subnets&&nat.properties.subnets[0]&&nat.properties.subnets[0].id||'';
     var natVnet=_vnetIdFromSubnetId(natSubnet);
@@ -428,13 +428,13 @@ function _openDetailForSearch(type,id){
     const sub=(_rlCtx.subnets||[]).find(s=>s.id===id||s.name===id);
     if(sub){
       var subVnetId=_vnetIdFromSubnetId(sub.id);
-      openSubnetPanel(sub,subVnetId,{pubSubs:_rlCtx.pubSubs,subRT:_rlCtx.subRT,subNacl:_rlCtx.subNacl,instBySub:_rlCtx.instBySub,eniBySub:_rlCtx.eniBySub,albBySub:_rlCtx.albBySub,sgByVpc:_rlCtx.sgByVpc,volByInst:_rlCtx.volByInst,enis:_rlCtx.enis,snapByVol:_rlCtx.snapByVol,tgByAlb:_rlCtx.tgByAlb,wafByAlb:_rlCtx.wafByAlb,rdsBySub:_rlCtx.rdsBySub,ecsBySub:_rlCtx.ecsBySub,lambdaBySub:_rlCtx.lambdaBySub,ecacheByVpc:_rlCtx.ecacheByVpc,redshiftByVpc:_rlCtx.redshiftByVpc,cfByAlb:_rlCtx.cfByAlb});
+      openSubnetPanel(sub,subVnetId,{pubSubs:_rlCtx.pubSubs,subRT:_rlCtx.subRT,subNacl:_rlCtx.subNacl,instBySub:_rlCtx.instBySub,eniBySub:_rlCtx.eniBySub,albBySub:_rlCtx.albBySub,nsgByVnet:_rlCtx.nsgByVnet,volByInst:_rlCtx.volByInst,nics:_rlCtx.nics,snapByVol:_rlCtx.snapByVol,tgByAlb:_rlCtx.tgByAlb,wafByAlb:_rlCtx.wafByAlb,rdsBySub:_rlCtx.rdsBySub,ecsBySub:_rlCtx.ecsBySub,lambdaBySub:_rlCtx.lambdaBySub,ecacheByVpc:_rlCtx.ecacheByVpc,redshiftByVpc:_rlCtx.redshiftByVpc,cfByAlb:_rlCtx.cfByAlb});
       return;
     }
   }
   if(type==='FW'||type==='NAT'||type==='VGW'||type==='PE'||type==='Private Endpoint'||type==='VHUB'){
     const gwType=(type==='Private Endpoint')?'PE':type;
-    openGatewayPanel(id,gwType,{gwNames:gwNames,firewalls:_rlCtx.firewalls,nats:_rlCtx.nats,vpns:_rlCtx.vpns,vpces:_rlCtx.privateEndpoints,privateEndpoints:_rlCtx.privateEndpoints,peerings:_rlCtx.peerings,udrs:_rlCtx.udrs,subnets:_rlCtx.subnets,subRT:_rlCtx.subRT,pubSubs:_rlCtx.pubSubs,vnets:_rlCtx.vnets,vhubs:_rlCtx.vhubs||[],vhubConnections:_rlCtx.vhubConnections||[]});
+    openGatewayPanel(id,gwType,{gwNames:gwNames,firewalls:_rlCtx.firewalls,natGateways:_rlCtx.natGateways,vpns:_rlCtx.vpns,vpces:_rlCtx.privateEndpoints,privateEndpoints:_rlCtx.privateEndpoints,peerings:_rlCtx.peerings,udrs:_rlCtx.udrs,subnets:_rlCtx.subnets,subRT:_rlCtx.subRT,pubSubs:_rlCtx.pubSubs,vnets:_rlCtx.vnets,vhubs:_rlCtx.vhubs||[],vhubConnections:_rlCtx.vhubConnections||[]});
     return;
   }
 
@@ -449,7 +449,7 @@ function _openDetailForSearch(type,id){
     const pubCount=subs.filter(s=>_rlCtx.pubSubs&&_rlCtx.pubSubs.has(s.id)).length;
     const gws=[];
     (_rlCtx.firewalls||[]).forEach(g=>{if(_vnetIdFromSubnetId(g.properties&&g.properties.ipConfigurations&&g.properties.ipConfigurations[0]&&g.properties.ipConfigurations[0].properties&&g.properties.ipConfigurations[0].properties.subnet&&g.properties.ipConfigurations[0].properties.subnet.id)===vnet.id)gws.push({type:'FW',id:g.id,name:gn(g,g.id)})});
-    (_rlCtx.nats||[]).forEach(g=>{var natSub=g.properties&&g.properties.subnets&&g.properties.subnets[0]&&g.properties.subnets[0].id||'';if(_vnetIdFromSubnetId(natSub)===vnet.id)gws.push({type:'NAT',id:g.id,name:gn(g,g.id)})});
+    (_rlCtx.natGateways||[]).forEach(g=>{var natSub=g.properties&&g.properties.subnets&&g.properties.subnets[0]&&g.properties.subnets[0].id||'';if(_vnetIdFromSubnetId(natSub)===vnet.id)gws.push({type:'NAT',id:g.id,name:gn(g,g.id)})});
     const nsgs=(_rlCtx.nsgs||[]).filter(s=>_nsgVnetId(s)===vnet.id);
     const vms=(_rlCtx.vms||[]).filter(i=>subs.some(s=>s.id===_vmSubnetId(i)));
     const vnetCidr=vnet.properties&&vnet.properties.addressSpace&&vnet.properties.addressSpace.addressPrefixes&&vnet.properties.addressSpace.addressPrefixes[0]||'';

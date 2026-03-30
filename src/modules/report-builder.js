@@ -4611,7 +4611,7 @@ function detectCircularSGs(sgs){
 
 // --- HCL Generation ---
 function generateTerraform(ctx,opts){
-  if(!ctx||!ctx.vpcs)return '# No data loaded';
+  if(!ctx||!ctx.vnets)return '# No data loaded';
   _tfIdMap={};
   const lines=[];
   const vars=[];
@@ -4622,23 +4622,23 @@ function generateTerraform(ctx,opts){
   const includeVars=opts.includeVars!==false;
 
   // Filter by scope
-  const vpcs=scopeVpc?ctx.vpcs.filter(v=>v.VpcId===scopeVpc):ctx.vpcs;
+  const vpcs=scopeVpc?ctx.vnets.filter(v=>v.VpcId===scopeVpc):ctx.vnets;
   const vpcIds=new Set(vpcs.map(v=>v.VpcId));
   const subnets=(ctx.subnets||[]).filter(s=>vpcIds.has(s.VpcId));
   const subIds=new Set(subnets.map(s=>s.SubnetId));
-  const sgs=(ctx.sgs||[]).filter(s=>vpcIds.has(s.VpcId));
-  const rts=(ctx.rts||[]).filter(r=>{const assoc=(r.Associations||[]); return assoc.some(a=>vpcIds.has(a.SubnetId?subnets.find(s=>s.SubnetId===a.SubnetId)?.VpcId:null))||vpcIds.has(r.VpcId)});
-  const nacls=(ctx.nacls||[]).filter(n=>vpcIds.has(n.VpcId));
-  const igws=(ctx.igws||[]).filter(g=>(g.Attachments||[]).some(a=>vpcIds.has(a.VpcId)));
-  const nats=(ctx.nats||[]).filter(n=>vpcIds.has(n.VpcId));
-  const vpces=(ctx.vpces||[]).filter(v=>vpcIds.has(v.VpcId));
-  const instances=(ctx.instances||[]).filter(i=>subIds.has(i.SubnetId));
-  const rdsInstances=(ctx.rdsInstances||[]).filter(r=>{const sn=r.DBSubnetGroup;return sn&&(sn.Subnets||[]).some(s=>subIds.has(s.SubnetIdentifier))});
-  const lambdaFns=(ctx.lambdaFns||[]).filter(l=>{const vc=l.VpcConfig;return vc&&(vc.SubnetIds||[]).some(s=>subIds.has(s))});
-  const ecsServices=(ctx.ecsServices||[]).filter(e=>{const nc=(e.networkConfiguration||{}).networkProfile;return nc&&(nc.subnets||[]).some(s=>subIds.has(s))});
-  const ecacheClusters=(ctx.ecacheClusters||[]).filter(c=>c.CacheSubnetGroupName);
-  const redshiftClusters=(ctx.redshiftClusters||[]).filter(c=>c.ClusterSubnetGroupName);
-  const albs=(ctx.albs||[]).filter(a=>(a.AvailabilityZones||[]).some(az=>subIds.has(az.SubnetId)));
+  const sgs=(ctx.nsgs||[]).filter(s=>vpcIds.has(s.VpcId));
+  const rts=(ctx.udrs||[]).filter(r=>{const assoc=(r.Associations||[]); return assoc.some(a=>vpcIds.has(a.SubnetId?subnets.find(s=>s.SubnetId===a.SubnetId)?.VpcId:null))||vpcIds.has(r.VpcId)});
+  const nacls=(ctx.subnetNsgs||[]).filter(n=>vpcIds.has(n.VpcId));
+  const igws=(ctx.firewalls||[]).filter(g=>(g.Attachments||[]).some(a=>vpcIds.has(a.VpcId)));
+  const nats=(ctx.natGateways||[]).filter(n=>vpcIds.has(n.VpcId));
+  const vpces=(ctx.privateEndpoints||[]).filter(v=>vpcIds.has(v.VpcId));
+  const instances=(ctx.vms||[]).filter(i=>subIds.has(i.SubnetId));
+  const rdsInstances=(ctx.sqlServers||[]).filter(r=>{const sn=r.DBSubnetGroup;return sn&&(sn.Subnets||[]).some(s=>subIds.has(s.SubnetIdentifier))});
+  const lambdaFns=(ctx.functionApps||[]).filter(l=>{const vc=l.VpcConfig;return vc&&(vc.SubnetIds||[]).some(s=>subIds.has(s))});
+  const ecsServices=(ctx.containerInstances||[]).filter(e=>{const nc=(e.networkConfiguration||{}).networkProfile;return nc&&(nc.subnets||[]).some(s=>subIds.has(s))});
+  const ecacheClusters=(ctx.redisCaches||[]).filter(c=>c.CacheSubnetGroupName);
+  const redshiftClusters=(ctx.synapseWorkspaces||[]).filter(c=>c.ClusterSubnetGroupName);
+  const albs=(ctx.appGateways||[]).filter(a=>(a.AvailabilityZones||[]).some(az=>subIds.has(az.SubnetId)));
   const volumes=(ctx.volumes||[]).filter(v=>v.Attachments&&v.Attachments.some(a=>instances.find(i=>i.InstanceId===a.InstanceId)));
   const s3bk=scopeVpc?[]:(ctx.s3bk||[]);
   const peerings=(ctx.peerings||[]).filter(p=>{const a=p.AccepterVpcInfo,r=p.RequesterVpcInfo;return(a&&vpcIds.has(a.VpcId))||(r&&vpcIds.has(r.VpcId))});
@@ -5228,19 +5228,19 @@ function _writeSGRuleFlat(lines,rule){
 
 // --- ARM Template Generation ---
 function generateArmTemplate(ctx,opts){
-  if(!ctx||!ctx.vpcs)return '# No data loaded';
+  if(!ctx||!ctx.vnets)return '# No data loaded';
   const scopeVpc=opts.scopeVpcId||null;
-  const vpcs=scopeVpc?ctx.vpcs.filter(v=>v.VpcId===scopeVpc):ctx.vpcs;
+  const vpcs=scopeVpc?ctx.vnets.filter(v=>v.VpcId===scopeVpc):ctx.vnets;
   const vpcIds=new Set(vpcs.map(v=>v.VpcId));
   const subnets=(ctx.subnets||[]).filter(s=>vpcIds.has(s.VpcId));
   const subIds=new Set(subnets.map(s=>s.SubnetId));
-  const sgs=(ctx.sgs||[]).filter(s=>vpcIds.has(s.VpcId));
-  const igws=(ctx.igws||[]).filter(g=>(g.Attachments||[]).some(a=>vpcIds.has(a.VpcId)));
-  const nats=(ctx.nats||[]).filter(n=>vpcIds.has(n.VpcId));
-  const instances=(ctx.instances||[]).filter(i=>subIds.has(i.SubnetId));
-  const rts=(ctx.rts||[]).filter(r=>r.VpcId&&vpcIds.has(r.VpcId));
-  const rdsInstances=(ctx.rdsInstances||[]).filter(r=>{const sn=r.DBSubnetGroup;return sn&&(sn.Subnets||[]).some(s=>subIds.has(s.SubnetIdentifier))});
-  const albs=(ctx.albs||[]).filter(a=>(a.AvailabilityZones||[]).some(az=>subIds.has(az.SubnetId)));
+  const sgs=(ctx.nsgs||[]).filter(s=>vpcIds.has(s.VpcId));
+  const igws=(ctx.firewalls||[]).filter(g=>(g.Attachments||[]).some(a=>vpcIds.has(a.VpcId)));
+  const nats=(ctx.natGateways||[]).filter(n=>vpcIds.has(n.VpcId));
+  const instances=(ctx.vms||[]).filter(i=>subIds.has(i.SubnetId));
+  const rts=(ctx.udrs||[]).filter(r=>r.VpcId&&vpcIds.has(r.VpcId));
+  const rdsInstances=(ctx.sqlServers||[]).filter(r=>{const sn=r.DBSubnetGroup;return sn&&(sn.Subnets||[]).some(s=>subIds.has(s.SubnetIdentifier))});
+  const albs=(ctx.appGateways||[]).filter(a=>(a.AvailabilityZones||[]).some(az=>subIds.has(az.SubnetId)));
 
   const warnings=[];
   const totalResources=vpcs.length+subnets.length+sgs.length+igws.length+nats.length+instances.length+rts.length+rdsInstances.length+albs.length;
@@ -5673,23 +5673,23 @@ function _ckRedshift(clusters,res,seen){
   });
 }
 function generateCheckovCfn(ctx,iamData){
-  if(!ctx||!ctx.vpcs) return null;
+  if(!ctx||!ctx.vnets) return null;
   var template={$schema:'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#',contentVersion:'1.0.0.0',
     Description:'Generated by Azure Mapper for Checkov scanning: '+new Date().toISOString().split('T')[0],
     Resources:{}};
   var res=template.Resources,seen=new Set();
-  _ckVpcs(ctx.vpcs||[],res,seen);
+  _ckVpcs(ctx.vnets||[],res,seen);
   _ckSubnets(ctx.subnets||[],res,seen);
-  _ckSgs(ctx.sgs||[],res,seen);
-  _ckNacls(ctx.nacls||[],res,seen);
-  _ckRts(ctx.rts||[],res,seen);
-  _ckEc2(ctx.instances||[],ctx,res,seen);
-  _ckRds(ctx.rdsInstances||[],res,seen);
+  _ckSgs(ctx.nsgs||[],res,seen);
+  _ckNacls(ctx.subnetNsgs||[],res,seen);
+  _ckRts(ctx.udrs||[],res,seen);
+  _ckEc2(ctx.vms||[],ctx,res,seen);
+  _ckRds(ctx.sqlServers||[],res,seen);
   _ckS3(ctx.s3bk||[],res,seen);
-  _ckAlbs(ctx.albs||[],res,seen);
-  _ckFunctionApp(ctx.lambdaFns||[],res,seen);
-  _ckRedisCache(ctx.ecacheClusters||[],res,seen);
-  _ckRedshift(ctx.redshiftClusters||[],res,seen);
+  _ckAlbs(ctx.appGateways||[],res,seen);
+  _ckFunctionApp(ctx.functionApps||[],res,seen);
+  _ckRedisCache(ctx.redisCaches||[],res,seen);
+  _ckRedshift(ctx.synapseWorkspaces||[],res,seen);
   if(iamData){
     _ckIamRoles(iamData.roles||[],res,seen);
     _ckIamUsers(iamData.users||[],res,seen);
@@ -5820,8 +5820,8 @@ function openIacModal(type){
   // Populate VNet scope dropdown
   const scopeSel=document.getElementById('iacScope');
   scopeSel.innerHTML='<option value="all">All Resources</option>';
-  if(_rlCtx&&_rlCtx.vpcs){
-    _rlCtx.vpcs.forEach(vpc=>{
+  if(_rlCtx&&_rlCtx.vnets){
+    _rlCtx.vnets.forEach(vpc=>{
       const n=vpc.Tags&&vpc.Tags.find(t=>t.Key==='Name');
       const label=(n?n.Value:vpc.VpcId);
       scopeSel.innerHTML+='<option value="'+esc(vpc.VpcId)+'">'+esc(label)+'</option>';
@@ -5852,7 +5852,7 @@ function closeIacModal(){
 
 function generateIacPreview(){
   const ctx=_rlCtx;
-  if(!ctx||!ctx.vpcs||!ctx.vpcs.length){
+  if(!ctx||!ctx.vnets||!ctx.vnets.length){
     document.getElementById('iacPreview').innerHTML='<div class="iac-empty">No data loaded. Render a map first.</div>';
     return;
   }
@@ -6523,7 +6523,7 @@ window._edgeCaseTests.iacExport = function(){
     const tf = generateTerraform(ctx, {mode:'create'});
     const code = typeof tf === 'string' ? tf : tf.code || tf;
     // Check that vpc-xxx IDs are referenced via tf resource names, not literal strings
-    const vpcId = ctx.vpcs[0].VpcId;
+    const vpcId = ctx.vnets[0].VpcId;
     const hasLiteralVpcId = code.includes('"'+vpcId+'"');
     const hasResourceRef = code.includes('azurerm_virtual_network.');
     return {pass: hasResourceRef && !hasLiteralVpcId,
@@ -6532,15 +6532,15 @@ window._edgeCaseTests.iacExport = function(){
 
   // 2. Circular SG references split
   T('Circular SG reference splitting', () => {
-    const sg1 = {GroupId:'sg-circ1',GroupName:'circ1',VpcId:ctx.vpcs[0].VpcId,
+    const sg1 = {GroupId:'sg-circ1',GroupName:'circ1',VpcId:ctx.vnets[0].VpcId,
       IpPermissions:[{IpProtocol:'tcp',FromPort:443,ToPort:443,UserIdGroupPairs:[{GroupId:'sg-circ2'}]}],
       IpPermissionsEgress:[],Tags:[{Key:'Name',Value:'circ1'}]};
-    const sg2 = {GroupId:'sg-circ2',GroupName:'circ2',VpcId:ctx.vpcs[0].VpcId,
+    const sg2 = {GroupId:'sg-circ2',GroupName:'circ2',VpcId:ctx.vnets[0].VpcId,
       IpPermissions:[{IpProtocol:'tcp',FromPort:80,ToPort:80,UserIdGroupPairs:[{GroupId:'sg-circ1'}]}],
       IpPermissionsEgress:[],Tags:[{Key:'Name',Value:'circ2'}]};
     const cycles = detectCircularSGs([sg1, sg2]);
-    const ctxCopy = Object.assign({}, ctx, {sgs: [sg1, sg2]});
-    const tf = generateTerraform(ctxCopy, {mode:'create', scopeVpcId:ctx.vpcs[0].VpcId});
+    const ctxCopy = Object.assign({}, ctx, {nsgs: [sg1, sg2]});
+    const tf = generateTerraform(ctxCopy, {mode:'create', scopeVpcId:ctx.vnets[0].VpcId});
     const code = typeof tf === 'string' ? tf : tf.code || tf;
     const hasSgRule = code.includes('azurerm_network_security_rule');
     return {pass: cycles.length > 0 && hasSgRule,
@@ -6594,7 +6594,7 @@ window._edgeCaseTests.iacExport = function(){
     const code = typeof tf === 'string' ? tf : tf.code || tf;
     const hasEncrypted = code.includes('encrypted') || code.includes('storage_encrypted');
     // SQL and managed disks with encryption
-    const encryptedRds = ctx.rdsInstances.filter(r => r.StorageEncrypted);
+    const encryptedRds = ctx.sqlServers.filter(r => r.StorageEncrypted);
     return {pass: encryptedRds.length > 0 && hasEncrypted,
       detail: encryptedRds.length + ' encrypted SQL instances, TF encrypted attr: ' + hasEncrypted};
   });
@@ -6672,13 +6672,13 @@ function _buildTestCtx(demoData){
   const lambdaBySub={};lambdaFns.forEach(fn=>{(fn.VpcConfig?.SubnetIds||[]).forEach(sid=>{(lambdaBySub[sid]=lambdaBySub[sid]||[]).push(fn)})});
   const sgByVpc={};sgs.forEach(sg=>(sgByVpc[sg.VpcId]=sgByVpc[sg.VpcId]||[]).push(sg));
   const tgByAlb={};tgs.forEach(tg=>{(tg.LoadBalancerArns||[]).forEach(arn=>{(tgByAlb[arn]=tgByAlb[arn]||[]).push(tg)})});
-  return {vpcs,subnets,pubSubs,rts,sgs,nacls,igws,nats,vpces,instances,albs,rdsInstances,ecsServices,lambdaFns,ecacheClusters,redshiftClusters,peerings,tgwAttachments,tgs,instBySub,albBySub,rdsBySub,ecsBySub,lambdaBySub,subRT,subNacl,sgByVpc,tgByAlb,eniBySub:{}};
+  return {vnets:vpcs,subnets,pubSubs,udrs:rts,nsgs:sgs,subnetNsgs:nacls,firewalls:igws,natGateways:nats,privateEndpoints:vpces,vms:instances,appGateways:albs,sqlServers:rdsInstances,containerInstances:ecsServices,functionApps:lambdaFns,redisCaches:ecacheClusters,synapseWorkspaces:redshiftClusters,peerings,tgwAttachments,tgs,instBySub,albBySub,rdsBySub,ecsBySub,lambdaBySub,subRT,subNacl,nsgByVnet:sgByVpc,tgByAlb,nics:{}};
 }
 
 // Helper: extract flat arrays from demo data for computeDiff
 function _demoToDiffObj(demoData){
   const ctx=_buildTestCtx(demoData);
-  return {vpcs:ctx.vpcs,subnets:ctx.subnets,instances:ctx.instances,sgs:ctx.sgs,rts:ctx.rts,nacls:ctx.nacls,igws:ctx.igws,nats:ctx.nats,vpces:ctx.vpces,albs:ctx.albs,rdsInstances:ctx.rdsInstances,ecsServices:ctx.ecsServices,lambdaFns:ctx.lambdaFns,ecacheClusters:ctx.ecacheClusters,redshiftClusters:ctx.redshiftClusters,peerings:ctx.peerings};
+  return {vnets:ctx.vnets,subnets:ctx.subnets,vms:ctx.vms,nsgs:ctx.nsgs,udrs:ctx.udrs,subnetNsgs:ctx.subnetNsgs,firewalls:ctx.firewalls,natGateways:ctx.natGateways,privateEndpoints:ctx.privateEndpoints,appGateways:ctx.appGateways,sqlServers:ctx.sqlServers,containerInstances:ctx.containerInstances,functionApps:ctx.functionApps,redisCaches:ctx.redisCaches,synapseWorkspaces:ctx.synapseWorkspaces,peerings:ctx.peerings};
 }
 
 // --- Demo Data: generateDemoBaseline ---
@@ -7115,9 +7115,9 @@ window._edgeCaseTests.firewall=function(){
       window._rlCtx=ctx;window._fwEdits=[];window._fwSnapshot=null;
       _fwTakeSnapshot();
       const newRule={RuleNumber:200,Protocol:'6',RuleAction:'allow',Egress:false,CidrBlock:'10.0.0.0/24',PortRange:{From:80,To:80}};
-      ctx.nacls[0].Entries.push(Object.assign({},newRule));
+      ctx.subnetNsgs[0].Entries.push(Object.assign({},newRule));
       _fwEdits.push({type:'nacl',action:'add',resourceId:'acl-fw-1',direction:'ingress',rule:newRule});
-      const hasRule=ctx.nacls[0].Entries.some(e=>e.RuleNumber===200&&!e.Egress);
+      const hasRule=ctx.subnetNsgs[0].Entries.some(e=>e.RuleNumber===200&&!e.Egress);
       const cli=_fwGenerateCli(_fwEdits).join('\n');
       const hasCli=cli.includes('create-network-acl-entry');
       _fwResetAll();
@@ -7132,11 +7132,11 @@ window._edgeCaseTests.firewall=function(){
       const ctx=mkCtx();
       window._rlCtx=ctx;window._fwEdits=[];window._fwSnapshot=null;
       _fwTakeSnapshot();
-      const delRule=ctx.nacls[0].Entries.find(e=>e.RuleNumber===100&&!e.Egress);
-      const idx=ctx.nacls[0].Entries.indexOf(delRule);
-      ctx.nacls[0].Entries.splice(idx,1);
+      const delRule=ctx.subnetNsgs[0].Entries.find(e=>e.RuleNumber===100&&!e.Egress);
+      const idx=ctx.subnetNsgs[0].Entries.indexOf(delRule);
+      ctx.subnetNsgs[0].Entries.splice(idx,1);
       _fwEdits.push({type:'nacl',action:'delete',resourceId:'acl-fw-1',direction:'ingress',rule:delRule,originalRule:delRule});
-      const gone=!ctx.nacls[0].Entries.some(e=>e.RuleNumber===100&&!e.Egress);
+      const gone=!ctx.subnetNsgs[0].Entries.some(e=>e.RuleNumber===100&&!e.Egress);
       const cli=_fwGenerateCli(_fwEdits).join('\n');
       const hasCli=cli.includes('delete-network-acl-entry');
       _fwResetAll();
@@ -7151,9 +7151,9 @@ window._edgeCaseTests.firewall=function(){
       const ctx=mkCtx();
       window._rlCtx=ctx;window._fwEdits=[];window._fwSnapshot=null;
       _fwTakeSnapshot();
-      const origRule=JSON.parse(JSON.stringify(ctx.sgs[0].IpPermissions[0]));
+      const origRule=JSON.parse(JSON.stringify(ctx.nsgs[0].IpPermissions[0]));
       const newRule={IpProtocol:'tcp',FromPort:8080,ToPort:8080,IpRanges:[{CidrIp:'10.0.0.0/8'}],UserIdGroupPairs:[]};
-      ctx.sgs[0].IpPermissions[0]=Object.assign({},newRule);
+      ctx.nsgs[0].IpPermissions[0]=Object.assign({},newRule);
       _fwEdits.push({type:'sg',action:'modify',resourceId:'sg-fw-1',direction:'ingress',rule:newRule,originalRule:origRule});
       const cli=_fwGenerateCli(_fwEdits).join('\n');
       const hasRevoke=cli.includes('revoke-security-group-ingress');
@@ -7171,9 +7171,9 @@ window._edgeCaseTests.firewall=function(){
       window._rlCtx=ctx;window._fwEdits=[];window._fwSnapshot=null;
       _fwTakeSnapshot();
       const newRoute={DestinationCidrBlock:'0.0.0.0/0',GatewayId:'igw-fw-test'};
-      ctx.rts[0].Routes.push(Object.assign({},newRoute));
+      ctx.udrs[0].Routes.push(Object.assign({},newRoute));
       _fwEdits.push({type:'route',action:'add',resourceId:'rtb-fw-1',direction:'egress',rule:newRoute});
-      const hasRoute=ctx.rts[0].Routes.some(r=>r.DestinationCidrBlock==='0.0.0.0/0'&&r.GatewayId==='igw-fw-test');
+      const hasRoute=ctx.udrs[0].Routes.some(r=>r.DestinationCidrBlock==='0.0.0.0/0'&&r.GatewayId==='igw-fw-test');
       const cli=_fwGenerateCli(_fwEdits).join('\n');
       const hasCli=cli.includes('create-route');
       _fwResetAll();
@@ -7218,16 +7218,16 @@ window._edgeCaseTests.firewall=function(){
       const ctx=mkCtx();
       window._rlCtx=ctx;window._fwEdits=[];window._fwSnapshot=null;
       _fwTakeSnapshot();
-      const origLen=ctx.nacls[0].Entries.filter(e=>!e.Egress).length;
-      const delRule=ctx.nacls[0].Entries.find(e=>e.RuleNumber===100&&!e.Egress);
+      const origLen=ctx.subnetNsgs[0].Entries.filter(e=>!e.Egress).length;
+      const delRule=ctx.subnetNsgs[0].Entries.find(e=>e.RuleNumber===100&&!e.Egress);
       const delCopy=JSON.parse(JSON.stringify(delRule));
       // Remove it via _fwRemoveRule-style splice
-      const idx=ctx.nacls[0].Entries.indexOf(delRule);
-      ctx.nacls[0].Entries.splice(idx,1);
+      const idx=ctx.subnetNsgs[0].Entries.indexOf(delRule);
+      ctx.subnetNsgs[0].Entries.splice(idx,1);
       _fwEdits.push({type:'nacl',action:'delete',resourceId:'acl-fw-1',direction:'ingress',rule:delCopy,originalRule:delCopy});
-      const afterDel=ctx.nacls[0].Entries.filter(e=>!e.Egress).length;
+      const afterDel=ctx.subnetNsgs[0].Entries.filter(e=>!e.Egress).length;
       _fwUndo();
-      const afterUndo=ctx.nacls[0].Entries.filter(e=>!e.Egress).length;
+      const afterUndo=ctx.subnetNsgs[0].Entries.filter(e=>!e.Egress).length;
       _fwResetAll();
       return {pass:afterDel===origLen-1&&afterUndo===origLen,detail:'orig='+origLen+', afterDel='+afterDel+', afterUndo='+afterUndo};
     }finally{restoreState(saved)}
@@ -7240,14 +7240,14 @@ window._edgeCaseTests.firewall=function(){
       const ctx=mkCtx();
       window._rlCtx=ctx;window._fwEdits=[];window._fwSnapshot=null;
       _fwTakeSnapshot();
-      const origLen=ctx.nacls[0].Entries.length;
+      const origLen=ctx.subnetNsgs[0].Entries.length;
       // Delete two rules
-      ctx.nacls[0].Entries.splice(0,2);
+      ctx.subnetNsgs[0].Entries.splice(0,2);
       _fwEdits.push({type:'nacl',action:'delete',resourceId:'acl-fw-1',direction:'ingress',rule:{RuleNumber:100}});
       _fwEdits.push({type:'nacl',action:'delete',resourceId:'acl-fw-1',direction:'egress',rule:{RuleNumber:100}});
-      const afterDel=ctx.nacls[0].Entries.length;
+      const afterDel=ctx.subnetNsgs[0].Entries.length;
       _fwResetAll();
-      const afterReset=ctx.nacls[0].Entries.length;
+      const afterReset=ctx.subnetNsgs[0].Entries.length;
       return {pass:afterDel<origLen&&afterReset===origLen,detail:'orig='+origLen+', afterDel='+afterDel+', afterReset='+afterReset};
     }finally{restoreState(saved)}
   });
@@ -7259,14 +7259,14 @@ window._edgeCaseTests.firewall=function(){
       const ctx=mkCtx();
       window._rlCtx=ctx;window._fwEdits=[];window._fwSnapshot=null;
       // SG initially allows tcp/443 only. Check port 8080 => should deny
-      const before=evaluateSG(ctx.sgs,'inbound','tcp',8080,'10.0.0.5/32');
+      const before=evaluateSG(ctx.nsgs,'inbound','tcp',8080,'10.0.0.5/32');
       const denied=before.action==='deny';
       // Now add an allow rule for tcp/8080
       _fwTakeSnapshot();
       const newRule={IpProtocol:'tcp',FromPort:8080,ToPort:8080,IpRanges:[{CidrIp:'0.0.0.0/0'}],UserIdGroupPairs:[]};
-      ctx.sgs[0].IpPermissions.push(newRule);
+      ctx.nsgs[0].IpPermissions.push(newRule);
       _fwEdits.push({type:'sg',action:'add',resourceId:'sg-fw-1',direction:'ingress',rule:newRule});
-      const after=evaluateSG(ctx.sgs,'inbound','tcp',8080,'10.0.0.5/32');
+      const after=evaluateSG(ctx.nsgs,'inbound','tcp',8080,'10.0.0.5/32');
       const allowed=after.action==='allow';
       _fwResetAll();
       return {pass:denied&&allowed,detail:'before='+before.action+', after='+after.action};
