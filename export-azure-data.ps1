@@ -97,7 +97,7 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not $OutputDir) {
     $ts = Get-Date -Format "yyyyMMdd-HHmmss"
-    $subSafe = $Subscription -replace '[\s/:]', '-'
+    $subSafe = $Subscription -replace '[^\w\-\.]', '-'
     $OutputDir = "./azure-export-${subSafe}-${ts}"
 }
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
@@ -114,7 +114,7 @@ if ($ResourceGroup) {
 
 Write-Host ""
 Write-Host "  ╔══════════════════════════════════════════════════════╗" -ForegroundColor Cyan
-Write-Host "  ║     Azure Network Mapper — Data Export (PS)          ║" -ForegroundColor Cyan
+Write-Host "  ║     Azure Network Mapper — Data Export (PS)         ║" -ForegroundColor Cyan
 Write-Host "  ╚══════════════════════════════════════════════════════╝" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  Subscription : $Subscription"
@@ -269,7 +269,8 @@ $results = $exports | ForEach-Object -ThrottleLimit $MaxParallel -Parallel {
 
     if ($succeeded) {
         try {
-            $json = ($rawResult | Out-String) | ConvertFrom-Json
+            $jsonStr = ($rawResult | Where-Object { $_ -is [string] }) -join "`n"
+            $json = $jsonStr | ConvertFrom-Json
             $items = if ($json -is [System.Array]) { $json } else { @($json) }
 
             # Apply location filter if specified
@@ -346,7 +347,9 @@ function Export-IteratedResource {
                 $parsed = ($result | Out-String) | ConvertFrom-Json
                 if ($parsed -is [System.Array]) { $all += $parsed } else { $all += @($parsed) }
             }
-        } catch { }
+        } catch {
+            Write-Warning "  $Label - failed for '$name' in '$rg': $_"
+        }
     }
     $sw.Stop()
     $elapsed = "{0:N1}s" -f $sw.Elapsed.TotalSeconds
