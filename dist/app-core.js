@@ -11427,10 +11427,20 @@ function importFolder(result){
     status.textContent=msg;
     status.style.color=skipped.length?'var(--accent-orange)':'var(--accent-green)';
     // Register as account context for multi-view (enables multi-folder import)
-    if(matched>0&&_folderLabel){
-      addAccountContext({textareas,accountLabel:_folderLabel},_folderLabel);
-    }else if(matched>0){
-      renderMap();
+    // Derive label from folder name or subscription ID in the data
+    if(matched>0){
+      var autoLabel=_folderLabel||'';
+      if(!autoLabel){
+        // Try to extract subscription ID from VNet data
+        var vnetVal=textareas['in_vnets']||'';
+        var subMatch=vnetVal.match(/\/subscriptions\/([0-9a-f-]{36})/);
+        if(subMatch)autoLabel=subMatch[1].substring(0,13)+'...';
+      }
+      if(autoLabel){
+        addAccountContext({textareas,accountLabel:autoLabel},autoLabel);
+      }else{
+        renderMap();
+      }
     }
   }
 }
