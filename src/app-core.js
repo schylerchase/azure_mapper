@@ -11579,7 +11579,7 @@ if(_isElectron){
     const inp=document.createElement('input');inp.type='file';
     inp.setAttribute('webkitdirectory','');inp.setAttribute('directory','');inp.multiple=true;
     inp.addEventListener('change',()=>{
-      if(!inp.files||!inp.files.length)return;
+      if(!inp.files||!inp.files.length){inp.remove();return}
       const regionRe=/^[a-z]{2}-(north|south|east|west|central|northeast|southeast|northwest|southwest)-\d+$/;
       const regions={},flatFiles={},profiles={};
       const pending=[];
@@ -11623,8 +11623,10 @@ if(_isElectron){
         }else{
           importFolder({_structure:'flat',files:flatFiles,_folderName:folderName});
         }
+        inp.remove();
       });
     });
+    inp.addEventListener('cancel',()=>inp.remove());
     inp.click();
   }
   bfBtn.addEventListener('click',async()=>{
@@ -20264,20 +20266,22 @@ function _openRulesEditor(){
   document.getElementById('govRulesImport').addEventListener('click',function(){
     var inp=document.createElement('input');inp.type='file';inp.accept='.json';
     inp.addEventListener('change',function(){
-      if(!this.files[0]) return;
+      if(!this.files[0]){inp.remove();return}
       var reader=new FileReader();
       reader.onload=function(e){
         try{
           var imported=JSON.parse(e.target.result);
-          if(!Array.isArray(imported)){_showToast('Invalid rules file','warn');return}
+          if(!Array.isArray(imported)){_showToast('Invalid rules file','warn');inp.remove();return}
           workRules=imported;
           workRules.forEach(function(r){if(r.enabled===undefined) r.enabled=true});
           renderRules();renderPreview();
           _showToast(imported.length+' rules imported');
         }catch(err){_showToast('Failed to parse JSON','warn')}
+        inp.remove();
       };
       reader.readAsText(this.files[0]);
     });
+    inp.addEventListener('cancel',()=>inp.remove());
     inp.click();
   });
   document.getElementById('govRuleApply').addEventListener('click',function(){
@@ -23370,8 +23374,8 @@ document.getElementById('loadDemo').addEventListener('click',()=>{
   if(_multiViewMode)exitMultiView();
   _loadedContexts=[];
   // Add two account contexts
-  addAccountContext({textareas:buildAcctTextareas(acct1Vpcs),accountLabel:'prod-account (111122223333)'},'prod-account (111122223333)');
-  addAccountContext({textareas:buildAcctTextareas(acct2Vpcs),accountLabel:'security-ops (444455556666)'},'security-ops (444455556666)');
+  addAccountContext({textareas:buildAcctTextareas(acct1Vpcs),accountLabel:'Production (a1b2c3d4)'},'Production (a1b2c3d4)');
+  addAccountContext({textareas:buildAcctTextareas(acct2Vpcs),accountLabel:'Security-Ops (c9d8e7f6)'},'Security-Ops (c9d8e7f6)');
   // Fill textareas with full demo for single-view fallback
   const m={in_vnets:'vnets',in_subnets:'subnets',in_udrs:'udrs',in_nsgs:'nsgs',in_nats:'nats',in_azfws:'azfws',in_bastions:'bastions',in_vms:'vms',in_albs:'albs',in_peer:'peer',in_vpn:'vpn',in_pvteps:'pvteps',in_disks:'disks',in_storage:'storage',in_dnsz:'dnsz',in_r53records:'r53records',in_tgs:'tgs',in_snaps:'snaps',in_nics:'nics',in_waf:'waf',in_sql:'sql',in_containers:'containers',in_funcapps:'funcapps',in_elasticache:'elasticache',in_aks:'aks',in_tgwatt:'tgwatt',in_cf:'cf',in_rbac:'rbac'};
   Object.entries(m).forEach(([id,k])=>{if(demo[k])document.getElementById(id).value=JSON.stringify(demo[k],null,2)});
