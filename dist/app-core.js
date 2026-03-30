@@ -8879,10 +8879,30 @@ function _renderMapInner(){
   rts.forEach(r=>{
     if(!r.RouteTableId)r.RouteTableId=r.id||'';
     if(!r.VpcId){const subs=r.subnets||[];if(subs[0]&&subs[0].id)r.VpcId=subs[0].id.split('/subnets/')[0]||''}
+    // Map Azure routes → Routes array for firewall tab
+    if(!r.Routes&&r.routes){r.Routes=r.routes.map(rt=>({DestinationCidrBlock:rt.addressPrefix||'',GatewayId:rt.nextHopType||'',State:'active',_azRoute:rt}))}
     if(!r.tags&&r.name)r.tags={Name:r.name};
   });
   sgs.forEach(s=>{
     if(!s.GroupId)s.GroupId=s.id||'';
+    if(!s.GroupName)s.GroupName=s.name||'';
+    // Derive VpcId from subnet associations
+    if(!s.VpcId&&s.subnets&&s.subnets[0]&&s.subnets[0].id)s.VpcId=s.subnets[0].id.split('/subnets/')[0]||'';
+    if(!s.VpcId&&s.networkInterfaces&&s.networkInterfaces[0]&&s.networkInterfaces[0].id)s.VpcId='';// NIC-level NSG — no VNet
+    // Map Azure securityRules → IpPermissions/IpPermissionsEgress for firewall tab
+    if(!s.IpPermissions&&(s.securityRules||s.defaultSecurityRules)){
+      const allRules=[...(s.securityRules||[]),...(s.defaultSecurityRules||[])];
+      s.IpPermissions=allRules.filter(r=>(r.direction||'').toLowerCase()==='inbound').map(r=>({
+        IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,
+        ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,
+        IpRanges:[{CidrIp:r.sourceAddressPrefix||'*'}],_azRule:r
+      }));
+      s.IpPermissionsEgress=allRules.filter(r=>(r.direction||'').toLowerCase()==='outbound').map(r=>({
+        IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,
+        ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,
+        IpRanges:[{CidrIp:r.destinationAddressPrefix||'*'}],_azRule:r
+      }));
+    }
     if(!s.tags&&s.name)s.tags={Name:s.name};
   });
   enis.forEach(e=>{
@@ -13919,7 +13939,7 @@ function _fwOpenFullEditor(type, resourceId, sub, vpcId, lk){
   _fwFpDir='ingress';
 
   var titleEl=document.getElementById('fwFpTitle');
-  var label=type==='nacl'?'Subnet NSG':type==='sg'?'Security Group':'Route Table';
+  var label=type==='nacl'?'Subnet NSG':type==='sg'?'NSG':'Route Table';
   var name='';
   if(type==='nacl'){
     var nacl=(_rlCtx.subnetNsgs||[]).find(function(n){return n.NetworkAclId===resourceId});
@@ -14488,13 +14508,13 @@ function _renderFirewallTab(){
   var tb=document.getElementById('udashToolbar');
   if(!_rlCtx){tb.innerHTML='<span style="color:var(--text-muted)">No data loaded</span>';return}
   var sgs=_rlCtx.nsgs||[],nacls=_rlCtx.subnetNsgs||[],rts=_rlCtx.udrs||[];
-  var vpcOpts='<option value="all">All VPCs</option>';
+  var vpcOpts='<option value="all">All VNets</option>';
   (_rlCtx.vnets||[]).forEach(function(v){
     vpcOpts+='<option value="'+esc(v.VpcId)+'">'+esc(gn(v,v.VpcId))+'</option>';
   });
   var sortOpts=[{k:'type',l:'Sort: Type'},{k:'name',l:'Sort: Name'},{k:'severity',l:'Sort: Severity'},{k:'rules',l:'Sort: Rules'}];
   var sortHtml='';sortOpts.forEach(function(o){sortHtml+='<option value="'+o.k+'"'+(_fwDashState.sort===o.k?' selected':'')+'>'+o.l+'</option>'});
-  var groupOpts=[{k:'none',l:'No Grouping'},{k:'vpc',l:'Group: VPC'},{k:'type',l:'Group: Type'}];
+  var groupOpts=[{k:'none',l:'No Grouping'},{k:'vpc',l:'Group: VNet'},{k:'type',l:'Group: Type'}];
   var groupHtml='';groupOpts.forEach(function(o){groupHtml+='<option value="'+o.k+'"'+(_fwDashState.groupBy===o.k?' selected':'')+'>'+o.l+'</option>'});
   tb.innerHTML='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
     '<input id="fwDashSearch" type="text" placeholder="Search resources..." value="'+_escHtml(_fwDashState.search)+'" style="background:var(--bg-tertiary);border:1px solid var(--border);color:var(--text-primary);padding:4px 10px;border-radius:4px;font-size:11px;font-family:Segoe UI,system-ui,sans-serif;width:180px">'+
@@ -14587,7 +14607,7 @@ function _fwDashRender(){
   var _fwRtCt=rows.filter(function(r){return r.type==='route'}).length;
   h+='<div class="fw-card-count">'+rows.length+'</div>';
   h+='<div class="fw-card-label">Resources</div>';
-  h+='<div class="fw-card-sub">'+_fwSgCt+' SG / '+_fwNaclCt+' NACL / '+_fwRtCt+' RT</div></div>';
+  h+='<div class="fw-card-sub">'+_fwSgCt+' NSG / '+_fwRtCt+' RT</div></div>';
   var findCls=totalFindings?'severity-'+worstSev.toLowerCase():'clean';
   h+='<div class="fw-summary-card '+findCls+(cf==='findings'?' active':'')+'" data-card="findings">';
   h+='<div class="fw-card-count">'+totalFindings+'</div>';
@@ -23728,7 +23748,7 @@ document.getElementById('expVsdx').addEventListener('click',()=>{
     vpcProps.push({label:'VPC ID',val:vpc.VpcId});
     vpcProps.push({label:'CIDR',val:vpc.CidrBlock});
     if(vSgs.length){
-      vpcProps.push({label:'Security Groups',val:String(vSgs.length)});
+      vpcProps.push({label:'NSGs',val:String(vSgs.length)});
       vpcProps.push({label:'SG Details',val:vSgs.slice(0,10).map(sg=>
         sg.GroupName+' ('+((sg.IpPermissions||[]).length)+' in)').join('; ')});
     }
