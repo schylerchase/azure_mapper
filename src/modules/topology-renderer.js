@@ -2389,22 +2389,20 @@ function _renderMapInner(){
   }
 
   // Post-render label collision safety sweep
-  // Catches any remaining overlaps within same-type label groups
+  // Phase 1: same-type group collisions (shift-y within each label type)
   try{
     const labelGroups = {
       'vnet-label': [], 'vnet-cidr': [],
       'subnet-label': [], 'subnet-cidr': [],
-      'gw-name': [], 'gw-id': []
+      'gw-name': [], 'gw-id': [],
+      'note-label': [], 'peering-label': []
     };
     Object.keys(labelGroups).forEach(cls=>{
       ndL.selectAll('.'+cls).each(function(){
         const el=d3.select(this);
-        const node=el.node();
         try{
-          const bb=node.getBBox();
-          if(bb.width>0&&bb.height>0){
-            labelGroups[cls].push({x:bb.x,y:bb.y,w:bb.width,h:bb.height,textNode:el});
-          }
+          const bb=el.node().getBBox();
+          if(bb.width>0&&bb.height>0)labelGroups[cls].push({x:bb.x,y:bb.y,w:bb.width,h:bb.height,textNode:el});
         }catch(e){}
       });
     });
@@ -2415,6 +2413,24 @@ function _renderMapInner(){
         group.forEach(l=>l.textNode.attr('y',l.y+l.h));
       }
     });
+    // Phase 2: cross-type collision sweep (gateway names vs peering labels, etc.)
+    const allLabels=[];
+    Object.values(labelGroups).forEach(g=>g.forEach(l=>allLabels.push(l)));
+    if(allLabels.length>1){
+      allLabels.sort((a,b)=>a.y-b.y||a.x-b.x);
+      // Check every pair for overlap and shift the second one
+      for(let i=0;i<allLabels.length;i++){
+        for(let j=i+1;j<allLabels.length;j++){
+          const a=allLabels[i],b=allLabels[j];
+          if(b.y>a.y+a.h+4)break;// past vertical range, no more overlaps possible
+          if(_rectsOverlap(a,b,2)){
+            // Shift down if vertically overlapping
+            const overlapY=(a.y+a.h+4)-b.y;
+            if(overlapY>0){b.y+=overlapY;b.textNode.attr('y',b.y+b.h)}
+          }
+        }
+      }
+    }
   }catch(sweepErr){console.warn('Label collision sweep:',sweepErr)}
 
   // stats bar
