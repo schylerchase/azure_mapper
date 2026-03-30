@@ -88,6 +88,9 @@ import * as ExportUtils from './modules/export-utils.js';
 // IaC generator (Terraform azurerm, ARM, Bicep, Checkov — DOM modal remains inline)
 import * as IacGenerator from './modules/iac-generator.js';
 
+// Normalization utilities (extracted from app-core.js for unit testability)
+import { _normalizeAzureResources, _normTags, matchFile, fileMap, _friendlyFolderLabel } from './modules/normalization.js';
+
 // NOTE: diff-engine.js and report-builder.js are NOT imported here.
 // They have top-level DOM event listeners and are loaded via separate <script type="module"> tags
 // in index.html (after DOM is ready).
@@ -173,6 +176,9 @@ window.AppModules = {
   IacGenerator,
 
   // Note: diff-engine and report-builder loaded via separate script tags (DOM-dependent)
+
+  // Normalization (used by app-core.js inline code via window globals)
+  _normalizeAzureResources, _normTags, matchFile, fileMap, _friendlyFolderLabel,
 };
 
 // Make functions available globally (transitional - will remove once all code is modularized)
