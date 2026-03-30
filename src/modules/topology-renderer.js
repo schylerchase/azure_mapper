@@ -1578,32 +1578,21 @@ function _renderMapInner(){
     const regionTag=vnetRegionMap[vl.vnet.id]||'';
     const addrPrefixes=vl.vnet.properties?.addressSpace?.addressPrefixes||[];
     const cidrStr=addrPrefixes[0]||'';
-    let cidrFull=cidrStr+(regionTag?' '+regionTag:'');
-    // Measure available width and allocate between name and CIDR
-    const availW=vl.w-28; // 14px padding each side
-    const cidrEstW=cidrFull.length*6.5;
-    const nameAvail=Math.max(60, availW-cidrEstW-12);
-    const nameMaxW=Math.min(_vnetName.length*8, nameAvail);
-    // Truncate name if needed
-    const nameMaxChars=Math.max(6, Math.floor(nameAvail/8));
-    const truncVnetName=_vnetName.length>nameMaxChars?_vnetName.slice(0,nameMaxChars-1)+'\u2026':_vnetName;
-    vG.append('text').attr('class','vnet-label').attr('x',vl.x+14).attr('y',vl.y+26)
-      .attr('textLength',nameMaxW).attr('lengthAdjust','spacing').text(truncVnetName);
-    // Truncate CIDR if still not enough room
-    const cidrAvail=availW-nameMaxW-12;
-    const cidrMaxChars=Math.max(8, Math.floor(cidrAvail/6));
-    if(cidrFull.length>cidrMaxChars) cidrFull=cidrFull.slice(0,cidrMaxChars-1)+'\u2026';
+    const cidrFull=cidrStr+(regionTag?' '+regionTag:'');
+    // Full labels: no truncation, VNet box width already accounts for text length
+    vG.append('text').attr('class','vnet-label').attr('x',vl.x+14).attr('y',vl.y+26).text(_vnetName);
     vG.append('text').attr('class','vnet-cidr').attr('x',vl.x+vl.w-14).attr('y',vl.y+26).attr('text-anchor','end').text(cidrFull);
     // Subscription color stripe for multi-subscription
     if(_multiSubscription&&vl.vnet._subscriptionId!=='default'){
       const acCol=vl.vnet._ctxColor||getAccountColor(vl.vnet._subscriptionId);
       if(acCol){
-        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',vl.h).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
         const acLbl=vl.vnet._subscriptionLabel||vl.vnet._subscriptionId;
-        const maxChars=Math.floor(vl.h/7);
-        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+vl.h-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+vl.h-6))+')')
+        // Expand stripe height to fit full label text (never truncate)
+        const lblH=Math.max(vl.h, acLbl.length*7+16);
+        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',lblH).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
+        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+lblH-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+lblH-6))+')')
           .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.5px')
-          .text(acLbl.length>maxChars?acLbl.slice(0,maxChars-1)+'…':acLbl);
+          .text(acLbl);
       }
     }
     // show indicator for VNets with no subnets
