@@ -1327,10 +1327,10 @@ function _rptExecSummary(ctx, opts){
     return h;
   }
   var counts=[
-    {key:'vpcs',label:'VNets'},{key:'subnets',label:'Subnets'},
-    {key:'instances',label:'VMs'},{key:'rdsInstances',label:'SQL'},
-    {key:'albs',label:'AppGWs'},{key:'ecsServices',label:'Containers'},
-    {key:'lambdaFns',label:'FuncApps'},{key:'sgs',label:'NSGs'}
+    {key:'vnets',label:'VNets'},{key:'subnets',label:'Subnets'},
+    {key:'vms',label:'VMs'},{key:'sqlServers',label:'SQL'},
+    {key:'appGateways',label:'AppGWs'},{key:'containerInstances',label:'Containers'},
+    {key:'functionApps',label:'FuncApps'},{key:'nsgs',label:'NSGs'}
   ];
   var h='<section class="rpt-section" id="s-exec-summary"><h2>Executive Summary</h2>';
   h+='<div class="stat-grid">';
