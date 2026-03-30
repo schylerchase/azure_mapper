@@ -284,7 +284,7 @@ function _applyDiffOverlay(){
       els.forEach(el=>d3.select(el).classed('diff-unchanged',true));
     });
   }
-  // For removed resources, try to find them — if not rendered, add ghost markers
+  // For removed resources, try to find them: if not rendered, add ghost markers
   _diffResults.removed.forEach(item=>{
     const sel=_diffKeyToSelector(item.type,item.key);
     const els=g.querySelectorAll(sel);
@@ -320,7 +320,7 @@ function _diffFmtValFull(v){
 }
 
 // Type-aware property renderer for diff detail panel
-// All values are escaped via esc() before insertion — safe for display
+// All values are escaped via esc() before insertion: safe for display
 function _diffPropsHtml(type,res){
   if(!res) return '';
   let h='';
@@ -537,7 +537,7 @@ function _openDiffDetail(item,category){
       h+=sec(propLabel,'',propsHtml,category!=='modified');
     }
   }
-  // BASELINE PROPERTIES (modified only — show old state)
+  // BASELINE PROPERTIES (modified only: show old state)
   if(category==='modified'&&item.baseline){
     const baseProps=_diffPropsHtml(item.type,item.baseline);
     if(baseProps) h+=sec('Baseline Properties','',baseProps,false);
@@ -570,7 +570,7 @@ function _openDiffDetail(item,category){
 }
 
 function _renderDiffSummary(){
-  // Legacy summary panel — no longer used, dashboard replaces it
+  // Legacy summary panel: no longer used, dashboard replaces it
   if(!_diffResults) return;
 }
 
@@ -682,7 +682,7 @@ function _populateDiffSnapPicker(){
     const opt=document.createElement('option');
     opt.value=i;
     const d=new Date(snap.timestamp);
-    opt.textContent=(snap.label||snap.accountLabel||'Snap '+(i+1))+' — '+d.toLocaleDateString()+' '+d.toLocaleTimeString();
+    opt.textContent=(snap.label||snap.accountLabel||'Snap '+(i+1))+': '+d.toLocaleDateString()+' '+d.toLocaleTimeString();
     sel.appendChild(opt);
   });
 }
@@ -914,7 +914,7 @@ async function _exportDiffXlsx(){
     if(ws1['A4']) ws1['A4'].s=_xlsxHeaderStyle();
     if(ws1['B4']) ws1['B4'].s=_xlsxHeaderStyle();
     XLSX.utils.book_append_sheet(wb,ws1,'Summary');
-    // Details sheet — all resources
+    // Details sheet: all resources
     const detailRows=[['Status','Type','Name','Key','VNet','Changes','Fields Changed']];
     const rows=_diffFlatRows||_buildDiffFlatRows();
     rows.forEach(function(r){
@@ -973,7 +973,7 @@ if(typeof document!=='undefined') document.getElementById('diffFileInput').addEv
   const files=[].slice.call(this.files);
   if(!files.length) return;
   this.value='';
-  // Single .azuremap file — use directly
+  // Single .azuremap file: use directly
   if(files.length===1&&/\.azuremap$/i.test(files[0].name)){
     try{
       const text=await files[0].text();
@@ -996,7 +996,7 @@ if(typeof document!=='undefined') document.getElementById('diffFileInput').addEv
       }
     }catch(ex){/* fall through to multi-file handling */}
   }
-  // Multiple JSON files — match each to a textarea slot and build diff context
+  // Multiple JSON files: match each to a textarea slot and build diff context
   const textareas={};
   let matched=0,skipped=[];
   for(let i=0;i<files.length;i++){
@@ -1544,7 +1544,7 @@ if(typeof document!=='undefined') document.getElementById('budrBtn').addEventLis
 // === GOVERNANCE DASHBOARD ===
 // TODO: Move rendering functions (_renderClassificationTab, _renderIAMTab,
 // _openRulesEditor, openGovernanceDashboard) to governance.js.
-// Blocked by: (1) dual state — app-core.js window globals vs governance.js
+// Blocked by: (1) dual state: app-core.js window globals vs governance.js
 // module-scoped copies are not synchronized, (2) unified dashboard framework
 // dependency (openUnifiedDash, _UDASH_TABS) lives here, (3) mixed globals
 // (_rlCtx, _escHtml, _showToast, downloadBlob, _isElectron).
@@ -1565,7 +1565,7 @@ function _renderClassificationTab(){
   const body=document.getElementById('udashBody');
   const footer=document.getElementById('udashFooter');
   const st=_govDashState;
-  // Toolbar — only rebuild on tab switch
+  // Toolbar: only rebuild on tab switch
   if(_govToolbarTab!=='classification'){
     _govToolbarTab='classification';
     let th='<label>Search</label>';
@@ -1704,7 +1704,7 @@ function _renderIAMTab(){
   const body=document.getElementById('udashBody');
   const footer=document.getElementById('udashFooter');
   const st=_iamDashState;
-  // Toolbar — only rebuild on tab switch
+  // Toolbar: only rebuild on tab switch
   if(_govToolbarTab!=='iam'){
     _govToolbarTab='iam';
     let th='<label>Search</label>';
@@ -1986,7 +1986,7 @@ function _openRulesEditor(){
         const mc=countMatches(r);
         h+='<div class="gov-rule-row'+(r.enabled===false?' disabled':'')+((!isValid)?' invalid':'')+'" data-rule-idx="'+i+'">';
         h+='<span class="gov-rule-drag" title="Drag to reorder">⠿</span>';
-        h+='<div class="gov-rule-toggle'+(r.enabled!==false?' on':'')+'" data-toggle-idx="'+i+'" title="'+(r.enabled!==false?'Enabled — click to disable':'Disabled — click to enable')+'"></div>';
+        h+='<div class="gov-rule-toggle'+(r.enabled!==false?' on':'')+'" data-toggle-idx="'+i+'" title="'+(r.enabled!==false?'Enabled: click to disable':'Disabled: click to enable')+'"></div>';
         h+='<input class="pattern'+((!isValid)?' invalid-pattern':'')+'" type="text" value="'+_escHtml(r.pattern)+'" data-field="pattern" placeholder="regex pattern…" title="'+((!isValid)?'Invalid regex!':'Regex pattern')+'">';
         h+='<select data-field="scope" style="display:none"><option value="vnet"'+(r.scope==='vnet'?' selected':'')+'>VNet Name</option><option value="type"'+(r.scope==='type'?' selected':'')+'>Type</option><option value="name"'+(r.scope==='name'?' selected':'')+'>Name</option></select>';
         h+='<select data-field="tier"><option value="critical"'+(r.tier==='critical'?' selected':'')+'>Critical</option><option value="high"'+(r.tier==='high'?' selected':'')+'>High</option><option value="medium"'+(r.tier==='medium'?' selected':'')+'>Medium</option><option value="low"'+(r.tier==='low'?' selected':'')+'>Low</option></select>';
@@ -2132,7 +2132,7 @@ function _openRulesEditor(){
     _govToolbarTab=null;
     overlay.remove();
     _renderClassificationTab();
-    _showToast('Rules applied — '+_classificationData.length+' resources re-classified');
+    _showToast('Rules applied: '+_classificationData.length+' resources re-classified');
   });
 }
 

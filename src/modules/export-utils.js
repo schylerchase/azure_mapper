@@ -1,4 +1,4 @@
-// Export Utilities — VSDX helpers, download, layout calculations
+// Export Utilities: VSDX helpers, download, layout calculations
 // PNG/SVG export (DOM-dependent) remains inline in index.html.
 // Lucid/Landing-Zone export (deeply coupled to DOM data) remains inline.
 
@@ -6,7 +6,7 @@ import { esc, gn, sid, clsGw } from './utils.js';
 import { gwNames } from './state.js';
 import { showToast } from './dom-helpers.js';
 
-// === Constants — VSDX layout sizing ===
+// === Constants: VSDX layout sizing ===
 export const PX = 96;
 export const SUB_W = 520;
 export const SUB_H_MIN = 90;
@@ -39,7 +39,7 @@ export const gwStyles = {
 };
 
 // === Module State ===
-// Shape/connector collectors — reset via resetShapeState() before each export
+// Shape/connector collectors: reset via resetShapeState() before each export
 let shapeId = 1;
 let shapes = [];
 let polyEdges = [];
@@ -458,7 +458,7 @@ if (typeof window !== 'undefined') {
   window.resolveColor = resolveColor;
   window._sanitizeName = sanitizeName;
 
-  // VSDX helpers — lazy-init to avoid setup cost when VSDX export is unused
+  // VSDX helpers: lazy-init to avoid setup cost when VSDX export is unused
   let _vsdxCache = null;
   Object.defineProperty(window, '_vsdx', {
     get() {

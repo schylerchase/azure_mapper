@@ -1,5 +1,5 @@
-// Firewall Editor — pure logic (state, validation, CRUD, CLI generation)
-// Azure NSG / UDR model — priority-based rules, service tags, ARM resource IDs
+// Firewall Editor: pure logic (state, validation, CRUD, CLI generation)
+// Azure NSG / UDR model: priority-based rules, service tags, ARM resource IDs
 // DOM rendering and form creation remain inline in index.html.
 
 // ── State ──────────────────────────────────────────────────────────────

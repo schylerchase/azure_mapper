@@ -270,15 +270,15 @@ const _CKV_MAP={
 
 // Resource list panel - opened by clicking stats bar chips
 let _rlCtx=null; // store context for stat chip clicks
-var _sgById=new Map(); // cached NSG lookup by id — populated by renderExecutiveOverview
-var gwNames={}; // gateway name lookup — populated by _renderMapInner, used globally
+var _sgById=new Map(); // cached NSG lookup by id: populated by renderExecutiveOverview
+var gwNames={}; // gateway name lookup: populated by _renderMapInner, used globally
 let _mapSvg=null,_mapZoom=null,_mapG=null; // global map refs for navigation
 let _showNested=false;
 let _detailLevel=0; // 0=collapsed(VPC+subnet names), 1=normal(resources), 2=expanded(nested children)
 let _dnsRecordsExpanded=false; // DNS zones always show; toggle for individual record rows
 
 // Compliance engine now loaded from bundle (src/modules/compliance-engine.js)
-// Content-based compliance cache — prevents recomputation on expand/collapse
+// Content-based compliance cache: prevents recomputation on expand/collapse
 let _complianceDataFP='';
 let _complianceCachedFindings=null;
 let _budrCachedFindings=null;
@@ -297,7 +297,7 @@ function _runComplianceWithCache(ctx){
     window._complianceFindings=_complianceCachedFindings;
     return _complianceCachedFindings;
   }
-  // Data changed — reset stale classification and recompute
+  // Data changed: reset stale classification and recompute
   _classificationData=[];
   const findings=runComplianceChecks(ctx);
   // Enrich findings with account/region/vpc from tagged resources
@@ -340,7 +340,7 @@ function _runComplianceWithCache(ctx){
 const _BUDR_STRATEGY={hot:'Hot',warm:'Warm',pilot:'Pilot Light',cold:'Cold'};
 const _BUDR_STRATEGY_ORDER={hot:0,warm:1,pilot:2,cold:3};
 const _BUDR_STRATEGY_LEGEND=[
-  {k:'critical',label:'Critical (Hot)',color:'#ef4444',icon:'🔴',desc:'Active-active — full replica running at all times. Near-zero RTO & RPO.'},
+  {k:'critical',label:'Critical (Hot)',color:'#ef4444',icon:'🔴',desc:'Active-active: full replica running at all times. Near-zero RTO & RPO.'},
   {k:'high',label:'High (Warm)',color:'#f59e0b',icon:'🟡',desc:'Scaled-down replica running. Scale up on failover. Minutes to recover.'},
   {k:'medium',label:'Medium (Pilot Light)',color:'#6366f1',icon:'🟣',desc:'Data replicated continuously, compute stopped. Spin up on failover. ~10-30 min.'},
   {k:'low',label:'Low (Cold)',color:'#64748b',icon:'⚪',desc:'Backups only, no standby. Rebuild from scratch. Hours to recover.'}
@@ -374,30 +374,30 @@ const _BUDR_RTO_RPO={
 // Estimated minutes for each BUDR profile (for tier compliance comparison)
 // rtoWhy/rpoWhy: justification for estimated values
 const _BUDR_EST_MINUTES={
-  rds_multi_az:{rto:5,rpo:1,rtoWhy:'Multi-AZ automatic failover completes in 1-2 min; DNS propagation adds ~3 min',rpoWhy:'Synchronous replication to standby — data loss limited to in-flight transactions (~seconds)'},
-  rds_single_backup:{rto:30,rpo:1440,rtoWhy:'Restore from automated snapshot requires instance provisioning + data load (~20-30 min)',rpoWhy:'Automated backups run daily — worst case RPO is 24 hours since last backup window'},
-  rds_no_backup:{rto:480,rpo:Infinity,rtoWhy:'No backups — requires manual rebuild from application layer or external source',rpoWhy:'No backup mechanism configured — all data since creation is unrecoverable'},
-  rds_aurora:{rto:0.5,rpo:5,rtoWhy:'Aurora automatic failover promotes read replica in <30 sec; DNS TTL is 5 sec',rpoWhy:'Aurora replicates 6 copies across 3 AZs — RPO limited to last committed transaction (~seconds)'},
-  ec2_asg:{rto:3,rpo:0,rtoWhy:'ASG detects failure via health check (1-2 min) and launches replacement from AMI (~1-2 min)',rpoWhy:'Stateless compute — no persistent data on instance; state lives in external stores'},
-  ec2_ami_snap:{rto:15,rpo:10080,rtoWhy:'Manual AMI launch + EBS restore from snapshot (~10-15 min depending on volume size)',rpoWhy:'Snapshot frequency is typically weekly — worst case RPO is 7 days since last snapshot'},
-  ec2_standalone:{rto:480,rpo:Infinity,rtoWhy:'No AMI/snapshot — requires full OS install, config, and application deployment from scratch',rpoWhy:'No backup mechanism — local EBS data is unrecoverable if instance or volume is lost'},
-  ecs_multi:{rto:1,rpo:0,rtoWhy:'ECS service scheduler replaces failed tasks in ~30-60 sec from container image',rpoWhy:'Stateless containers — no persistent data; state lives in external stores (RDS, S3, etc.)'},
-  ecs_single:{rto:5,rpo:0,rtoWhy:'Single task replacement takes ~2-5 min including image pull and health check',rpoWhy:'Stateless containers — no persistent data; state lives in external stores'},
-  lambda:{rto:0,rpo:0,rtoWhy:'Fully managed — Azure handles all availability; cold start adds <1 sec latency',rpoWhy:'Stateless execution — no persistent data; code stored in Azure Storage with versioning'},
-  ecache_multi:{rto:2,rpo:0.1,rtoWhy:'Multi-AZ auto-failover promotes replica in 1-2 min; DNS endpoint updates automatically',rpoWhy:'Async replication lag is typically <100ms — data loss limited to replication lag'},
-  ecache_single:{rto:15,rpo:10080,rtoWhy:'Restore from snapshot requires new cluster provisioning + data load (~10-15 min)',rpoWhy:'Snapshot frequency is typically daily/weekly — worst case RPO equals snapshot interval'},
-  ecache_no_snap:{rto:15,rpo:Infinity,rtoWhy:'New cluster provisioning takes ~10-15 min but cache starts cold (empty)',rpoWhy:'No snapshots — entire cache contents are lost; must be rebuilt from source of truth'},
-  redshift_snap:{rto:30,rpo:1440,rtoWhy:'Restore from snapshot creates new cluster (~20-30 min depending on data size)',rpoWhy:'Automated snapshots run every 8 hours by default — worst case RPO is snapshot interval'},
-  redshift_multi:{rto:15,rpo:5,rtoWhy:'Multi-node cluster redistributes work to surviving nodes (~10-15 min recovery)',rpoWhy:'Synchronous replication across nodes — RPO limited to in-flight queries (~minutes)'},
-  redshift_none:{rto:480,rpo:Infinity,rtoWhy:'No snapshots — requires full data reload from S3/source systems (hours to days)',rpoWhy:'No backup mechanism — all warehouse data is unrecoverable'},
-  alb_multi_az:{rto:0,rpo:0,rtoWhy:'Fully managed multi-AZ — Azure handles node replacement transparently',rpoWhy:'Stateless load balancer — no data to lose; config stored in Azure control plane'},
-  alb_single_az:{rto:5,rpo:0,rtoWhy:'Single-AZ ALB may need DNS failover if AZ goes down (~3-5 min)',rpoWhy:'Stateless load balancer — no data to lose'},
-  s3:{rto:0,rpo:0,rtoWhy:'11 nines durability — service is always available across 3+ AZs',rpoWhy:'Objects replicated across multiple AZs automatically'},
-  s3_versioned:{rto:0,rpo:0,rtoWhy:'Versioned objects can be restored to any previous version instantly',rpoWhy:'Every object change creates a new version — zero data loss possible'},
-  s3_unversioned:{rto:0,rpo:Infinity,rtoWhy:'Bucket is always available, but deleted/overwritten objects cannot be recovered',rpoWhy:'No versioning — overwrites and deletes are permanent and unrecoverable'},
-  s3_mfa_delete:{rto:0,rpo:0,rtoWhy:'MFA Delete prevents accidental deletion — objects recoverable from versions',rpoWhy:'Versioning + MFA Delete = immutable storage; data cannot be accidentally lost'},
-  ebs_snap:{rto:15,rpo:10080,rtoWhy:'Create new volume from snapshot + attach to instance (~10-15 min)',rpoWhy:'Snapshot frequency is typically weekly — worst case RPO is 7 days since last snapshot'},
-  ebs_no_snap:{rto:480,rpo:Infinity,rtoWhy:'No snapshots — volume data is unrecoverable if volume fails (rare but possible)',rpoWhy:'No backup mechanism — all volume data is permanently lost on failure'}
+  rds_multi_az:{rto:5,rpo:1,rtoWhy:'Multi-AZ automatic failover completes in 1-2 min; DNS propagation adds ~3 min',rpoWhy:'Synchronous replication to standby: data loss limited to in-flight transactions (~seconds)'},
+  rds_single_backup:{rto:30,rpo:1440,rtoWhy:'Restore from automated snapshot requires instance provisioning + data load (~20-30 min)',rpoWhy:'Automated backups run daily: worst case RPO is 24 hours since last backup window'},
+  rds_no_backup:{rto:480,rpo:Infinity,rtoWhy:'No backups: requires manual rebuild from application layer or external source',rpoWhy:'No backup mechanism configured: all data since creation is unrecoverable'},
+  rds_aurora:{rto:0.5,rpo:5,rtoWhy:'Aurora automatic failover promotes read replica in <30 sec; DNS TTL is 5 sec',rpoWhy:'Aurora replicates 6 copies across 3 AZs: RPO limited to last committed transaction (~seconds)'},
+  ec2_asg:{rto:3,rpo:0,rtoWhy:'ASG detects failure via health check (1-2 min) and launches replacement from AMI (~1-2 min)',rpoWhy:'Stateless compute: no persistent data on instance; state lives in external stores'},
+  ec2_ami_snap:{rto:15,rpo:10080,rtoWhy:'Manual AMI launch + EBS restore from snapshot (~10-15 min depending on volume size)',rpoWhy:'Snapshot frequency is typically weekly: worst case RPO is 7 days since last snapshot'},
+  ec2_standalone:{rto:480,rpo:Infinity,rtoWhy:'No AMI/snapshot: requires full OS install, config, and application deployment from scratch',rpoWhy:'No backup mechanism: local EBS data is unrecoverable if instance or volume is lost'},
+  ecs_multi:{rto:1,rpo:0,rtoWhy:'ECS service scheduler replaces failed tasks in ~30-60 sec from container image',rpoWhy:'Stateless containers: no persistent data; state lives in external stores (RDS, S3, etc.)'},
+  ecs_single:{rto:5,rpo:0,rtoWhy:'Single task replacement takes ~2-5 min including image pull and health check',rpoWhy:'Stateless containers: no persistent data; state lives in external stores'},
+  lambda:{rto:0,rpo:0,rtoWhy:'Fully managed: Azure handles all availability; cold start adds <1 sec latency',rpoWhy:'Stateless execution: no persistent data; code stored in Azure Storage with versioning'},
+  ecache_multi:{rto:2,rpo:0.1,rtoWhy:'Multi-AZ auto-failover promotes replica in 1-2 min; DNS endpoint updates automatically',rpoWhy:'Async replication lag is typically <100ms: data loss limited to replication lag'},
+  ecache_single:{rto:15,rpo:10080,rtoWhy:'Restore from snapshot requires new cluster provisioning + data load (~10-15 min)',rpoWhy:'Snapshot frequency is typically daily/weekly: worst case RPO equals snapshot interval'},
+  ecache_no_snap:{rto:15,rpo:Infinity,rtoWhy:'New cluster provisioning takes ~10-15 min but cache starts cold (empty)',rpoWhy:'No snapshots: entire cache contents are lost; must be rebuilt from source of truth'},
+  redshift_snap:{rto:30,rpo:1440,rtoWhy:'Restore from snapshot creates new cluster (~20-30 min depending on data size)',rpoWhy:'Automated snapshots run every 8 hours by default: worst case RPO is snapshot interval'},
+  redshift_multi:{rto:15,rpo:5,rtoWhy:'Multi-node cluster redistributes work to surviving nodes (~10-15 min recovery)',rpoWhy:'Synchronous replication across nodes: RPO limited to in-flight queries (~minutes)'},
+  redshift_none:{rto:480,rpo:Infinity,rtoWhy:'No snapshots: requires full data reload from S3/source systems (hours to days)',rpoWhy:'No backup mechanism: all warehouse data is unrecoverable'},
+  alb_multi_az:{rto:0,rpo:0,rtoWhy:'Fully managed multi-AZ: Azure handles node replacement transparently',rpoWhy:'Stateless load balancer: no data to lose; config stored in Azure control plane'},
+  alb_single_az:{rto:5,rpo:0,rtoWhy:'Single-AZ ALB may need DNS failover if AZ goes down (~3-5 min)',rpoWhy:'Stateless load balancer: no data to lose'},
+  s3:{rto:0,rpo:0,rtoWhy:'11 nines durability: service is always available across 3+ AZs',rpoWhy:'Objects replicated across multiple AZs automatically'},
+  s3_versioned:{rto:0,rpo:0,rtoWhy:'Versioned objects can be restored to any previous version instantly',rpoWhy:'Every object change creates a new version: zero data loss possible'},
+  s3_unversioned:{rto:0,rpo:Infinity,rtoWhy:'Bucket is always available, but deleted/overwritten objects cannot be recovered',rpoWhy:'No versioning: overwrites and deletes are permanent and unrecoverable'},
+  s3_mfa_delete:{rto:0,rpo:0,rtoWhy:'MFA Delete prevents accidental deletion: objects recoverable from versions',rpoWhy:'Versioning + MFA Delete = immutable storage; data cannot be accidentally lost'},
+  ebs_snap:{rto:15,rpo:10080,rtoWhy:'Create new volume from snapshot + attach to instance (~10-15 min)',rpoWhy:'Snapshot frequency is typically weekly: worst case RPO is 7 days since last snapshot'},
+  ebs_no_snap:{rto:480,rpo:Infinity,rtoWhy:'No snapshots: volume data is unrecoverable if volume fails (rare but possible)',rpoWhy:'No backup mechanism: all volume data is permanently lost on failure'}
 };
 // Classification tier targets in minutes (from compliance policy)
 const _TIER_TARGETS={
@@ -406,13 +406,13 @@ const _TIER_TARGETS={
   medium:{rto:720,rpo:1440,rtoLabel:'12 hours',rpoLabel:'Daily'},
   low:{rto:1440,rpo:10080,rtoLabel:'24 hours',rpoLabel:'Weekly'}
 };
-// Compare estimated restore capability vs tier target — returns compliance status
+// Compare estimated restore capability vs tier target: returns compliance status
 function _budrTierCompliance(profileKey,classTier){
   if(!profileKey||!classTier)return{status:'unknown',issues:[]};
   var est=_BUDR_EST_MINUTES[profileKey];var target=_TIER_TARGETS[classTier];
   if(!est||!target)return{status:'unknown',issues:[]};
   var issues=[];
-  if(est.rpo===Infinity)issues.push({field:'RPO',severity:'critical',msg:'No backup — RPO unrecoverable (target: '+target.rpoLabel+')'});
+  if(est.rpo===Infinity)issues.push({field:'RPO',severity:'critical',msg:'No backup: RPO unrecoverable (target: '+target.rpoLabel+')'});
   else if(est.rpo>target.rpo)issues.push({field:'RPO',severity:'warning',msg:'Est. RPO ~'+_fmtMin(est.rpo)+' exceeds '+classTier+' target of '+target.rpoLabel});
   if(est.rto>target.rto)issues.push({field:'RTO',severity:'warning',msg:'Est. RTO ~'+_fmtMin(est.rto)+' exceeds '+classTier+' target of '+target.rtoLabel});
   var status=issues.some(function(i){return i.severity==='critical'})?'fail':issues.length?'warn':'pass';
@@ -436,11 +436,11 @@ function runBUDRChecks(ctx){
     let profile,sev;
     if(hasGeoRepl&&hasBackup){profile=_BUDR_RTO_RPO.rds_multi_az;sev=null}
     else if(hasBackup){profile=_BUDR_RTO_RPO.rds_single_backup;sev=isBasic?null:'MEDIUM';
-      f.push({severity:'MEDIUM',control:'BUDR-HA-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server without geo-replication — single point of failure',remediation:'Configure failover groups for automatic geo-failover'})}
+      f.push({severity:'MEDIUM',control:'BUDR-HA-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server without geo-replication: single point of failure',remediation:'Configure failover groups for automatic geo-failover'})}
     else{profile=_BUDR_RTO_RPO.rds_no_backup;sev='CRITICAL';
       f.push({severity:'CRITICAL',control:'BUDR-BAK-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server has minimal backup retention',remediation:'Configure backup retention to at least 7 days'})}
     if(!hasGeoRepl&&!isBasic&&hasBackup)
-      f.push({severity:'HIGH',control:'BUDR-DR-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server single-region with backups only — extended RTO on region failure',remediation:'Configure failover groups or geo-replication'});
+      f.push({severity:'HIGH',control:'BUDR-DR-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server single-region with backups only: extended RTO on region failure',remediation:'Configure failover groups or geo-replication'});
     assessments.push({type:'SQL',id,name,profile,signals:{GeoReplication:hasGeoRepl,Backup:hasBackup,Encrypted:encrypted,PITR:hasPITR}});
   });
   // VMs
@@ -469,9 +469,9 @@ function runBUDRChecks(ctx){
     let profile;
     if(inVMSS){profile=_BUDR_RTO_RPO.ec2_asg}
     else if(hasSnaps){profile=_BUDR_RTO_RPO.ec2_ami_snap;
-      f.push({severity:'LOW',control:'BUDR-HA-2',framework:'BUDR',resource:id,resourceName:name,message:'VM not in a Scale Set — manual recovery required',remediation:'Place behind VMSS or configure Azure Backup for quick recovery'})}
+      f.push({severity:'LOW',control:'BUDR-HA-2',framework:'BUDR',resource:id,resourceName:name,message:'VM not in a Scale Set: manual recovery required',remediation:'Place behind VMSS or configure Azure Backup for quick recovery'})}
     else{profile=_BUDR_RTO_RPO.ec2_standalone;
-      f.push({severity:'HIGH',control:'BUDR-BAK-2',framework:'BUDR',resource:id,resourceName:name,message:'Standalone VM with no disk snapshots — unrecoverable on failure',remediation:'Configure Azure Backup or create disk snapshots regularly; consider VMSS'});
+      f.push({severity:'HIGH',control:'BUDR-BAK-2',framework:'BUDR',resource:id,resourceName:name,message:'Standalone VM with no disk snapshots: unrecoverable on failure',remediation:'Configure Azure Backup or create disk snapshots regularly; consider VMSS'});
       if(!inVMSS)f.push({severity:'MEDIUM',control:'BUDR-DR-2',framework:'BUDR',resource:id,resourceName:name,message:'VM has no disaster recovery strategy',remediation:'Configure Azure Backup, use VMSS with availability zones, or create disk snapshots'})}
     assessments.push({type:'VM',id,name,profile,signals:{VMSS:inVMSS,Snapshots:hasSnaps,SnapAgeDays:snapAgeDays,Encrypted:encrypted}});
   });
@@ -483,7 +483,7 @@ function runBUDRChecks(ctx){
     let profile;
     if(multi){profile=_BUDR_RTO_RPO.ecs_multi}
     else{profile=_BUDR_RTO_RPO.ecs_single;
-      f.push({severity:'LOW',control:'BUDR-HA-3',framework:'BUDR',resource:id,resourceName:name,message:'Container instance has '+desired+' container(s) — limited redundancy',remediation:'Use multiple container groups or AKS for HA'})}
+      f.push({severity:'LOW',control:'BUDR-HA-3',framework:'BUDR',resource:id,resourceName:name,message:'Container instance has '+desired+' container(s): limited redundancy',remediation:'Use multiple container groups or AKS for HA'})}
     assessments.push({type:'Container',id,name,profile,signals:{ContainerCount:desired,MultiContainer:multi}});
   });
   // Function Apps (inherently resilient)
@@ -501,9 +501,9 @@ function runBUDRChecks(ctx){
     let profile;
     if(multiNode){profile=_BUDR_RTO_RPO.ecache_multi}
     else if(hasBackup){profile=_BUDR_RTO_RPO.ecache_single;
-      f.push({severity:'MEDIUM',control:'BUDR-HA-4',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node — failover requires manual intervention',remediation:'Add replicas or enable clustering for automatic failover'})}
+      f.push({severity:'MEDIUM',control:'BUDR-HA-4',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node: failover requires manual intervention',remediation:'Add replicas or enable clustering for automatic failover'})}
     else{profile=_BUDR_RTO_RPO.ecache_no_snap;
-      f.push({severity:'HIGH',control:'BUDR-BAK-3',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node with no persistence — data loss risk',remediation:'Enable RDB persistence and add replicas'})}
+      f.push({severity:'HIGH',control:'BUDR-BAK-3',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node with no persistence: data loss risk',remediation:'Enable RDB persistence and add replicas'})}
     assessments.push({type:'RedisCache',id,name,profile,signals:{MultiNode:multiNode,Persistence:hasBackup,GeoReplication:geoRepl}});
   });
   // Synapse
@@ -516,7 +516,7 @@ function runBUDRChecks(ctx){
     else if(hasBackup){profile=_BUDR_RTO_RPO.redshift_snap;
       f.push({severity:'MEDIUM',control:'BUDR-HA-5',framework:'BUDR',resource:id,resourceName:name,message:'Synapse workspace without DR configuration',remediation:'Configure geo-redundant backups and disaster recovery'})}
     else{profile=_BUDR_RTO_RPO.redshift_none;
-      f.push({severity:'HIGH',control:'BUDR-BAK-4',framework:'BUDR',resource:id,resourceName:name,message:'Synapse workspace with no backup configuration — data loss risk',remediation:'Configure restore points and geo-redundant backups'})}
+      f.push({severity:'HIGH',control:'BUDR-BAK-4',framework:'BUDR',resource:id,resourceName:name,message:'Synapse workspace with no backup configuration: data loss risk',remediation:'Configure restore points and geo-redundant backups'})}
     assessments.push({type:'Synapse',id,name,profile,signals:{Backup:hasBackup,DR:hasDR}});
   });
   // App Gateways
@@ -526,10 +526,10 @@ function runBUDRChecks(ctx){
     let profile;
     if(zones>=2){profile=_BUDR_RTO_RPO.alb_multi_az}
     else{profile=_BUDR_RTO_RPO.alb_single_az;
-      f.push({severity:'MEDIUM',control:'BUDR-HA-6',framework:'BUDR',resource:id,resourceName:name,message:'App Gateway in single zone only — no failover',remediation:'Deploy across at least 2 availability zones'})}
+      f.push({severity:'MEDIUM',control:'BUDR-HA-6',framework:'BUDR',resource:id,resourceName:name,message:'App Gateway in single zone only: no failover',remediation:'Deploy across at least 2 availability zones'})}
     assessments.push({type:'AppGateway',id,name,profile,signals:{ZoneCount:zones}});
   });
-  // Managed Disks (standalone — not already counted via VM)
+  // Managed Disks (standalone: not already counted via VM)
   (ctx.volumes||[]).forEach(vol=>{
     const diskState=vol.properties?.diskState||vol.State||'';
     if(diskState!=='Attached'&&diskState!=='in-use')return;
@@ -824,7 +824,7 @@ function _rptCSS(){
 
 function _rptInteractiveCSS(){
   var lt=document.documentElement.dataset.theme==='light';
-  // Structural colors — deep bg, card bg, borders, text
+  // Structural colors: deep bg, card bg, borders, text
   var deepBg=lt?'#f1f5f9':'#0b1120';
   var inputBg=lt?'#ffffff':'#0a0e17';
   var cardBg=lt?'#ffffff':'#1e293b';
@@ -847,7 +847,7 @@ function _rptInteractiveCSS(){
   var resLink=lt?'#0891b2':'#67e8f9';
   var resLinkHover=lt?'#06b6d4':'#a5f3fc';
   var resLinkBd=lt?'rgba(8,145,178,.3)':'rgba(103,232,249,.3)';
-  // Pill active colors — slightly more saturated on light
+  // Pill active colors: slightly more saturated on light
   var pillCritActive=lt?'#fecaca':'#991b1b';
   var pillHighActive=lt?'#fed7aa':'#9a3412';
   var pillMedActive=lt?'#fde68a':'#92400e';
@@ -859,7 +859,7 @@ function _rptInteractiveCSS(){
   var pillWarmActive=lt?'#fde68a':'#78350f';
   var pillPilotActive=lt?'#c7d2fe':'#312e81';
   var pillColdActive=lt?'#e2e8f0':'#1e293b';
-  // Strategy badge colors — darken text on light for contrast
+  // Strategy badge colors: darken text on light for contrast
   var stratHotTx=lt?'#dc2626':'#f87171';
   var stratWarmTx=lt?'#d97706':'#fbbf24';
   var stratPilotTx=lt?'#4f46e5':'#a5b4fc';
@@ -1545,7 +1545,7 @@ function _rptGroupedFindingsTable(items){
     h+='<td>'+g.resources.length+'</td>';
     h+='<td>'+esc(g.finding)+'</td>';
     h+='</tr>';
-    /* Detail row — single row with nested table, hidden by default */
+    /* Detail row: single row with nested table, hidden by default */
     h+='<tr class="rpt-ctrl-detail" data-sev="'+esc(sev)+'" style="display:none">';
     h+='<td colspan="4"><table class="rpt-detail-table"><tbody>';
     g.resources.forEach(function(f){
@@ -1823,7 +1823,7 @@ function _rptInventory(ctx, opts){
   h+='</nav>';
 
   var accounts=_rptUniqueAccounts();
-  // One table per type — skip columns that are entirely empty for this type
+  // One table per type: skip columns that are entirely empty for this type
   typeKeys.forEach(function(t){
     var items=byType[t];
     var anchor='s-inv-'+t.toLowerCase().replace(/\s+/g,'-');
@@ -2170,16 +2170,16 @@ function _estimateTotalEffort(resourceGroups){
   if(mins<480)return'~'+Math.round(mins/60)+' hrs';
   return'~'+Math.round(mins/480)+' days';
 }
-// Unified compliance view builder — single source of truth for all filter/count consumers
+// Unified compliance view builder: single source of truth for all filter/count consumers
 function _buildComplianceView(opts){
   opts=opts||{};
   var src=(opts.findings||_complianceFindings||[]).slice();
   // Account filter (reports)
   if(opts.accountFilter)src=_rptFilterByAccount(src,opts.accountFilter);
-  // Framework filter — string (dashboard) or array (export modal)
+  // Framework filter: string (dashboard) or array (export modal)
   if(Array.isArray(opts.frameworks))src=src.filter(function(f){return opts.frameworks.indexOf(f.framework)!==-1});
   else if(opts.frameworks&&opts.frameworks!=='all')src=src.filter(function(f){return f.framework===opts.frameworks});
-  // Severity pre-filter — array only (export modal multi-select)
+  // Severity pre-filter: array only (export modal multi-select)
   if(Array.isArray(opts.severities))src=src.filter(function(f){return opts.severities.indexOf(f.severity)!==-1});
   // Search filter
   if(opts.search){var q=opts.search.toLowerCase();src=src.filter(function(f){return(f.message||'').toLowerCase().indexOf(q)!==-1||(f.resource||'').toLowerCase().indexOf(q)!==-1||(f.resourceName||'').toLowerCase().indexOf(q)!==-1||(f.control||'').toLowerCase().indexOf(q)!==-1||(f.ckv||'').toLowerCase().indexOf(q)!==-1||(f.remediation||'').toLowerCase().indexOf(q)!==-1})}
@@ -2187,7 +2187,7 @@ function _buildComplianceView(opts){
   if(!opts.includeMuted)src=src.filter(function(f){return!_isMuted(f)});
   // Stamp _tier and _effort on every finding ONCE
   var base=src.map(function(f){return Object.assign({},f,{_tier:_classifyTier(f),_effort:_getEffort(f)})});
-  // Severity sub-filter (dashboard pill selection — single string)
+  // Severity sub-filter (dashboard pill selection: single string)
   var filtered=(typeof opts.severity==='string'&&opts.severity!=='ALL')?base.filter(function(f){return f.severity===opts.severity}):base;
   // Pre-compute counts from base (before severity pill filter)
   var sevCounts={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
@@ -2288,13 +2288,13 @@ const _complianceRefs={
   'IAM-6':{url:'https://learn.microsoft.com/en-us/azure/active-directory/develop/workload-identity-federation',ref:'Workload Identity Federation'},
   'IAM-7':{url:'https://learn.microsoft.com/en-us/azure/role-based-access-control/built-in-roles',ref:'Built-in vs Custom Roles'},
   'IAM-8':{url:'https://learn.microsoft.com/en-us/azure/governance/policy/concepts/assignment-structure',ref:'Azure Policy Assignments'},
-  'CKV_AZURE_1':{url:'https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service',ref:'Checkov CKV_AZURE_1 — VM Metadata'},
-  'CKV_AZURE_18':{url:'https://learn.microsoft.com/en-us/azure/network-watcher/network-watcher-nsg-flow-logging-overview',ref:'Checkov CKV_AZURE_18 — NSG Flow Logs'},
-  'CKV_AZURE_43':{url:'https://learn.microsoft.com/en-us/azure/storage/blobs/versioning-overview',ref:'Checkov CKV_AZURE_43 — Storage Versioning'},
-  'CKV_AZURE_33':{url:'https://learn.microsoft.com/en-us/azure/storage/common/storage-analytics-logging',ref:'Checkov CKV_AZURE_33 — Storage Logging'},
-  'CKV_AZURE_28':{url:'https://learn.microsoft.com/en-us/azure/azure-sql/database/automated-backups-overview',ref:'Checkov CKV_AZURE_28 — SQL Backup Retention'},
-  'CKV_AZURE_70':{url:'https://learn.microsoft.com/en-us/azure/app-service/configure-common',ref:'Checkov CKV_AZURE_70 — Function App Config'},
-  'CKV_AZURE_71':{url:'https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview',ref:'Checkov CKV_AZURE_71 — Function App Tracing'},
+  'CKV_AZURE_1':{url:'https://learn.microsoft.com/en-us/azure/virtual-machines/instance-metadata-service',ref:'Checkov CKV_AZURE_1: VM Metadata'},
+  'CKV_AZURE_18':{url:'https://learn.microsoft.com/en-us/azure/network-watcher/network-watcher-nsg-flow-logging-overview',ref:'Checkov CKV_AZURE_18: NSG Flow Logs'},
+  'CKV_AZURE_43':{url:'https://learn.microsoft.com/en-us/azure/storage/blobs/versioning-overview',ref:'Checkov CKV_AZURE_43: Storage Versioning'},
+  'CKV_AZURE_33':{url:'https://learn.microsoft.com/en-us/azure/storage/common/storage-analytics-logging',ref:'Checkov CKV_AZURE_33: Storage Logging'},
+  'CKV_AZURE_28':{url:'https://learn.microsoft.com/en-us/azure/azure-sql/database/automated-backups-overview',ref:'Checkov CKV_AZURE_28: SQL Backup Retention'},
+  'CKV_AZURE_70':{url:'https://learn.microsoft.com/en-us/azure/app-service/configure-common',ref:'Checkov CKV_AZURE_70: Function App Config'},
+  'CKV_AZURE_71':{url:'https://learn.microsoft.com/en-us/azure/azure-monitor/app/app-insights-overview',ref:'Checkov CKV_AZURE_71: Function App Tracing'},
   'BUDR-HA-1':{url:'https://learn.microsoft.com/en-us/azure/azure-sql/database/high-availability-sla',ref:'SQL Database High Availability'},
   'BUDR-HA-2':{url:'https://learn.microsoft.com/en-us/azure/virtual-machine-scale-sets/overview',ref:'VM Scale Sets Auto Scaling'},
   'BUDR-HA-3':{url:'https://learn.microsoft.com/en-us/azure/container-instances/container-instances-overview',ref:'Container Instance Scaling'},
@@ -2330,7 +2330,7 @@ function _renderCompDash(bodyOnly){
   var footer=document.getElementById('udashFooter');
   footer.textContent='';
   if(!bodyOnly)body.scrollTop=0;
-  // Toolbar — only rebuild on tab switch
+  // Toolbar: only rebuild on tab switch
   if(_compToolbarTab!=='compliance'){
     _compToolbarTab='compliance';
     var th='<div id="compSevPills" style="display:inline-flex;gap:4px;margin-right:12px"></div>';
@@ -2367,7 +2367,7 @@ function _renderCompDash(bodyOnly){
       _openCompExportModal();
     });
   }
-  // Build unified compliance view — cache to avoid redundant computation
+  // Build unified compliance view: cache to avoid redundant computation
   var view=_compDashState._cachedView;
   if(!view){
     view=_buildComplianceView({
@@ -2380,7 +2380,7 @@ function _renderCompDash(bodyOnly){
     view._lastSevFilter=_compDashState.sevFilter;
     _compDashState._cachedView=view;
   } else if(view._lastSevFilter!==_compDashState.sevFilter){
-    // Severity pill changed — re-filter from cached base without full rebuild
+    // Severity pill changed: re-filter from cached base without full rebuild
     var sevF=_compDashState.sevFilter;
     view.filtered=(sevF!=='ALL')?view.base.filter(function(f){return f.severity===sevF}):view.base;
     var ftc={crit:0,high:0,med:0,low:0};var fsc={CRITICAL:0,HIGH:0,MEDIUM:0,LOW:0};
@@ -2391,7 +2391,7 @@ function _renderCompDash(bodyOnly){
     view._lastSevFilter=_compDashState.sevFilter;
   }
   var filtered=view.filtered.slice();
-  // Severity pills — counts from view.sevCounts (base, before severity pill filter)
+  // Severity pills: counts from view.sevCounts (base, before severity pill filter)
   var sc=view.sevCounts;
   var pillBox=document.getElementById('compSevPills');if(pillBox){pillBox.textContent='';
   [{sev:'ALL',label:'All ('+view.base.length+')'},{sev:'CRITICAL',label:'Critical ('+sc.CRITICAL+')'},{sev:'HIGH',label:'High ('+sc.HIGH+')'},{sev:'MEDIUM',label:'Medium ('+sc.MEDIUM+')'},{sev:'LOW',label:'Low ('+sc.LOW+')'}].forEach(function(p){
@@ -2409,7 +2409,7 @@ function _renderCompDash(bodyOnly){
   var mcEl=document.getElementById('compMutedCount');if(mcEl)mcEl.textContent=view.mutedCount>0?view.mutedCount+' finding(s) muted':'';
   // Sort filtered findings for display
   filtered.sort(function(a,b){if(_compDashState.sort==='severity')return(_SEV_ORDER[a.severity]||9)-(_SEV_ORDER[b.severity]||9);if(_compDashState.sort==='framework')return(a.framework||'').localeCompare(b.framework||'');if(_compDashState.sort==='control')return(a.control||'').localeCompare(b.control||'');if(_compDashState.sort==='resource')return(a.resourceName||a.resource||'').localeCompare(b.resourceName||b.resource||'');return 0});
-  // Render body content — shell + rows split for performance
+  // Render body content: shell + rows split for performance
   if(_compDashState.view==='action'){
     _renderCompShellAction(view);
   } else {
@@ -2434,7 +2434,7 @@ function _renderCompShellTable(view,filtered){
 }
 const _compChunkSize=100;
 function _buildCompRow(f,i){
-  // NOTE: All values are pre-escaped via esc() — data comes from internal compliance engine, not user input
+  // NOTE: All values are pre-escaped via esc(): data comes from internal compliance engine, not user input
   var muted=_isMuted(f);var ref=_complianceRefs[f.control];
   var h='<tr class="'+(muted?'muted':'')+'">';
   h+='<td><span class="sev-badge sev-'+f.severity+'">'+f.severity+'</span></td>';
@@ -2479,7 +2479,7 @@ function _renderCompTableRows(filtered){
   }
   (typeof requestIdleCallback==='function'?requestIdleCallback:setTimeout)(renderNextChunk);
 }
-// Action plan view — full body rebuild (complex nested DOM with expand/collapse state)
+// Action plan view: full body rebuild (complex nested DOM with expand/collapse state)
 function _renderCompShellAction(view){
   var body=document.getElementById('udashBody');
   var summaryHtml='';
@@ -2513,7 +2513,7 @@ function _renderActionPlan(view){
     h+='</div>';
   });
   h+='</div>';
-  // Sections — severity-grouped or tier-grouped
+  // Sections: severity-grouped or tier-grouped
   keys.forEach(function(t){
     var meta=metaMap[t];var rgs=groups[t];
     if(!rgs.length)return;
@@ -2742,7 +2742,7 @@ function _exportComplianceExcel(findings,options){
   const fws=[...new Set(filtered.map(f=>f.framework))].sort();
   fws.forEach(fw=>{h+='<tr><td><b>'+esc(fw)+'</b></td><td>'+filtered.filter(f=>f.framework===fw).length+'</td></tr>'});
   h+='</table></div>';
-  // Action Plan sheet — tier-grouped resource summaries
+  // Action Plan sheet: tier-grouped resource summaries
   h+='<div id="Action_x0020_Plan"><table>';
   h+='<tr><th>Priority</th><th>Resource</th><th>Findings</th><th>Worst Severity</th><th>Est. Effort</th><th>Controls</th></tr>';
   _PRIORITY_KEYS.forEach(t=>{
@@ -2761,7 +2761,7 @@ function _exportComplianceExcel(findings,options){
     });
   });
   h+='</table></div>';
-  // Findings Detail sheet — now with Priority and Effort columns
+  // Findings Detail sheet: now with Priority and Effort columns
   h+='<div id="Findings_x0020_Detail"><table>';
   h+='<tr><th>Priority</th><th>Effort</th><th>Severity</th><th>Framework</th><th>Control</th><th>Resource</th><th>Resource Name</th><th>Finding</th>';
   if(options.includeRemediation)h+='<th>Remediation</th>';
@@ -2848,7 +2848,7 @@ function _exportComplianceHTML(findings,options){
     return{fw,label:_FW_LABELS[fw],count:ff.length,...sc};
   });
   const tiers=view.tiers;
-  let h='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Azure Compliance Report — Action Plan</title>';
+  let h='<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Azure Compliance Report: Action Plan</title>';
   h+='<style>';
   h+='*{margin:0;padding:0;box-sizing:border-box}';
   h+='body{font-family:"Segoe UI",system-ui,-apple-system,sans-serif;color:#1e293b;background:#fff;max-width:1100px;margin:0 auto;padding:40px 32px;line-height:1.5}';
@@ -3017,8 +3017,8 @@ function _exportComplianceHTML(findings,options){
     h+='</div>';
   });
   h+='</div>';
-  // Appendix — Full Findings Table
-  h+='<h2>Appendix — Full Findings</h2>';
+  // Appendix: Full Findings Table
+  h+='<h2>Appendix: Full Findings</h2>';
   h+='<table><thead><tr><th>Priority</th><th>Effort</th><th>Severity</th><th>Framework</th><th>Control</th><th>Resource</th><th>Finding</th>';
   if(options.includeRemediation)h+='<th>Remediation</th>';
   h+='</tr></thead><tbody>';
@@ -3413,7 +3413,7 @@ function validateDesignChange(change,ctx){
     if(prefix<_azureConstraints.vnet.cidrPrefixMin||prefix>_azureConstraints.vnet.cidrPrefixMax)
       errors.push('VNet address space must be /8 to /29, got /'+prefix);
     const isRfc1918=_azureConstraints.vnet.rfc1918.some(r=>cidrContains(r,addrCidr));
-    if(!isRfc1918)warnings.push('CIDR '+addrCidr+' is not RFC 1918 — private subnets may have issues');
+    if(!isRfc1918)warnings.push('CIDR '+addrCidr+' is not RFC 1918: private subnets may have issues');
     if(_azureConstraints.vnet.reservedCidrs.some(r=>cidrOverlap(addrCidr,r)))
       warnings.push('168.63.129.16/32 conflicts with Azure internal health probe');
     vpcs.forEach(v=>{const vCidr=v.CidrBlock||(v.properties?.addressSpace?.addressPrefixes?.[0])||'';if(vCidr&&cidrOverlap(addrCidr,vCidr))errors.push('Overlaps existing VNet '+gn(v,v.id||v.VpcId)+' ('+vCidr+')')});
@@ -3447,7 +3447,7 @@ function validateDesignChange(change,ctx){
       const newPrefix=prefix+1;
       const usable=Math.pow(2,32-newPrefix)-_azureConstraints.subnet.reservedIps;
       warnings.push('Each half: /'+newPrefix+' = '+usable+' usable IPs');
-      if(usable<16)warnings.push('Very small subnets — limited IP capacity');
+      if(usable<16)warnings.push('Very small subnets: limited IP capacity');
     }
     const targetSubId=change.target.id||change.target.SubnetId;
     const insts=ctx?(ctx.instBySub||{})[targetSubId]||[]:[];
@@ -3456,9 +3456,9 @@ function validateDesignChange(change,ctx){
 
   if(change.action==='add_gateway'){
     const p=change.params;
-    // Azure VNets have internet access by default — no IGW needed
+    // Azure VNets have internet access by default: no IGW needed
     if(p.GatewayType==='IGW'){
-      warnings.push('Azure VNets have internet access by default — no Internet Gateway resource is needed. Consider using Azure Firewall for traffic control.');
+      warnings.push('Azure VNets have internet access by default: no Internet Gateway resource is needed. Consider using Azure Firewall for traffic control.');
     }
     if(p.GatewayType==='NAT'){
       if(!p.publicIpId&&!p.publicIpPrefixId)
@@ -3499,7 +3499,7 @@ function validateDesignChange(change,ctx){
       const src=r.CidrIp||r.properties?.sourceAddressPrefix||'';
       const port=r.FromPort||r.properties?.destinationPortRange||'';
       if(src==='0.0.0.0/0'&&port!=='80'&&port!=='443'&&port!==80&&port!==443)
-        warnings.push('Rule allows 0.0.0.0/0 on port '+port+' — consider restricting source CIDR');
+        warnings.push('Rule allows 0.0.0.0/0 on port '+port+': consider restricting source CIDR');
     });
   }
 
@@ -3523,11 +3523,11 @@ function validateDesignChange(change,ctx){
     if(t.ResourceType==='Firewall'){
       // Check if any UDRs route through this Azure Firewall
       const affectedRts=rts.filter(rt=>(rt.Routes||rt.properties?.routes||[]).some(r=>(r.properties?.nextHopIpAddress||'')&&(r.properties?.nextHopType||'')==='VirtualAppliance'));
-      if(affectedRts.length)warnings.push(affectedRts.length+' route table(s) may reference this firewall — subnets will lose traffic inspection');
+      if(affectedRts.length)warnings.push(affectedRts.length+' route table(s) may reference this firewall: subnets will lose traffic inspection');
     }
     if(t.ResourceType==='NAT'){
       const affectedSubs=subnets.filter(s=>s.properties?.natGateway?.id===t.ResourceId);
-      if(affectedSubs.length)warnings.push(affectedSubs.length+' subnet(s) use this NAT Gateway — they will lose outbound connectivity');
+      if(affectedSubs.length)warnings.push(affectedSubs.length+' subnet(s) use this NAT Gateway: they will lose outbound connectivity');
     }
     if(t.ResourceType==='Subnet'){
       const sub=subnets.find(s=>(s.id||s.SubnetId)===t.ResourceId);
@@ -3570,7 +3570,7 @@ function validateDesignState(changes,ctx){
     // NAT Gateway without public IP check
     (ctx.natGateways||ctx.nats||[]).forEach(n=>{
       if(!n.properties?.publicIpAddresses?.length)
-        warnings.push('NAT Gateway '+gn(n,n.id||n.NatGatewayId)+' has no public IP — will not function');
+        warnings.push('NAT Gateway '+gn(n,n.id||n.NatGatewayId)+' has no public IP: will not function');
     });
     // Peering CIDR overlap check
     const peerPairs=[];
@@ -3580,7 +3580,7 @@ function validateDesignState(changes,ctx){
       const localVnet=p.properties?.virtualNetwork?.id||p.RequesterVpcInfo?.VpcId||'';
       const remoteVnet=p.properties?.remoteVirtualNetwork?.id||p.AccepterVpcInfo?.VpcId||'';
       if(local&&remote&&cidrOverlap(local,remote))
-        errors.push('VNet Peering '+gn(p,p.id||p.VpcPeeringConnectionId)+' — CIDRs overlap: '+local+' / '+remote);
+        errors.push('VNet Peering '+gn(p,p.id||p.VpcPeeringConnectionId)+': CIDRs overlap: '+local+' / '+remote);
       if(localVnet&&remoteVnet){
         const pair=[localVnet,remoteVnet].sort().join(':');
         if(peerPairs.includes(pair))warnings.push('Duplicate peering between '+localVnet+' and '+remoteVnet);
@@ -3896,7 +3896,7 @@ function _generateCLI(ch){
     }
   }
   if(ch.action==='add_gateway'){
-    if(ch.params.GatewayType==='IGW'){cmds.push('# Azure VNets have internet access by default — no IGW needed');cmds.push(`# Consider Azure Firewall: az network firewall create --name ${ch.params.Name||'new-firewall'} --resource-group ${rg}`)}
+    if(ch.params.GatewayType==='IGW'){cmds.push('# Azure VNets have internet access by default: no IGW needed');cmds.push(`# Consider Azure Firewall: az network firewall create --name ${ch.params.Name||'new-firewall'} --resource-group ${rg}`)}
     if(ch.params.GatewayType==='NAT'){cmds.push(`az network public-ip create --name ${ch.params.Name||'nat'}-pip --resource-group ${rg} --sku Standard`);cmds.push(`az network nat gateway create --name ${ch.params.Name||'new-nat'} --resource-group ${rg} --public-ip-addresses ${ch.params.Name||'nat'}-pip`)}
     if(ch.params.GatewayType==='VPCE')cmds.push(`az network private-endpoint create --name ${ch.params.Name||'new-pe'} --resource-group ${rg} --vnet-name $VNET_NAME --subnet $SUBNET_NAME --private-connection-resource-id $TARGET_RESOURCE_ID --group-ids $GROUP_ID --connection-name $CONNECTION_NAME`);
   }
@@ -3932,7 +3932,7 @@ function _generateWarnings(){
   const splits=_designChanges.filter(c=>c.action==='split_subnet');
   if(splits.length)w.push(splits.length+' subnet split(s) require instance migration');
   const removes=_designChanges.filter(c=>c.action==='remove_resource');
-  if(removes.length)w.push(removes.length+' resource removal(s) — verify dependencies first');
+  if(removes.length)w.push(removes.length+' resource removal(s): verify dependencies first');
   return w;
 }
 function importDesignPlan(json){
@@ -3992,19 +3992,19 @@ function generateCheckovCheck(findings){
 }
 function generateRemediationCLI(findings){
   const sub=(_rlCtx&&_rlCtx._accounts&&_rlCtx._accounts[0])?'--subscription '+(_rlCtx._accounts[0].subscriptionId||'${AZURE_SUBSCRIPTION_ID}'):'--subscription ${AZURE_SUBSCRIPTION_ID}';
-  const lines=['#!/bin/bash','# Azure Compliance Remediation Script','# Generated: '+new Date().toISOString().slice(0,19).replace('T',' '),'# REVIEW EACH COMMAND BEFORE RUNNING — some are destructive','','set -euo pipefail',''];
+  const lines=['#!/bin/bash','# Azure Compliance Remediation Script','# Generated: '+new Date().toISOString().slice(0,19).replace('T',' '),'# REVIEW EACH COMMAND BEFORE RUNNING: some are destructive','','set -euo pipefail',''];
   const seen=new Set();
   const cliMap={
     'CIS 5.2':f=>'# '+f.message+'\n# Remove SSH inbound rule from NSG:\naz network nsg rule delete '+sub+' --nsg-name '+f.resource+' --name "AllowSSH" 2>/dev/null || az network nsg rule update '+sub+' --nsg-name '+f.resource+' --name allow-ssh --access Deny',
     'CIS 5.3':f=>'# '+f.message+'\n# Remove RDP inbound rule from NSG:\naz network nsg rule delete '+sub+' --nsg-name '+f.resource+' --name "AllowRDP" 2>/dev/null || az network nsg rule update '+sub+' --nsg-name '+f.resource+' --name allow-rdp --access Deny',
-    'CIS 5.4':f=>'# '+f.message+' — Remove open inbound rules from NSG\naz network nsg rule list '+sub+' --nsg-name '+f.resource+' -o table',
+    'CIS 5.4':f=>'# '+f.message+': Remove open inbound rules from NSG\naz network nsg rule list '+sub+' --nsg-name '+f.resource+' -o table',
     'NET-2':f=>'# '+f.message+'\n# Remove all-traffic inbound rule from NSG:\naz network nsg rule list '+sub+' --nsg-name '+f.resource+' --query "[?direction==\'Inbound\' && sourceAddressPrefix==\'*\' && access==\'Allow\']" -o table',
     'ARCH-D1':f=>'# '+f.message+'\n# Disable public access on Azure SQL server:\naz sql server update '+sub+' --name '+f.resource+' --restrict-outbound-network-access true',
     'ARCH-D2':f=>'# '+f.message+'\n# Enable zone redundancy for Azure SQL:\naz sql db update '+sub+' --server '+f.resource+' --zone-redundant true',
-    'ARCH-D3':f=>'# '+f.message+' — Enable transparent data encryption\naz sql db tde set '+sub+' --server '+f.resource+' --status Enabled',
+    'ARCH-D3':f=>'# '+f.message+': Enable transparent data encryption\naz sql db tde set '+sub+' --server '+f.resource+' --status Enabled',
     'ARCH-C2':f=>'# '+f.message+'\n# Enable disk encryption on VM:\naz vm encryption enable '+sub+' --name '+f.resource+' --disk-encryption-keyvault ${KEYVAULT_ID}',
     'ARCH-S1':f=>'# '+f.message+'\n# Enable storage account encryption:\naz storage account update '+sub+' --name '+f.resource+' --encryption-services blob --encryption-services file',
-    'ARCH-D5':f=>'# '+f.message+' — Enable Redis SSL\naz redis update '+sub+' --name '+f.resource+' --enable-non-ssl-port false',
+    'ARCH-D5':f=>'# '+f.message+': Enable Redis SSL\naz redis update '+sub+' --name '+f.resource+' --enable-non-ssl-port false',
     'ARCH-D7':f=>'# '+f.message+'\n# Disable public access on AKS:\naz aks update '+sub+' --name '+f.resource+' --api-server-authorized-ip-ranges ""',
     'ARCH-E2':f=>'# '+f.message+'\n# Update Front Door to enforce HTTPS:\naz afd endpoint update '+sub+' --profile-name '+f.resource+' --https-redirect Enabled',
     'WAF-3':f=>'# '+f.message+'\n# Associate App Gateway with WAF policy:\naz network application-gateway waf-policy create '+sub+' --name waf-policy-'+f.resource+' --resource-group ${RESOURCE_GROUP}',
@@ -4141,7 +4141,7 @@ function runIAMChecks(iamData){
       const hasMFA=stmts.some(s=>JSON.stringify(s.Condition||{}).includes('aws:MultiFactorAuth'));
       if(crossAccount&&!hasMFA)f.push({severity:'MEDIUM',control:'IAM-3',framework:'IAM',resource:role.RoleName||'',resourceName:role.RoleName||'',message:'Cross-account role without MFA condition',remediation:'Add Condition with aws:MultiFactorAuthPresent'});
     }
-    // IAM-4: Service wildcard actions (s3:*, ec2:* but not *) — scan both inline and managed
+    // IAM-4: Service wildcard actions (s3:*, ec2:* but not *): scan both inline and managed
     const allStmts4=[];
     (role.RolePolicyList||[]).forEach(p=>{_stmtArr((_safePolicyParse(p.PolicyDocument)).Statement).forEach(s=>allStmts4.push(s))});
     (role.AttachedManagedPolicies||[]).forEach(mp=>{const pol=policyByArn.get(mp.PolicyArn)||policyByArn.get(mp.PolicyName);if(pol){const ver=(pol.PolicyVersionList||[]).find(v=>v.IsDefaultVersion);if(ver){_stmtArr((_safePolicyParse(ver.Document)).Statement).forEach(s=>allStmts4.push(s))}}});
@@ -4201,7 +4201,7 @@ function runIAMChecks(iamData){
     if(uHasWildcard&&!uIsAdmin)f.push({severity:'HIGH',control:'IAM-2',framework:'IAM',resource:user.UserName||'',resourceName:user.UserName||'',message:'User has wildcard Resource: "*"',remediation:'Scope Resource ARNs to specific resources'});
     if(!(user.MFADevices||[]).length)f.push({severity:'HIGH',control:'IAM-3',framework:'IAM',resource:user.UserName||'',resourceName:user.UserName||'',message:'User has no MFA device configured',remediation:'Enable MFA for all IAM users'});
     if(user.UserPolicyList?.length>0)f.push({severity:'LOW',control:'IAM-7',framework:'IAM',resource:user.UserName||'',resourceName:user.UserName||'',message:'User uses inline policies instead of managed',remediation:'Convert inline policies to managed policies'});
-    // Service wildcard check for users — scan both inline and managed
+    // Service wildcard check for users: scan both inline and managed
     const uStmts=[];(user.UserPolicyList||[]).forEach(p=>{_stmtArr((_safePolicyParse(p.PolicyDocument)).Statement).forEach(s=>uStmts.push(s))});
     (user.AttachedManagedPolicies||[]).forEach(mp=>{const pol=(iamData.policies||[]).find(p=>p.Arn===mp.PolicyArn||p.PolicyName===mp.PolicyName);if(pol){const ver=(pol.PolicyVersionList||[]).find(v=>v.IsDefaultVersion);if(ver){_stmtArr((_safePolicyParse(ver.Document)).Statement).forEach(s=>uStmts.push(s))}}});
     var uHasIAM4=false;uStmts.forEach(stmt=>{if(uHasIAM4)return;if(stmt.Effect==='Allow'){const acts=Array.isArray(stmt.Action)?stmt.Action:[stmt.Action||''];if(acts.some(a=>/^[a-z0-9]+:\*$/i.test(a))){uHasIAM4=true;f.push({severity:'MEDIUM',control:'IAM-4',framework:'IAM',resource:user.UserName||'',resourceName:user.UserName||'',message:'User uses service-level wildcard actions',remediation:'Scope actions to specific API calls needed'})}}});
@@ -4293,7 +4293,7 @@ function _buildInventoryData(){
     var subId=(vc.SubnetIds&&vc.SubnetIds[0])||'';
     rows.push(mkRow(fn.FunctionName,'FuncApp',fn.FunctionName,fn,{vpcId:vpcId,subnetId:subId,config:(fn.Runtime||'')+(fn.MemorySize?' '+fn.MemorySize+'MB':''),state:fn.State||'Active'}));
   });
-  // 6. ECS — use serviceName as ID
+  // 6. ECS: use serviceName as ID
   (ctx.ecsServices||[]).forEach(function(svc){
     var nc=svc.networkConfiguration&&svc.networkConfiguration.awsvpcConfiguration;
     var subId=nc&&nc.subnets&&nc.subnets[0]?nc.subnets[0]:'';
@@ -4302,7 +4302,7 @@ function _buildInventoryData(){
     var cpu=svc.cpu||'';var mem=svc.memory||'';
     rows.push(mkRow(svc.serviceName,'Container',svc.serviceName,svc,{vpcId:vpcId,subnetId:subId,config:(svc.launchType||'')+' '+(cpu?cpu+'/':'')+(mem||''),state:svc.status||''}));
   });
-  // 7. ALB — use LoadBalancerName as ID
+  // 7. ALB: use LoadBalancerName as ID
   (ctx.albs||[]).forEach(function(a){
     rows.push(mkRow(a.LoadBalancerName,'ALB',a.LoadBalancerName,a,{vpcId:a.VpcId||'',config:(a.Type||'application')+' '+(a.Scheme||''),state:a.State?a.State.Code||'':''}));
   });
@@ -4386,12 +4386,12 @@ function _buildInventoryData(){
   (ctx.vpns||[]).forEach(function(v){
     rows.push(mkRow(v.VpnConnectionId,'VPN',tag(v)||v.VpnConnectionId,v,{config:(v.State||'')+' '+(v.Type||''),state:v.State||''}));
   });
-  // 25. TGW Attachments — guard for missing ID
+  // 25. TGW Attachments: guard for missing ID
   (ctx.tgwAttachments||[]).forEach(function(t){
     var tid=t.TransitGatewayAttachmentId||(t.TransitGatewayId+'-'+(t.VpcId||''));
     rows.push(mkRow(tid,'TGW Attachment',tag(t)||tid,t,{vpcId:t.VpcId||'',config:(t.ResourceType||'')+' '+(t.TransitGatewayId||''),state:t.State||''}));
   });
-  // 26. Target Groups — use TargetGroupName as ID
+  // 26. Target Groups: use TargetGroupName as ID
   (ctx.tgs||[]).forEach(function(tg){
     rows.push(mkRow(tg.TargetGroupName,'Backend Pool',tg.TargetGroupName,tg,{vpcId:tg.VpcId||'',config:(tg.Protocol||'')+':'+(tg.Port||''),state:tg.TargetType||''}));
   });
@@ -4544,11 +4544,11 @@ function _renderInventoryBody(){
     _renderInventoryTree(body,footer);
     return;
   }
-  // Cache filtered/sorted results — only recompute when filters or sort change
+  // Cache filtered/sorted results: only recompute when filters or sort change
   var fk=st.typeFilter+'|'+st.regionFilter+'|'+st.accountFilter+'|'+st.vpcFilter+'|'+st.search+'|'+st.sort+'|'+st.sortDir+'|'+_inventoryData.length;
   if(fk!==_invFilterKey){_invFilterCache=_filterInventory();_invFilterKey=fk}
   var items=_invFilterCache;
-  // Summary cards — total + top 5 types
+  // Summary cards: total + top 5 types
   var typeCounts={};
   items.forEach(function(r){typeCounts[r.type]=(typeCounts[r.type]||0)+1});
   var topTypes=Object.keys(typeCounts).map(function(t){return{type:t,count:typeCounts[t]}})
@@ -4560,7 +4560,7 @@ function _renderInventoryBody(){
     bh+='<div class="gov-tier-card" style="border-color:'+tc+'"><h3 style="color:'+tc+'">'+_escHtml(d.type)+'</h3><div class="gov-tier-count" style="color:'+tc+'">'+d.count+'</div></div>';
   });
   bh+='</div>';
-  // Tag summary panel — show tag keys and unique values for filtered set
+  // Tag summary panel: show tag keys and unique values for filtered set
   var tagSummary={};
   items.forEach(function(r){
     var tk=Object.keys(r.tags||{});
@@ -4680,7 +4680,7 @@ function _renderInventoryBody(){
       bh+='<td style="font-size:9px;color:var(--text-muted)">\u2014</td>';
     }
     bh+='</tr>';
-    // Expandable detail row (lazy — populated on first expand)
+    // Expandable detail row (lazy: populated on first expand)
     bh+='<tr><td colspan="'+cols.length+'" class="gov-iam-expand" id="'+rowId+'-exp" data-inv-idx="'+(start+idx)+'"></td></tr>';
   });
   bh+='</tbody></table>';
@@ -4708,7 +4708,7 @@ function _renderInventoryBody(){
 
 function _buildInvExpandedDetail(r){
   var h='';
-  // ID — hyperlinked to Azure Portal
+  // ID: hyperlinked to Azure Portal
   var idUrl=_azurePortalUrl(r.type,r.id,r.region);
   if(idUrl){
     h+='<div style="margin-bottom:6px"><b style="color:var(--text-muted);font-size:9px">ID:</b> <a href="'+_escHtml(idUrl)+'" target="_blank" rel="noopener" style="font-size:10px;background:var(--bg-input);padding:2px 6px;border-radius:3px;color:var(--accent-cyan);text-decoration:underline dotted;text-underline-offset:2px;font-family:monospace" title="Open in Azure Portal">'+_escHtml(r.id)+'</a></div>';
@@ -4723,7 +4723,7 @@ function _buildInvExpandedDetail(r){
   if(locParts.length){
     h+='<div style="margin-bottom:6px;font-size:10px;color:var(--text-secondary)">'+locParts.join(' &middot; ')+'</div>';
   }
-  // Related resources — hyperlinked
+  // Related resources: hyperlinked
   if(r._related && r._related.length){
     h+='<div style="margin-bottom:6px"><b style="color:var(--text-muted);font-size:9px">Related:</b> ';
     var prefixTypeMap={'sg-':'NSG','i-':'VM','subnet-':'Subnet','vpc-':'VNet','vol-':'Managed Disk','igw-':'Azure Firewall','nat-':'NAT GW','eni-':'NIC','rtb-':'UDR','acl-':'NSG','pcx-':'VNet Peering','vpce-':'Private Endpoint'};
@@ -4788,7 +4788,7 @@ function _buildInvExpandedDetail(r){
     });
     h+='</div></div>';
   }
-  // Go to Map button — only for types with SVG representation
+  // Go to Map button: only for types with SVG representation
   if(!_INV_NO_MAP_TYPES[r.type]){
     h+='<div style="margin-top:8px"><button class="inv-goto-map" data-rid="'+_escHtml(r.id)+'" style="background:rgba(34,211,238,.1);border:1px solid #22d3ee;color:#22d3ee;padding:4px 12px;border-radius:4px;font-size:9px;font-family:Segoe UI,system-ui,sans-serif;cursor:pointer">Go to Map</button></div>';
   }
@@ -4854,7 +4854,7 @@ function _wireInventoryEvents(body,footer,items,cols){
       }
     });
   });
-  // CSV export — all filtered items
+  // CSV export: all filtered items
   document.getElementById('invExportCSV').addEventListener('click',function(){
     var rows=[['Type','Name','ID','Config','State','VNet','Region','Account','AZ','Classification','BUDR','Compliance Pass','Compliance Fail','Encrypted','SG Count']];
     items.forEach(function(r){
@@ -4863,7 +4863,7 @@ function _wireInventoryEvents(body,footer,items,cols){
     var csv=rows.map(function(r){return r.map(function(c){return '"'+String(c).replace(/"/g,'""')+'"'}).join(',')}).join('\n');
     downloadBlob(new Blob([csv],{type:'text/csv'}),'inventory-export.csv');
   });
-  // JSON export — all filtered items minus _raw
+  // JSON export: all filtered items minus _raw
   document.getElementById('invExportJSON').addEventListener('click',function(){
     var clean=items.map(function(r){
       var o={};for(let k in r){if(k!=='_raw') o[k]=r[k]}return o;
@@ -5011,7 +5011,7 @@ const _DEFAULT_CLASS_RULES=[
   {pattern:'alb|elb|loadbalancer|nlb',scope:'type',tier:'high',weight:65},
   {pattern:'lambda|fargate|ecs',scope:'type',tier:'medium',weight:40},
   {pattern:'bastion|jump|ssh',scope:'name',tier:'medium',weight:35},
-  // Tag-based rules — Environment tag is strongest classification signal
+  // Tag-based rules: Environment tag is strongest classification signal
   {pattern:'prod|production|prd',scope:'tag:Environment',tier:'critical',weight:120},
   {pattern:'staging|stage|uat|qa',scope:'tag:Environment',tier:'medium',weight:110},
   {pattern:'dev|develop|sandbox|test',scope:'tag:Environment',tier:'low',weight:110}
@@ -8043,7 +8043,7 @@ function renderLandingZoneMap(ctx){
       const vpcIdx=vpcGwIndex[g.vid]=(vpcGwIndex[g.vid]||0)+1;
       const routeLevel=baseRouteLevel-i*16;
       const exitX=g.sgX+25+vpcIdx*20;
-      // Path stops at the shared trunk X — no more flagpole
+      // Path stops at the shared trunk X: no more flagpole
       const netPath=`M${g.sgX+16},${g.sgY} L${exitX},${g.sgY} L${exitX},${routeLevel} L${spokeTrunkX},${routeLevel}`;
       const pb=lzStructG.append('path')
         .attr('class','route-trunk animated')
@@ -8813,7 +8813,7 @@ function _renderMapInner(){
   document.getElementById('emptyState').style.display='none';
   document.getElementById('landingDash').style.display='none';
 
-  // PERF: If a prebuilt context exists (from merge), use it directly — skip all parsing
+  // PERF: If a prebuilt context exists (from merge), use it directly: skip all parsing
   let vpcs,subnets,rts,sgs,nacls,enis,igws,nats,vpces,instances,albs,tgs,peerings,vpns;
   let volumes,snapshots,s3bk,zones,wafAcls,rdsInstances,ecsServices,lambdaFns;
   let ecacheClusters,redshiftClusters,tgwAttachments,cfDistributions;
@@ -8837,14 +8837,14 @@ function _renderMapInner(){
       ecacheByVpc:pc.ecacheByVpc||{},redshiftByVpc:pc.redshiftByVpc||{},
       wafByAlb:pc.wafByAlb||{},tgByAlb:pc.tgByAlb||{},cfByAlb:pc.cfByAlb||{}};
   }else{
-  // parse all Azure inputs (cached — skips JSON.parse if textarea unchanged)
+  // parse all Azure inputs (cached: skips JSON.parse if textarea unchanged)
   vpcs=ext(_cachedParse('in_vnets'),['value','VirtualNetworks']);
   subnets=ext(_cachedParse('in_subnets'),['value','Subnets']);
   rts=ext(_cachedParse('in_udrs'),['value','RouteTables']);
   sgs=ext(_cachedParse('in_nsgs'),['value','SecurityGroups']);
   nacls=[];// NACLs not used in Azure
   enis=ext(_cachedParse('in_nics'),['value','NetworkInterfaces']);
-  igws=[];// No explicit IGW in Azure — internet access is implicit
+  igws=[];// No explicit IGW in Azure: internet access is implicit
   nats=ext(_cachedParse('in_nats'),['value','NatGateways']);
   vpces=ext(_cachedParse('in_pvteps'),['value','PrivateEndpoints']);
   instances=[];
@@ -8910,7 +8910,7 @@ function _renderMapInner(){
     if(!s.GroupName)s.GroupName=s.name||'';
     // Derive VpcId from subnet associations
     if(!s.VpcId&&s.subnets&&s.subnets[0]&&s.subnets[0].id)s.VpcId=s.subnets[0].id.split('/subnets/')[0]||'';
-    if(!s.VpcId&&s.networkInterfaces&&s.networkInterfaces[0]&&s.networkInterfaces[0].id)s.VpcId='';// NIC-level NSG — no VNet
+    if(!s.VpcId&&s.networkInterfaces&&s.networkInterfaces[0]&&s.networkInterfaces[0].id)s.VpcId='';// NIC-level NSG: no VNet
     // Map Azure securityRules → IpPermissions/IpPermissionsEgress for firewall tab
     if(!s.IpPermissions&&(s.securityRules||s.defaultSecurityRules)){
       const allRules=[...(s.securityRules||[]),...(s.defaultSecurityRules||[])];
@@ -9047,7 +9047,7 @@ function _renderMapInner(){
       document.getElementById('landingDash').style.display='none';
       document.getElementById('emptyState').style.display='flex';
       document.getElementById('emptyTitle').textContent='Design Mode';
-      document.getElementById('emptyDesc').textContent='No infrastructure loaded — create your first VPC to start designing';
+      document.getElementById('emptyDesc').textContent='No infrastructure loaded: create your first VPC to start designing';
       const eBtn=document.getElementById('emptyDesignBtn');
       eBtn.style.display='inline-block';
       eBtn.onclick=function(){showDesignForm('add_vpc',{})};
@@ -9119,7 +9119,7 @@ function _renderMapInner(){
   const albBySub=_pbMaps?_pbMaps.albBySub:(()=>{const m={};albs.forEach(lb=>{(lb.AvailabilityZones||[]).forEach(az=>{if(az.SubnetId)(m[az.SubnetId]=m[az.SubnetId]||[]).push(lb)})});return m})();
   const volByInst=_pbMaps?_pbMaps.volByInst:(()=>{const m={};volumes.forEach(v=>{(v.Attachments||[]).forEach(a=>{if(a.InstanceId)(m[a.InstanceId]=m[a.InstanceId]||[]).push(v)})});return m})();
 
-  // volumes by subnet (always rebuild — needs eniByInst which is built above)
+  // volumes by subnet (always rebuild: needs eniByInst which is built above)
   const knownInstIds=new Set(instances.map(i=>i.InstanceId));
   const instSubFromEni={};enis.forEach(e=>{if(e.SubnetId&&e.Attachment&&e.Attachment.InstanceId)instSubFromEni[e.Attachment.InstanceId]=e.SubnetId});
   const volBySub={};volumes.forEach(v=>{
@@ -9404,7 +9404,7 @@ function _renderMapInner(){
     const totalNeeded=(gwYs.length-1)*minGap;
     const vpcAvailable=vl.h-GR-10-(GR+20);
     if(totalNeeded>vpcAvailable&&gwYs.length>1){
-      // Not enough room — distribute evenly within available space
+      // Not enough room: distribute evenly within available space
       const evenGap=vpcAvailable/(gwYs.length-1);
       gwYs.forEach((g,i)=>{g.gy=vl.y+GR+20+i*evenGap});
     }else{
@@ -9522,7 +9522,7 @@ function _renderMapInner(){
       if(el.hasAttribute('data-net-vert')) hasNet=true;
       clonePathToOl(el);
     });
-    // Also clone paths with just data-gid (no data-vid) — e.g. bus-bar-to-gateway verticals
+    // Also clone paths with just data-gid (no data-vid): e.g. bus-bar-to-gateway verticals
     // (already included above since querySelectorAll matches all with data-gid)
 
     if(hasNet){
@@ -9623,12 +9623,12 @@ function _renderMapInner(){
       // 1. Clone this subnet's route-lines + junctions for this gateway
       sNode.querySelectorAll('[data-gid="'+gid+'"][data-sid="'+sid+'"]').forEach(el=>clonePathToOl(el));
 
-      // 2. Clone trunk/L-bend/junction paths — but TRIM vertical trunks to subnet↔gateway range
+      // 2. Clone trunk/L-bend/junction paths: but TRIM vertical trunks to subnet↔gateway range
       // First, find the L-bend/connector Y to use as trim target
       let bendY=gwY;
       sNode.querySelectorAll('[data-gid="'+gid+'"][data-vid="'+subVid+'"]:not([data-sid]):not([data-net-vert])').forEach(el=>{
         if(el.style.strokeDasharray==='none'&&!el.classList.contains('route-junction')){
-          // This is the L-bend or L-connector — extract its Y
+          // This is the L-bend or L-connector: extract its Y
           const bm=el.getAttribute('d').match(/^M[\d.]+,([\d.]+)/);
           if(bm) bendY=parseFloat(bm[1]);
         }
@@ -10501,7 +10501,7 @@ function _renderMapInner(){
     
     // Draw NET connections: L-shaped paths from bus-bar to each IGW.
     // Each IGW gets its own L-bend: horizontal from NET node at bus-bar Y,
-    // then vertical down to IGW. No continuous bus bar — eliminates dead ends.
+    // then vertical down to IGW. No continuous bus bar: eliminates dead ends.
     const connectedIgwIds=new Set(Object.keys(tG).map(k=>k.split('|')[0]));
     const connectedIgwList=iGwList.filter(p=>connectedIgwIds.has(p.gw.id));
     // Group by X to handle stacked gateways at same position
@@ -11067,7 +11067,7 @@ function _applyImportedData(data,source){
   _budrAssessments=data.budrAssessments||[];
   _budrFindings=data.budrFindings||[];
   _inventoryData=data.inventoryData||[];
-  // IAM review data — from HTML parse or JSON blob
+  // IAM review data: from HTML parse or JSON blob
   if(data.iamReviewData&&data.iamReviewData.length){
     _iamReviewData=data.iamReviewData.map(function(r){
       // Restore Date objects from strings if needed
@@ -11081,7 +11081,7 @@ function _applyImportedData(data,source){
       return copy;
     });
   }
-  // App registry — from HTML parse or JSON blob
+  // App registry: from HTML parse or JSON blob
   if(data.appRegistry&&data.appRegistry.length){
     _appRegistry=data.appRegistry;
   }
@@ -11174,7 +11174,7 @@ function _parseReportHTML(doc){
     }
   }
   if(!result.title){var te=doc.querySelector('title');if(te)result.title=te.textContent.trim()}
-  // Compliance findings — flat table rows with data-sev + data-fw
+  // Compliance findings: flat table rows with data-sev + data-fw
   // New reports: 7 cols (Account, Severity, Framework, Control, Resource, Finding, Remediation)
   // Old reports: 6 cols (Severity, Framework, Control, Resource, Finding, Remediation)
   doc.querySelectorAll('tr[data-sev][data-fw]').forEach(function(tr){
@@ -11229,7 +11229,7 @@ function _parseReportHTML(doc){
     var key=f.resource+'|'+f.control+'|'+f.severity;
     if(seen[key])return false;seen[key]=true;return true;
   });
-  // BUDR assessments — rows with data-tier + data-strategy
+  // BUDR assessments: rows with data-tier + data-strategy
   // New reports: 8 cols (Account, Type, Name, Tier, Strategy, RTO, RPO, Signals)
   // Old reports: 7 cols (Type, Name, Tier, Strategy, RTO, RPO, Signals)
   doc.querySelectorAll('tr[data-tier][data-strategy]').forEach(function(tr){
@@ -11246,7 +11246,7 @@ function _parseReportHTML(doc){
       signals:_parseSignalText(tds[o+6].textContent.trim())
     });
   });
-  // Inventory — rows with id="res-*"
+  // Inventory: rows with id="res-*"
   // New reports have Account as first column; old reports start with Name
   doc.querySelectorAll('tr[id^="res-"]').forEach(function(tr){
     var tds=tr.querySelectorAll('td');
@@ -11268,9 +11268,9 @@ function _parseReportHTML(doc){
       compliancePass:0,complianceFail:0
     });
   });
-  // IAM Review — parse from section #s-iam-review
+  // IAM Review: parse from section #s-iam-review
   _parseReportIAM(doc,result);
-  // App Summary — parse from section #s-app-summary
+  // App Summary: parse from section #s-app-summary
   _parseReportAppSummary(doc,result);
   return result;
 }
@@ -11469,7 +11469,7 @@ function importFolder(result){
       _showToast('No valid data found in profile folders');
     }
   }else{
-    // Flat structure — load into textareas directly
+    // Flat structure: load into textareas directly
     const files=result.files||result;
     const entries=Object.entries(files);
     let matched=0,skipped=[];
@@ -11524,7 +11524,7 @@ if(_isElectron){
     setTimeout(()=>{document.getElementById('scanModal').style.display='none'},1000);
   });
 
-  // Scan event listeners (guarded — methods may be missing in web/older preload)
+  // Scan event listeners (guarded: methods may be missing in web/older preload)
   const _unsubs=[];
   const _safeOn=(fn,cb)=>{if(typeof fn==='function'){const u=fn(cb);if(u)_unsubs.push(u)}};
   _safeOn(window.electronAPI.onScanProgress,(text)=>{
@@ -11561,7 +11561,7 @@ if(_isElectron){
     try{_loadProjectData(JSON.parse(content))}catch(ex){_showToast('Failed to load file: '+ex.message)}
   });
 
-  // Update available — show persistent banner with download/install controls
+  // Update available: show persistent banner with download/install controls
   _safeOn(window.electronAPI.onUpdateAvailable,({version,currentVersion})=>{
     var banner=document.getElementById('updateBanner');
     if(!banner){
@@ -11620,7 +11620,7 @@ if(_isElectron){
   });
 }
 
-// Browser folder import (File System Access API — Chrome/Edge, webkitdirectory fallback)
+// Browser folder import (File System Access API: Chrome/Edge, webkitdirectory fallback)
 {
   const bfBtn=document.getElementById('importFolderBrowser');
   if(_isElectron)bfBtn.style.display='none';
@@ -11638,7 +11638,7 @@ if(_isElectron){
         const parts=(file.webkitRelativePath||file.name).split('/');
         pending.push(file.text().then(txt=>{
           if(parts.length===2){
-            // root/file.json — flat
+            // root/file.json: flat
             flatFiles[parts[1]]=txt;
           }else if(parts.length===3){
             // root/region/file.json or root/profile/file.json
@@ -11767,7 +11767,7 @@ document.getElementById('searchInput').addEventListener('input',function(){
   for(let si=0;si<_searchIndex.length&&matches.length<30;si++){
     if(_searchIndex[si].searchStr.includes(q))matches.push(_searchIndex[si]);
   }
-  // Notes are dynamic — search them live (typically small set)
+  // Notes are dynamic: search them live (typically small set)
   _getAllNotes().forEach(function(n){if(matches.length>=30)return;if((n.text||'').toLowerCase().includes(q)||(_getResourceName(n.resourceId)||'').toLowerCase().includes(q))matches.push({type:'Note',name:(n.text||'').slice(0,50),id:n.resourceId,extra:n.category||'',acct:''})});
   const isMA=_rlCtx._multiTenant;
   var frag=document.createDocumentFragment();
@@ -11786,7 +11786,7 @@ document.getElementById('searchInput').addEventListener('input',function(){
 function _zoomToElement(id){
   if(!_mapSvg||!_mapZoom||!_mapG)return;
   var el=_mapG.node().querySelector('[data-vnet-id="'+id+'"],[data-subnet-id="'+id+'"],[data-gwid="'+id+'"],[data-id="'+id+'"]');
-  // Fallback: SGs don't have SVG nodes — zoom to their VPC instead
+  // Fallback: SGs don't have SVG nodes: zoom to their VPC instead
   if(!el&&id&&_rlCtx){
     var sg=_sgById.get(id);
     if(sg&&sg.VpcId) el=_mapG.node().querySelector('[data-vnet-id="'+sg.VpcId+'"]');
@@ -12212,7 +12212,7 @@ function _openDetailForSearch(type,id){
       h+='</table></div></div>';
     }
   } else if(type==='Note'){
-    // For notes, just zoom — no extra panel
+    // For notes, just zoom: no extra panel
     return;
   } else {
     return; // Unknown type, no panel
@@ -12528,7 +12528,7 @@ function _renderComplianceBadges(){
   const vpcRollup={};
   Object.entries(lookup).forEach(([rid,data])=>{
     const el=_mapG.node().querySelector('[data-vnet-id="'+rid+'"],[data-subnet-id="'+rid+'"],[data-gwid="'+rid+'"],[data-id="'+rid+'"]');
-    if(el)return; // Has its own node — badge goes directly on it
+    if(el)return; // Has its own node: badge goes directly on it
     // Try to find VPC for this resource
     let vpcId=null;
     if(_rlCtx){
@@ -12549,7 +12549,7 @@ function _renderComplianceBadges(){
     const el=_mapG.node().querySelector('[data-vnet-id="'+rid+'"],[data-subnet-id="'+rid+'"],[data-gwid="'+rid+'"],[data-id="'+rid+'"]');
     if(!el)return;
     const bb=el.getBBox();
-    // Offset from note badges — place on opposite corner (top-left)
+    // Offset from note badges: place on opposite corner (top-left)
     const badge=nodesLayer.append('g').attr('class','comp-badge sev-'+data.worst).attr('transform','translate('+(bb.x+8)+','+(bb.y+4)+')').style('cursor','pointer');
     badge.node()._compRid=rid;
     badge.append('circle').attr('r',7);
@@ -12567,7 +12567,7 @@ function _renderComplianceBadges(){
       const existing=lookup[vpcId];
       data.count+=existing.count;
       if((sevOrder[existing.worst]||9)<(sevOrder[data.worst]||9))data.worst=existing.worst;
-      // Remove the direct badge we already placed — we'll replace with merged
+      // Remove the direct badge we already placed: we'll replace with merged
       _mapG.selectAll('.comp-badge').filter(function(){return d3.select(this).attr('transform')&&this._compRid===vpcId}).remove();
     }
     const el=_mapG.node().querySelector('[data-vnet-id="'+vpcId+'"]');
@@ -12655,7 +12655,7 @@ function addAccountContext(projectData, label){
   const textareas=projectData.textareas||projectData.json_data||{};
   const acctLabel=label||projectData.accountLabel||'Account '+((_loadedContexts.length)+1);
 
-  // PERF: Build rlCtx directly from data — no DOM round-trip
+  // PERF: Build rlCtx directly from data: no DOM round-trip
   const ctx=_buildRlCtxFromData(textareas, projectData.accountLabel||acctLabel);
 
   if(!ctx||!ctx.vpcs||!ctx.vpcs.length){
@@ -12687,16 +12687,16 @@ function addAccountContext(projectData, label){
 }
 
 function _buildRlCtxFromTextareas(){
-  // Minimal parse of textareas to build an rlCtx — mirrors _renderMapInner parse logic
+  // Minimal parse of textareas to build an rlCtx: mirrors _renderMapInner parse logic
   try{
     const userAccount=(document.getElementById('accountLabel')||{}).value.trim()||'';
     let vpcs=ext(safeParse(gv('in_vnets')),['value','VirtualNetworks']);
     let subnets=ext(safeParse(gv('in_subnets')),['value','Subnets']);
     let rts=ext(safeParse(gv('in_udrs')),['value','RouteTables']);
     let sgs=ext(safeParse(gv('in_nsgs')),['value','SecurityGroups']);
-    let nacls=[];// NACLs not used in Azure — NSGs serve both purposes
+    let nacls=[];// NACLs not used in Azure: NSGs serve both purposes
     let enis=ext(safeParse(gv('in_nics')),['value','NetworkInterfaces']);
-    let igwRaw=[];// Internet access is implicit in Azure — no explicit IGW resource
+    let igwRaw=[];// Internet access is implicit in Azure: no explicit IGW resource
     let natRaw=ext(safeParse(gv('in_nats')),['value','NatGateways']);
     let vpceRaw=ext(safeParse(gv('in_pvteps')),['value','PrivateEndpoints']);
     let instances=ext(safeParse(gv('in_vms')),['value']).flatMap(r=>r.properties?[r]:(r.Instances||[r]));
@@ -12711,7 +12711,7 @@ function _buildRlCtxFromTextareas(){
     let lambdaFns=ext(safeParse(gv('in_funcapps')),['value']).filter(f=>f.kind||f.name);
     let ecacheClusters=ext(safeParse(gv('in_elasticache')),['value','RedisCaches']);
     let redshiftClusters=ext(safeParse(gv('in_aks')),['value','AksClusters']);
-    // Parse resources previously skipped (Storage, WAF, DNS, FrontDoor) — needed for compliance accuracy
+    // Parse resources previously skipped (Storage, WAF, DNS, FrontDoor): needed for compliance accuracy
     let s3raw=safeParse(gv('in_storage'));let s3bk=s3raw?ext(s3raw,['value','StorageAccounts']):[];
     let zones=ext(safeParse(gv('in_dnsz')),['value','DnsZones']);
     let wafAcls=ext(safeParse(gv('in_waf')),['value','WafPolicies']);
@@ -12745,7 +12745,7 @@ function _buildRlCtxFromTextareas(){
     igwRaw.forEach(function(g){if(g._region==='unknown'){var att=(g.Attachments||[])[0];if(att&&att.VpcId&&vpcRegion[att.VpcId])g._region=vpcRegion[att.VpcId]}});
     // ECS region fallback via subnet→VPC→region
     ecsServices.forEach(function(svc){if(svc._region==='unknown'){var nc=svc.networkConfiguration&&svc.networkConfiguration.awsvpcConfiguration;var sid=nc&&nc.subnets&&nc.subnets[0];if(sid){var vid=subVpcLookup[sid];if(vid&&vpcRegion[vid])svc._region=vpcRegion[vid]}}});
-    // VPN region fallback via VpnGatewayId→VPC (limited — VPN doesn't always carry VpcId)
+    // VPN region fallback via VpnGatewayId→VPC (limited: VPN doesn't always carry VpcId)
     vpns.forEach(function(v){if(v._region==='unknown'){var vgw=v.VpnGatewayId;if(vgw){vpcs.forEach(function(vpc){if(vpc._region&&vpc._region!=='unknown'){var gws=(vpc.VpnGateways||[]);gws.forEach(function(g){if(g.VpnGatewayId===vgw)v._region=vpc._region})}})}}});
     // Peering region fallback via RequesterVpcInfo/AccepterVpcInfo
     peerings.forEach(function(p){if(p._region==='unknown'){var rv=p.RequesterVpcInfo&&p.RequesterVpcInfo.VpcId;var av=p.AccepterVpcInfo&&p.AccepterVpcInfo.VpcId;if(rv&&vpcRegion[rv])p._region=vpcRegion[rv];else if(av&&vpcRegion[av])p._region=vpcRegion[av]}});
@@ -12995,7 +12995,7 @@ function mergeContexts(contexts){
     const c=ctx.rlCtx;if(!c)return;
     const tag=(r)=>{if(r){r._subscriptionId=r._subscriptionId||ctx.accountId;r._accountLabel=ctx.accountLabel;r._ctxColor=ctx.color}return r};
 
-    // Arrays — tag and concat
+    // Arrays: tag and concat
     const arrayKeys=['vpcs','subnets','rts','sgs','nacls','enis','igws','nats','vpces',
       'instances','albs','tgs','peerings','vpns','volumes','snapshots','s3bk','zones','wafAcls',
       'rdsInstances','ecsServices','lambdaFns','ecacheClusters','redshiftClusters','cfDistributions','tgwAttachments'];
@@ -13010,7 +13010,7 @@ function mergeContexts(contexts){
     if(c._regions)c._regions.forEach(r=>merged._regions.add(r));
     if(ctx._isRegion&&ctx.region)merged._regions.add(ctx.region);
 
-    // Object lookups — merge entries
+    // Object lookups: merge entries
     const mapKeys=['instBySub','albBySub','eniBySub','rdsBySub','ecsBySub','lambdaBySub',
       'subRT','subNacl','nsgByVnet','volByInst','snapByVol','ecacheByVpc','redshiftByVpc',
       'wafByAlb','tgByAlb','cfByAlb','recsByZone'];
@@ -13066,12 +13066,12 @@ function _remergeAndRender(){
     _classificationData=[];_budrAssessments=[];_iamData=null;_iamReviewData=[];
     _complianceDataFP='';_complianceCachedFindings=null;
     if(typeof invalidateComplianceCache==='function')invalidateComplianceCache();else{_complianceFindings=[]}
-    // PERF: Fill textareas for sidebar display — chunked via requestIdleCallback
+    // PERF: Fill textareas for sidebar display: chunked via requestIdleCallback
     const _fillTextareasForDisplay=()=>{
       const mergedTA={};
       _loadedContexts.filter(c=>c.visible).forEach(c=>{
         Object.entries(c.textareas||{}).forEach(([id,val])=>{
-          if(id==='in_iam')return; // IAM filled separately — skip to avoid serializing 100MB+
+          if(id==='in_iam')return; // IAM filled separately: skip to avoid serializing 100MB+
           const existing=mergedTA[id];
           if(existing){
             try{
@@ -13111,7 +13111,7 @@ function _remergeAndRender(){
       if(typeof requestIdleCallback==='function')requestIdleCallback(writeChunk);
       else setTimeout(()=>writeChunk(),16);
     };
-    // Merge IAM data directly into _iamData — avoids serializing 100MB+ to textarea
+    // Merge IAM data directly into _iamData: avoids serializing 100MB+ to textarea
     let mergedIAM=null;
     _loadedContexts.filter(c=>c.visible).forEach(c=>{
       const val=c.textareas?.in_iam;if(!val)return;
@@ -13125,13 +13125,13 @@ function _remergeAndRender(){
     });
     if(mergedIAM){
       _iamData=parseIAMData(mergedIAM);
-      // Defer textarea fill — compliance engine uses _iamData directly
+      // Defer textarea fill: compliance engine uses _iamData directly
       const _iamTA=document.getElementById('in_iam');
       if(_iamTA)requestIdleCallback(()=>{_iamTA.value=JSON.stringify(mergedIAM);_iamTA.className='ji valid'});
     }
     // PERF: Set prebuilt context so _renderMapInner skips textarea parsing
     _prebuiltCtx=_mergedCtx;
-    // MEMORY: Release per-account rlCtx — merged copy has all data
+    // MEMORY: Release per-account rlCtx: merged copy has all data
     _loadedContexts.forEach(c=>{c.rlCtx=null});
     _renderMergeBannerChips();
     renderMap(()=>{_autoSaveSession();_parseCache={};_fillTextareasForDisplay()});
@@ -13222,7 +13222,7 @@ function _toggleAccountPanel(){
 // Account panel event listeners
 document.getElementById('accountsBtn').addEventListener('click',_toggleAccountPanel);
 document.getElementById('reportsBtn').addEventListener('click',function(){openReportBuilder()});
-document.getElementById('compDashBtn').addEventListener('click',function(){if(typeof _complianceFindings!=='undefined'&&_complianceFindings.length)renderCompliancePanel(_complianceFindings);else _showToast('No compliance data — run compliance scan first')});
+document.getElementById('compDashBtn').addEventListener('click',function(){if(typeof _complianceFindings!=='undefined'&&_complianceFindings.length)renderCompliancePanel(_complianceFindings);else _showToast('No compliance data: run compliance scan first')});
 document.getElementById('accountPanelClose').addEventListener('click',closeAccountPanel);
 document.getElementById('addAccountBtn').addEventListener('click',()=>document.getElementById('addAccountInput').click());
 document.getElementById('addAccountInput').addEventListener('change',function(){
@@ -13525,7 +13525,7 @@ function _fwCheckNaclShadow(nacl, direction){
       if(sameCidr&&sameProto&&hi.RuleAction!==lo.RuleAction){
         warnings.push(
           'Rule #'+hi.RuleNumber+' ('+hi.RuleAction+') is shadowed by #'+
-          lo.RuleNumber+' ('+lo.RuleAction+') — same CIDR '+
+          lo.RuleNumber+' ('+lo.RuleAction+'): same CIDR '+
           (hi.CidrBlock||'any')+', evaluated first'
         );
       }
@@ -15135,7 +15135,7 @@ function _resolveNetworkPosition(type, id, ctx){
     ecKeys.forEach(function(vid){var arr=ecMap instanceof Map?ecMap.get(vid):ecMap[vid];(arr||[]).forEach(function(c){if(c.CacheClusterId===id) ecVpc=vid})});
     // ElastiCache SGs stored as SecurityGroups array
     var ecSgs=((ec2.SecurityGroups||[]).map(function(s){return _sgById.get(s.SecurityGroupId||s)}).filter(Boolean));
-    // Find subnet via VPC — pick first private subnet in that VPC
+    // Find subnet via VPC: pick first private subnet in that VPC
     var ecSid=null;
     if(ecVpc)(ctx.subnets||[]).forEach(function(s){if(!ecSid&&s.VpcId===ecVpc&&!(ctx.pubSubs&&ctx.pubSubs.has(s.SubnetId))) ecSid=s.SubnetId});
     if(!ecSid&&ecVpc)(ctx.subnets||[]).forEach(function(s){if(!ecSid&&s.VpcId===ecVpc) ecSid=s.SubnetId});
@@ -15222,7 +15222,7 @@ function _traceInternetToResource(target, config, ctx, opts){
     path.push({hop:hopN++,type:'target',id:tgtPos.name||target.id,action:'block',detail:'Blocked by NACL',subnetId:tgtPos.subnetId});
     return {path:path,blocked:{hop:hopN-2,reason:'NACL denies inbound from Internet',suggestion:'Add NACL inbound rule allowing '+config.protocol+'/'+config.port+' from 0.0.0.0/0'}};
   }
-  // SG inbound check — in discovery mode, skip SG when no SG data attached
+  // SG inbound check: in discovery mode, skip SG when no SG data attached
   var sgOpts=opts&&opts.discovery?{assumeAllow:true}:null;
   var sgIn=evaluateSG(tgtPos.sgs,'inbound',config.protocol,config.port,'0.0.0.0/0',sgOpts);
   path.push({hop:hopN++,type:'sg-inbound',id:'Target SG',action:sgIn.action,detail:'Security Group inbound from Internet',rule:sgIn.rule});
@@ -15239,7 +15239,7 @@ function _traceResourceToInternet(source, config, ctx, opts){
   var srcPos=_resolveNetworkPosition(source.type, source.id, ctx);
   if(!srcPos) return {path:[{hop:1,type:'error',id:'-',action:'block',detail:'Cannot resolve source'}],blocked:{hop:1,reason:'Source not found'}};
   path.push({hop:hopN++,type:'source',id:srcPos.name||source.id,action:'allow',detail:'Source: '+(srcPos.name||source.id)+' ('+source.type+')',subnetId:srcPos.subnetId});
-  // SG outbound check — in discovery mode, skip SG when no SG data attached
+  // SG outbound check: in discovery mode, skip SG when no SG data attached
   var sgOpts=opts&&opts.discovery?{assumeAllow:true}:null;
   var sgOut=evaluateSG(srcPos.sgs,'outbound',config.protocol,config.port,'0.0.0.0/0',sgOpts);
   path.push({hop:hopN++,type:'sg-outbound',id:'Source SG',action:sgOut.action,detail:'SG outbound to Internet',rule:sgOut.rule});
@@ -15833,7 +15833,7 @@ function _hopTypeLabel(type){
   return labels[type]||type;
 }
 
-// _escHtml defined above at notes module — reuse global
+// _escHtml defined above at notes module: reuse global
 
 function _stepForward(){
   if(!_flowPath||_flowPath.length===0) return;
@@ -16193,7 +16193,7 @@ document.getElementById('flowStepFwd').addEventListener('click',_stepForward);
 
 // #endregion FLOW TRACING
 // #region FLOW ANALYSIS
-// === FLOW ANALYSIS — AUTO-DISCOVERY ENGINE ===
+// === FLOW ANALYSIS: AUTO-DISCOVERY ENGINE ===
 let _flowAnalysisMode=null; // null|'tiers'|'ingress'|'egress'|'bastion'|'all'
 let _flowAnalysisCache=null;
 let _faDashState={section:'all',search:'',sort:'name',sortDir:'asc',page:1,perPage:50};
@@ -16273,7 +16273,7 @@ function _detectBastions(ctx){
       var hasSSH=sgs.some(function(sg){return (sg.IpPermissions||[]).some(function(r){return r.FromPort<=22&&r.ToPort>=22})});
       if(!hasSSH&&!nameMatch) return;
     } else {
-      // No SG associations — use name heuristic only
+      // No SG associations: use name heuristic only
       if(!nameMatch) return;
     }
     bastions.push({type:'instance',id:inst.InstanceId,name:gn3,subnetId:inst.SubnetId,vpcId:inst.VpcId||((ctx.subnets||[]).find(function(s){return s.SubnetId===inst.SubnetId})||{}).VpcId});
@@ -16297,14 +16297,14 @@ function _findBastionChains(bastions,ctx){
       if(ctx.pubSubs&&ctx.pubSubs.has(inst.SubnetId)) return; // skip public
       var gn3=inst.Tags?((inst.Tags.find(function(t){return t.Key==='Name'})||{}).Value||inst.InstanceId):inst.InstanceId;
       if(!hasSgData){
-        // Without SG data, skip trace — just include private-subnet instances (cap at 50)
+        // Without SG data, skip trace: just include private-subnet instances (cap at 50)
         if(targets.length<50) targets.push({type:'instance',id:inst.InstanceId,name:gn3});
       } else if(!testedSubs.has(inst.SubnetId)){
         testedSubs.add(inst.SubnetId);
         var r=_traceFlowLeg({type:'instance',id:bastion.id},{type:'instance',id:inst.InstanceId},{protocol:'tcp',port:22},ctx,{discovery:true});
         if(!r.blocked) targets.push({type:'instance',id:inst.InstanceId,name:gn3});
       } else {
-        // Same subnet already tested and passed — add without re-tracing
+        // Same subnet already tested and passed: add without re-tracing
         targets.push({type:'instance',id:inst.InstanceId,name:gn3});
       }
     });
@@ -16392,7 +16392,7 @@ function _renderFlowAnalysisOverlay(mode){
 
 function _renderTierBadges(faG){
   var colors={internetFacing:'#10b981',bastionOnly:'#22d3ee',fullyPrivate:'#8b5cf6',database:'#f59e0b'};
-  // Deduplicate by subnet — one badge per (subnet, tier) to avoid hundreds of overlapping dots
+  // Deduplicate by subnet: one badge per (subnet, tier) to avoid hundreds of overlapping dots
   var subTierSeen=new Set();
   Object.keys(_flowAnalysisCache.accessTiers).forEach(function(tier){
     (_flowAnalysisCache.accessTiers[tier]||[]).forEach(function(ref){
@@ -16525,7 +16525,7 @@ function _renderIngressArrows(faG){
 
 // === Flow Pathing Engine ===
 // Data-driven pathing: every path drawn FROM→TO in traffic direction.
-// No animation-direction hacks — direction is baked into the SVG `d` attribute.
+// No animation-direction hacks: direction is baked into the SVG `d` attribute.
 
 const FP_GR=20;           // gateway circle radius (matches topology-renderer GR)
 const FP_TRUNK_OFFSET=20; // base distance from subnet edge to first trunk
@@ -16705,7 +16705,7 @@ function _layoutFlowPaths(gwGroups){
 }
 
 // Layer 3: Render path segments as SVG elements.
-// Every d attribute is FROM→TO — animation is always 'normal'.
+// Every d attribute is FROM→TO: animation is always 'normal'.
 function _renderFlowSegments(faG,segments){
   segments.forEach(function(seg){
     var p=faG.append('path').attr('class',seg.cssClass).attr('d',seg.d);
@@ -16718,7 +16718,7 @@ function _renderFlowSegments(faG,segments){
 }
 
 // Draw an L-shaped flow arrow between two points.
-// from/to: {x,y} — start and end positions
+// from/to: {x,y}: start and end positions
 // opts: {cssClass, marker}
 function _drawFlowHop(faG,from,to,opts){
   if(!from||!to) return;
@@ -16726,7 +16726,7 @@ function _drawFlowHop(faG,from,to,opts){
   var marker=opts.marker||null;
   var d;
   if(Math.abs(from.y-to.y)<3||Math.abs(from.x-to.x)<3){
-    // Nearly aligned — straight line
+    // Nearly aligned: straight line
     d='M'+from.x+','+from.y+' L'+to.x+','+to.y;
   } else {
     // Stepped orthogonal: horizontal → vertical → horizontal through midpoint
@@ -16739,8 +16739,8 @@ function _drawFlowHop(faG,from,to,opts){
 }
 
 // Draw a backbone + drops + internet icon connecting gateways to the internet.
-// gwPositions: [{gid, cx, cy}] — gateway icon centers
-// inetPos: {x,y} or null — internet node center
+// gwPositions: [{gid, cx, cy}]: gateway icon centers
+// inetPos: {x,y} or null: internet node center
 // opts: {color, backboneCls, dropCls, arrowMarker, backboneYOffset, inbound}
 function _drawFlowBackbone(faG,gwPositions,inetPos,opts){
   if(!gwPositions||gwPositions.length===0) return;
@@ -16809,12 +16809,12 @@ function _drawBusTopology(faG,opts){
   var subs=opts.subnets;
   if(!subs||subs.length===0) return;
   var tx=opts.trunkX;
-  // Compute trunk Y range — always includes gateway to prevent dead ends
+  // Compute trunk Y range: always includes gateway to prevent dead ends
   var ys=subs.map(function(s){return s.cy});
   if(opts.gwPos) ys.push(opts.gwPos.y);
   var startY=opts.trunkStartY!=null?Math.min(opts.trunkStartY,Math.min.apply(null,ys)):Math.min.apply(null,ys);
   var endY=opts.trunkEndY!=null?Math.max(opts.trunkEndY,Math.max.apply(null,ys)):Math.max.apply(null,ys);
-  // 1. Vertical trunk — split at gateway Y so dashes converge toward the gateway
+  // 1. Vertical trunk: split at gateway Y so dashes converge toward the gateway
   var gwY=opts.gwPos?opts.gwPos.y:null;
   if(gwY!=null&&startY<gwY&&endY>gwY){
     // Split: upper half (top→gwY, dashes flow down) + lower half (bottom→gwY, dashes flow up)
@@ -16824,7 +16824,7 @@ function _drawBusTopology(faG,opts){
     var lo=faG.append('path').attr('class',opts.pathClass).attr('d',lowerD);
     if(opts.trunkStyle){Object.keys(opts.trunkStyle).forEach(function(k){up.style(k,opts.trunkStyle[k]);lo.style(k,opts.trunkStyle[k])})}
   } else {
-    // Single segment — draw toward gateway end if trunkReverse set
+    // Single segment: draw toward gateway end if trunkReverse set
     var trunkD=opts.trunkReverse?('M'+tx+','+endY+' L'+tx+','+startY):('M'+tx+','+startY+' L'+tx+','+endY);
     var trunkPath=faG.append('path').attr('class',opts.pathClass).attr('d',trunkD);
     if(opts.trunkStyle){Object.keys(opts.trunkStyle).forEach(function(k){trunkPath.style(k,opts.trunkStyle[k])})}
@@ -16983,7 +16983,7 @@ function _renderEgressArrows(faG){
   if(inetCircle2){var ib2=inetCircle2.getBBox();inetPos2={x:ib2.x+ib2.width/2,y:ib2.y+ib2.height/2}}
   var gwPosList2=[];
   graph.internetGids.forEach(function(gid){
-    if(gid.startsWith('nat')) return; // NAT routes through IGW — skip to avoid overlapping drops
+    if(gid.startsWith('nat')) return; // NAT routes through IGW: skip to avoid overlapping drops
     var gwNode2=document.querySelector('.gw-node[data-gwid="'+gid+'"]');
     var gwCircle2=gwNode2?gwNode2.querySelector('circle'):null;
     if(!gwCircle2) return;
@@ -17127,7 +17127,7 @@ function _renderFlowAnalysisPanel(){
   var _warnParts=[];
   if(!d.hasSgData) _warnParts.push('SG associations');
   if(!d.hasNaclEgress) _warnParts.push('NACL egress rules');
-  if(_warnParts.length) h+='<div style="padding:6px 8px;margin-bottom:10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:4px;font-size:9px;color:#fbbf24;font-family:Segoe UI,system-ui,sans-serif">'+_warnParts.join(' & ')+' missing — results based on available topology data</div>';
+  if(_warnParts.length) h+='<div style="padding:6px 8px;margin-bottom:10px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.25);border-radius:4px;font-size:9px;color:#fbbf24;font-family:Segoe UI,system-ui,sans-serif">'+_warnParts.join(' & ')+' missing: results based on available topology data</div>';
   // === TIERS section ===
   if(mode==='tiers'||mode==='all'){
     h+='<h4>Access Tiers</h4>';
@@ -17292,7 +17292,7 @@ function _renderFlowAnalysisPanel(){
       });
     }
   });
-  // Wire "Trace ↗" bridge buttons — exit analysis, enter trace with pre-filled source/target
+  // Wire "Trace ↗" bridge buttons: exit analysis, enter trace with pre-filled source/target
   dpBody.querySelectorAll('.fa-trace-btn').forEach(function(btn){
     btn.addEventListener('click',function(e){
       e.stopPropagation();
@@ -17413,7 +17413,7 @@ var _flowCtxTarget=null;
         if(_flowMode) exitFlowMode();
         if(_flowAnalysisMode) exitFlowAnalysis();
         enterFlowMode(); // no preset source
-        // Store preset target — next source click will auto-advance
+        // Store preset target: next source click will auto-advance
         _flowCtxPresetTarget=ref;
       } else if(action==='analyze'){
         if(_flowMode) exitFlowMode();
@@ -17986,7 +17986,7 @@ function _applyDiffOverlay(){
       els.forEach(el=>d3.select(el).classed('diff-unchanged',true));
     });
   }
-  // For removed resources, try to find them — if not rendered, add ghost markers
+  // For removed resources, try to find them: if not rendered, add ghost markers
   _diffResults.removed.forEach(item=>{
     const sel=_diffKeyToSelector(item.type,item.key);
     const els=g.querySelectorAll(sel);
@@ -18022,7 +18022,7 @@ function _diffFmtValFull(v){
 }
 
 // Type-aware property renderer for diff detail panel
-// All values are escaped via esc() before insertion — safe for display
+// All values are escaped via esc() before insertion: safe for display
 function _diffPropsHtml(type,res){
   if(!res) return '';
   var h='';
@@ -18230,7 +18230,7 @@ function _openDiffDetail(item,category){
       h+=sec(propLabel,'',propsHtml,category!=='modified');
     }
   }
-  // BASELINE PROPERTIES (modified only — show old state)
+  // BASELINE PROPERTIES (modified only: show old state)
   if(category==='modified'&&item.baseline){
     var baseProps=_diffPropsHtml(item.type,item.baseline);
     if(baseProps) h+=sec('Baseline Properties','',baseProps,false);
@@ -18263,7 +18263,7 @@ function _openDiffDetail(item,category){
 }
 
 function _renderDiffSummary(){
-  // Legacy summary panel — no longer used, dashboard replaces it
+  // Legacy summary panel: no longer used, dashboard replaces it
   if(!_diffResults) return;
 }
 
@@ -18379,7 +18379,7 @@ function _populateDiffSnapPicker(){
     var opt=document.createElement('option');
     opt.value=i;
     var d=new Date(snap.timestamp);
-    opt.textContent=(snap.label||snap.accountLabel||'Snap '+(i+1))+' — '+d.toLocaleDateString()+' '+d.toLocaleTimeString();
+    opt.textContent=(snap.label||snap.accountLabel||'Snap '+(i+1))+': '+d.toLocaleDateString()+' '+d.toLocaleTimeString();
     sel.appendChild(opt);
   });
 }
@@ -18611,7 +18611,7 @@ async function _exportDiffXlsx(){
     if(ws1['A4']) ws1['A4'].s=_xlsxHeaderStyle();
     if(ws1['B4']) ws1['B4'].s=_xlsxHeaderStyle();
     XLSX.utils.book_append_sheet(wb,ws1,'Summary');
-    // Details sheet — all resources
+    // Details sheet: all resources
     var detailRows=[['Status','Type','Name','Key','VPC','Changes','Fields Changed']];
     var rows=_diffFlatRows||_buildDiffFlatRows();
     rows.forEach(function(r){
@@ -18670,7 +18670,7 @@ document.getElementById('diffFileInput').addEventListener('change',async functio
   var files=[].slice.call(this.files);
   if(!files.length) return;
   this.value='';
-  // Single .azuremap file — use directly
+  // Single .azuremap file: use directly
   if(files.length===1&&/\.azuremap$/i.test(files[0].name)){
     try{
       var text=await files[0].text();
@@ -18693,7 +18693,7 @@ document.getElementById('diffFileInput').addEventListener('change',async functio
       }
     }catch(ex){/* fall through to multi-file handling */}
   }
-  // Multiple JSON files — match each to a textarea slot and build diff context
+  // Multiple JSON files: match each to a textarea slot and build diff context
   var textareas={};
   var matched=0,skipped=[];
   for(let i=0;i<files.length;i++){
@@ -19269,14 +19269,14 @@ function _renderBUDRDash(){
       if(estM.rtoWhy||estM.rpoWhy){
         h+='<div style="margin-bottom:6px;padding:4px 8px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.15);border-radius:4px;font-size:10px;font-family:Segoe UI,system-ui,sans-serif">';
         h+='<div style="color:#818cf8;font-weight:600;margin-bottom:2px">Est. RTO/RPO Justification</div>';
-        if(estM.rtoWhy)h+='<div style="color:var(--text-secondary)"><b>RTO '+esc(a.profile.rto)+'</b> — '+esc(estM.rtoWhy)+'</div>';
-        if(estM.rpoWhy)h+='<div style="color:var(--text-secondary)"><b>RPO '+esc(a.profile.rpo)+'</b> — '+esc(estM.rpoWhy)+'</div>';
+        if(estM.rtoWhy)h+='<div style="color:var(--text-secondary)"><b>RTO '+esc(a.profile.rto)+'</b>: '+esc(estM.rtoWhy)+'</div>';
+        if(estM.rpoWhy)h+='<div style="color:var(--text-secondary)"><b>RPO '+esc(a.profile.rpo)+'</b>: '+esc(estM.rpoWhy)+'</div>';
         h+='</div>';
       }
       // Tier compliance details
       if(cc.issues&&cc.issues.length){
         h+='<div style="margin-bottom:6px;padding:4px 8px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);border-radius:4px;font-size:10px;font-family:Segoe UI,system-ui,sans-serif">';
-        h+='<div style="color:#ef4444;font-weight:600;margin-bottom:2px">Tier Compliance Gap — '+ct.toUpperCase()+' tier</div>';
+        h+='<div style="color:#ef4444;font-weight:600;margin-bottom:2px">Tier Compliance Gap: '+ct.toUpperCase()+' tier</div>';
         cc.issues.forEach(function(issue){
           h+='<div style="color:var(--text-secondary)">'+esc(issue.msg)+'</div>';
         });
@@ -19439,7 +19439,7 @@ function _renderClassificationTab(){
   var body=document.getElementById('udashBody');
   var footer=document.getElementById('udashFooter');
   var st=_govDashState;
-  // Toolbar — only rebuild on tab switch
+  // Toolbar: only rebuild on tab switch
   if(_govToolbarTab!=='classification'){
     _govToolbarTab='classification';
     var th='<label>Search</label>';
@@ -19717,7 +19717,7 @@ function _renderAppSummaryTab(){
     bh+='<th'+(c.nosort?'':' data-sort-col="'+c.key+'"')+' class="'+cls+'">'+c.label+'</th>';
   });
   bh+='</tr></thead><tbody>';
-  if(!apps.length) bh+='<tr><td colspan="'+(cols.length+1)+'" style="text-align:center;padding:30px;color:var(--text-muted)">No apps defined — click <b>+ Add App</b> to get started</td></tr>';
+  if(!apps.length) bh+='<tr><td colspan="'+(cols.length+1)+'" style="text-align:center;padding:30px;color:var(--text-muted)">No apps defined: click <b>+ Add App</b> to get started</td></tr>';
   apps.forEach(function(a){
     bh+='<tr data-app-idx="'+a.idx+'">';
     bh+='<td><input type="checkbox" class="app-sel-cb" data-idx="'+a.idx+'" style="cursor:pointer"></td>';
@@ -19819,7 +19819,7 @@ function _renderIAMTab(){
   var body=document.getElementById('udashBody');
   var footer=document.getElementById('udashFooter');
   var st=_iamDashState;
-  // Toolbar — only rebuild on tab switch
+  // Toolbar: only rebuild on tab switch
   if(_govToolbarTab!=='iam'){
     _govToolbarTab='iam';
     var th='<label>Search</label>';
@@ -20128,9 +20128,9 @@ function _openRulesEditor(){
         var mc=countMatches(r);
         h+='<div class="gov-rule-row'+(r.enabled===false?' disabled':'')+((!isValid)?' invalid':'')+'" data-rule-idx="'+i+'">';
         h+='<span class="gov-rule-drag" title="Drag to reorder">⠿</span>';
-        h+='<div class="gov-rule-toggle'+(r.enabled!==false?' on':'')+'" data-toggle-idx="'+i+'" title="'+(r.enabled!==false?'Enabled — click to disable':'Disabled — click to enable')+'"></div>';
+        h+='<div class="gov-rule-toggle'+(r.enabled!==false?' on':'')+'" data-toggle-idx="'+i+'" title="'+(r.enabled!==false?'Enabled: click to disable':'Disabled: click to enable')+'"></div>';
         h+='<input class="pattern'+((!isValid)?' invalid-pattern':'')+'" type="text" value="'+_escHtml(r.pattern)+'" data-field="pattern" placeholder="regex pattern…" title="'+((!isValid)?'Invalid regex!':'Regex pattern')+'">';
-        h+='<select data-field="scope" class="gov-scope-sel" title="Match scope — what this pattern is tested against"><option value="any"'+(r.scope==='any'?' selected':'')+'>Any</option><option value="vpc"'+(r.scope==='vpc'?' selected':'')+'>VPC</option><option value="type"'+(r.scope==='type'?' selected':'')+'>Type</option><option value="name"'+(r.scope==='name'?' selected':'')+'>Name</option>';
+        h+='<select data-field="scope" class="gov-scope-sel" title="Match scope: what this pattern is tested against"><option value="any"'+(r.scope==='any'?' selected':'')+'>Any</option><option value="vpc"'+(r.scope==='vpc'?' selected':'')+'>VPC</option><option value="type"'+(r.scope==='type'?' selected':'')+'>Type</option><option value="name"'+(r.scope==='name'?' selected':'')+'>Name</option>';
         sortedTagScopes.forEach(function(ts){h+='<option value="'+ts+'"'+(r.scope===ts?' selected':'')+'>tag:'+ts.substring(4)+'</option>'});
         h+='</select>';
         h+='<select data-field="tier"><option value="critical"'+(r.tier==='critical'?' selected':'')+'>Critical</option><option value="high"'+(r.tier==='high'?' selected':'')+'>High</option><option value="medium"'+(r.tier==='medium'?' selected':'')+'>Medium</option><option value="low"'+(r.tier==='low'?' selected':'')+'>Low</option></select>';
@@ -20272,7 +20272,7 @@ function _openRulesEditor(){
   // Shell events
   document.getElementById('govRulesClose').addEventListener('click',function(){overlay.remove()});
   overlay.addEventListener('click',function(e){if(e.target===overlay) overlay.remove()});
-  // Tag chip clicks — create starter rule for tag scope
+  // Tag chip clicks: create starter rule for tag scope
   overlay.querySelectorAll('.gov-tag-chip').forEach(function(chip){
     chip.addEventListener('click',function(){
       var chip=this;var tk=chip.dataset.tagKey;var scope='tag:'+tk;
@@ -20330,7 +20330,7 @@ function _openRulesEditor(){
     _govToolbarTab=null;
     overlay.remove();
     _renderClassificationTab();
-    _showToast('Rules applied — '+_classificationData.length+' resources re-classified');
+    _showToast('Rules applied: '+_classificationData.length+' resources re-classified');
   });
 }
 
@@ -20742,7 +20742,7 @@ function _rptInitInteractive(root){
       e.target.textContent=expand?'Collapse All':'Expand All';
       return;
     }
-    /* Resource link — scroll within report preview */
+    /* Resource link: scroll within report preview */
     var resLink=e.target.closest('.rpt-res-link');
     if(resLink){
       e.preventDefault();
@@ -20849,7 +20849,7 @@ function _rptEmbedDataBlob(enabled){
   var contexts=_loadedContexts.map(function(c){
     return {accountId:c.accountId,accountLabel:c.accountLabel,region:c.region};
   });
-  // IAM review data — serialize with date strings instead of Date objects
+  // IAM review data: serialize with date strings instead of Date objects
   var iamData=_iamReviewData.map(function(r){
     var c={};for(let k in r){if(k==='_raw')continue;c[k]=r[k]}
     if(c.created instanceof Date)c.created=c.created.toISOString().split('T')[0];
@@ -21098,7 +21098,7 @@ function _xlsxAddSheet(wb,name,headers,rows,opts){
     var addr=XLSX.utils.encode_cell({r:0,c:i});
     if(ws[addr]) ws[addr].s=hdrStyle;
   });
-  // Style severity column — colored text + tinted fill (cache by value)
+  // Style severity column: colored text + tinted fill (cache by value)
   if(typeof opts.sevCol==='number'){
     var _sevCache={};
     for(let r=1;r<data.length;r++){
@@ -21169,11 +21169,11 @@ function _xlsxAddSheet(wb,name,headers,rows,opts){
   }
   // Row height for header
   ws['!rows']=[{hpx:28}];
-  // Autofilter — enables sort/filter dropdowns
+  // Autofilter: enables sort/filter dropdowns
   var lastCol=XLSX.utils.encode_col(headers.length-1);
   var lastRow=data.length;
   ws['!autofilter']={ref:'A1:'+lastCol+lastRow};
-  // Freeze panes — freeze header row
+  // Freeze panes: freeze header row
   ws['!views']=[{state:'frozen',ySplit:1}];
   XLSX.utils.book_append_sheet(wb,ws,name);
 }
@@ -21214,7 +21214,7 @@ function _rptBuildXlsxSummary(wb, preFilteredFindings){
   var hasLogo=!!_rptState.logo;
   // When logo present, offset title/subtitle to col 1 so logo gets col 0
   var tCol=hasLogo?1:0;
-  // Title row — merged across columns (skip col 0 when logo present)
+  // Title row: merged across columns (skip col 0 when logo present)
   var titleAddr=XLSX.utils.encode_cell({r:r,c:tCol});
   ws[titleAddr]={v:_rptState.title||'Azure Infrastructure Assessment',t:'s',
     s:{font:{bold:true,sz:18,color:{rgb:_XLSX_COLORS.titleFg},name:'Calibri'},
@@ -21554,7 +21554,7 @@ async function _xlsxInjectLogo(zip){
     var w=914400,h=457200;
     var aspect=logo.width/logo.height;
     if(aspect>2){h=w/aspect;}else if(aspect<2){w=h*aspect;}
-    // Drawing XML — oneCellAnchor at A1 (col 0, row 0) with padding
+    // Drawing XML: oneCellAnchor at A1 (col 0, row 0) with padding
     var drawXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'+
       '<xdr:oneCellAnchor>'+
@@ -21567,13 +21567,13 @@ async function _xlsxInjectLogo(zip){
       '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>'+
       '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
     zip.file('xl/drawings/drawing1.xml',drawXml);
-    // Drawing rels — link image
+    // Drawing rels: link image
     zip.file('xl/drawings/_rels/drawing1.xml.rels',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.'+ext+'"/>'+
       '</Relationships>');
-    // Sheet1 rels — link drawing
+    // Sheet1 rels: link drawing
     var wsRelsPath='xl/worksheets/_rels/sheet1.xml.rels';
     var wsRels;
     try{wsRels=await zip.file(wsRelsPath).async('string');}catch(e){wsRels=null;}
@@ -21601,7 +21601,7 @@ async function _xlsxPostProcess(wbBuf,sheetNames){
     var f=zip.file(path);
     if(!f) continue;
     var xml=await f.async('string');
-    // Skip Summary sheet (index 0) — it's a dashboard, not a data table
+    // Skip Summary sheet (index 0): it's a dashboard, not a data table
     if(i===0) continue;
     // Inject pane into sheetView to freeze row 1
     var paneXml='<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>';
@@ -22253,12 +22253,12 @@ function _docxBuildBody(enabled,isExec,title,author,date){
     else if(id==='inventory') h+=_docxInventory(isExec);
     else if(id==='action-plan') h+=_docxActionPlan(isExec);
     else if(id==='app-summary') h+=_docxAppSummary(isExec);
-    else if(id==='architecture') h+=_docxP('(Architecture diagram — see HTML report for interactive map)');
+    else if(id==='architecture') h+=_docxP('(Architecture diagram: see HTML report for interactive map)');
     else if(id==='iac-recs') h+=_docxIaCRecs(isExec);
   });
   // Footer
   h+=_docxP('');
-  h+=_docxP('Generated by Azure Mapper — '+new Date().toLocaleString(),'Footer');
+  h+=_docxP('Generated by Azure Mapper: '+new Date().toLocaleString(),'Footer');
   return h;
 }
 
@@ -22757,7 +22757,7 @@ document.getElementById('hlLockInd').addEventListener('click',function(){
   document.dispatchEvent(new CustomEvent('hl-unlock'));
 });
 
-// Fullscreen icon helper — expand arrows vs collapse arrows
+// Fullscreen icon helper: expand arrows vs collapse arrows
 function _setDpFullscreenIcon(isFs){
   var el=document.getElementById('dpFullscreen');
   while(el.firstChild)el.removeChild(el.firstChild);
@@ -22979,7 +22979,7 @@ function matchFile(fname, content){
   for(const fm of fileMap){
     for(const p of fm.patterns){if(base===p||base===p+'s')return fm.id}
   }
-  // contains match — sort candidates by longest pattern first to avoid partial matches
+  // contains match: sort candidates by longest pattern first to avoid partial matches
   const candidates=[];
   for(const fm of fileMap){
     for(const p of fm.patterns){if(base.includes(p))candidates.push({id:fm.id,p,len:p.length})}
@@ -22993,18 +22993,18 @@ function matchFile(fname, content){
         if(_hasKey('servers')&&!_hasKey('virtualMachines'))return 'in_sql';
         if(_hasKey('CacheClusters')||_hasKey('redisConfiguration'))return 'in_elasticache';
       }
-      // Verify critical inputs have expected Azure key — reject mismatched content
+      // Verify critical inputs have expected Azure key: reject mismatched content
       // Accept flat arrays (az CLI -o json) OR wrapped {value:[...]} format
       const expectedKey={in_udrs:'value',in_vnets:'value',in_subnets:'value',in_nsgs:'value',in_nics:'value'};
       if(expectedKey[best]&&!_hasKey(expectedKey[best])){
-        // Allow flat arrays — check if content starts with '[' (az CLI direct output)
+        // Allow flat arrays: check if content starts with '[' (az CLI direct output)
         const trimmed=typeof content==='string'?content.trimStart():'';
         if(!trimmed.startsWith('['))return null;
       }
     }
     return best;
   }
-  // content-based fallback — detect by JSON keys
+  // content-based fallback: detect by JSON keys
   if(content){
     if(_hasKey('virtualMachines')||(_hasKey('value')&&_hasKey('osProfile')))return 'in_vms';
     if(_hasKey('servers')&&_hasKey('administratorLogin'))return 'in_sql';
@@ -23059,7 +23059,7 @@ document.getElementById('dlBash').addEventListener('click',function(){
   document.getElementById('exportScriptMenu').style.display='none';
   var script=[
 '#!/usr/bin/env bash',
-'# Azure Network Mapper — Data Export Script',
+'# Azure Network Mapper: Data Export Script',
 '# Usage:',
 '#   ./export-azure-data.sh                                 # default subscription + location',
 '#   ./export-azure-data.sh -s <subscription-id> -r eastus',
@@ -23130,7 +23130,7 @@ document.getElementById('dlBash').addEventListener('click',function(){
 'run "Resource Groups"         "resource-groups.json"         group list',
 '}',
 '',
-'echo "Azure Network Mapper — Data Export"',
+'echo "Azure Network Mapper: Data Export"',
 'echo ""',
 'PROF_LIST=()',
 'if [[ -n "$PROFILES" ]]; then IFS=\',\' read -ra PROF_LIST <<< "$PROFILES"',
@@ -23161,7 +23161,7 @@ document.getElementById('dlBash').addEventListener('click',function(){
 '  locations=$(az account list-locations --query \'[].name\' -o tsv 2>/dev/null | sort)',
 '  echo "  Mode: All Locations  Subscription: ${SUBSCRIPTION:-default}"; skip=0',
 '  for loc in $locations; do',
-'    if ! has_resources; then echo "  $loc — empty, skipping"; skip=$((skip+1)); continue; fi',
+'    if ! has_resources; then echo "  $loc: empty, skipping"; skip=$((skip+1)); continue; fi',
 '    echo "  Location: $loc"; CUR_OUT="$OUTDIR/$loc"; export_all',
 '  done',
 '  [ $skip -gt 0 ] && echo "  Skipped $skip empty locations"',
@@ -23179,7 +23179,7 @@ document.getElementById('dlBash').addEventListener('click',function(){
   ].join('\n');
   var blob=new Blob([script],{type:'text/x-shellscript'});
   downloadBlob(blob,'export-azure-data.sh');
-  _showToast('Bash script downloaded — run: chmod +x export-azure-data.sh && ./export-azure-data.sh');
+  _showToast('Bash script downloaded: run: chmod +x export-azure-data.sh && ./export-azure-data.sh');
 });
 document.getElementById('dlPowershell').addEventListener('click',function(){
   document.getElementById('exportScriptMenu').style.display='none';
@@ -23285,7 +23285,7 @@ document.getElementById('dlPowershell').addEventListener('click',function(){
   ].join('\r\n');
   var blob=new Blob([script],{type:'text/plain'});
   downloadBlob(blob,'export-azure-data.ps1');
-  _showToast('PowerShell script downloaded — run: ./export-azure-data.ps1');
+  _showToast('PowerShell script downloaded: run: ./export-azure-data.ps1');
 });
 document.getElementById('fileInput').addEventListener('change',async function(){
   const files=[...this.files];
@@ -23318,7 +23318,7 @@ document.getElementById('clearBtn').addEventListener('click',()=>{document.query
 document.getElementById('landingDemo').addEventListener('click',function(){document.getElementById('loadDemo').click()});
 document.getElementById('landingImport').addEventListener('click',function(){document.getElementById('uploadBtn').click()});
 document.getElementById('landingImportReport').addEventListener('click',function(){document.getElementById('importReportInput').click()});
-// Landing card navigation — import data first, then open the feature
+// Landing card navigation: import data first, then open the feature
 var _lcActions={
   'lc-topology':function(){document.getElementById('uploadBtn').click()},
   'lc-compliance':function(){if(_rlCtx)openUnifiedDash('compliance');else{document.getElementById('uploadBtn').click()}},
@@ -23396,7 +23396,7 @@ document.getElementById('loadDemo').addEventListener('click',()=>{
     ta.in_funcapps=JSON.stringify({value:allLambda.filter(f=>f.VpcConfig&&vpcSet.has(f.VpcConfig.VpcId))});
     ta.in_elasticache=JSON.stringify({value:allEcache.filter(e=>e.CacheSubnetGroupName?true:false)});
     ta.in_aks=JSON.stringify({value:allRedshift.filter(r=>r.ClusterSubnetGroupName?true:false)});
-    // Shared non-VNet data — give to both subscriptions
+    // Shared non-VNet data: give to both subscriptions
     if(demo.storage)ta.in_storage=JSON.stringify(demo.storage);
     if(demo.dnsz)ta.in_dnsz=JSON.stringify(demo.dnsz);
     if(demo.r53records)ta.in_r53records=JSON.stringify(demo.r53records);
@@ -23431,7 +23431,7 @@ document.getElementById('loadDemo').addEventListener('click',()=>{
   if(dInsts.length>5)addAnnotation(dInsts[5].InstanceId,'This instance handles payment processing - PCI scope','warning',true);
   // Enter multi-account view
   enterMultiView();
-  // MEMORY: Release demo data — now stored in _loadedContexts textareas
+  // MEMORY: Release demo data: now stored in _loadedContexts textareas
   demo=null;
   }catch(e){console.error('Demo load error:',e)}
 });
@@ -26282,7 +26282,7 @@ function generateTerraform(ctx,opts){
   const cfDistributions=scopeVpc?[]:(ctx.cfDistributions||[]);
 
   // Header
-  lines.push('# Generated by Azure Mapper — azurerm provider');
+  lines.push('# Generated by Azure Mapper: azurerm provider');
   lines.push('# Date: '+new Date().toISOString().split('T')[0]);
   lines.push('# Mode: '+(mode==='import'?'Import Existing':mode==='create'?'Create New':'Full Recreate'));
   lines.push('#');
@@ -26321,7 +26321,7 @@ function generateTerraform(ctx,opts){
     const vnCidrs=vpcs.map(v=>v.CidrBlock||v.properties&&v.properties.addressSpace&&v.properties.addressSpace.addressPrefixes&&v.properties.addressSpace.addressPrefixes[0]).filter(Boolean);
     if(vnCidrs.length)vars.push({name:'vnet_address_spaces',desc:'VNet address spaces',type:'list(string)',def:vnCidrs});
     const vmSizes=new Set(instances.map(i=>i.InstanceType||i.properties&&i.properties.hardwareProfile&&i.properties.hardwareProfile.vmSize).filter(Boolean));
-    if(vmSizes.size)vars.push({name:'vm_sizes',desc:'VM sizes in use — map from source instance types',type:'map(string)',def:null});
+    if(vmSizes.size)vars.push({name:'vm_sizes',desc:'VM sizes in use: map from source instance types',type:'map(string)',def:null});
   }
 
   vars.forEach(v=>{
@@ -26483,7 +26483,7 @@ function generateTerraform(ctx,opts){
     lines.push('');
     // Associate NSG to subnet if VpcId available
     if(sg.VpcId){
-      // NSG-subnet associations are managed per subnet in Azure — emit a comment
+      // NSG-subnet associations are managed per subnet in Azure: emit a comment
       lines.push('# Associate '+name+' to relevant subnets via azurerm_subnet_network_security_group_association');
       lines.push('');
     }
@@ -26678,7 +26678,7 @@ function generateTerraform(ctx,opts){
     lines.push('  storage_account_name       = "PLACEHOLDER" # Set actual storage account name');
     lines.push('  storage_account_access_key = "PLACEHOLDER" # Use Key Vault reference');
     const runtime=fn.Runtime||fn.properties&&fn.properties.siteConfig&&fn.properties.siteConfig.linuxFxVersion||'';
-    if(runtime)lines.push('  # Runtime: '+runtime+' — set app_settings FUNCTIONS_WORKER_RUNTIME accordingly');
+    if(runtime)lines.push('  # Runtime: '+runtime+': set app_settings FUNCTIONS_WORKER_RUNTIME accordingly');
     const vc=fn.VpcConfig;
     if(vc&&(vc.SubnetIds||[]).length){
       lines.push('');
@@ -26867,7 +26867,7 @@ function generateArmTemplate(ctx,opts){
     parameters:{
       location:{type:'string',defaultValue:'eastus',metadata:{description:'Azure region for all resources'}},
       resourceGroupName:{type:'string',defaultValue:'rg-network',metadata:{description:'Resource group name'}},
-      adminPassword:{type:'securestring',metadata:{description:'Admin password for VMs and databases — use Key Vault reference'}}
+      adminPassword:{type:'securestring',metadata:{description:'Admin password for VMs and databases: use Key Vault reference'}}
     },
     variables:{},
     resources:[],
@@ -27075,7 +27075,7 @@ function generateArmTemplate(ctx,opts){
 }
 
 function _cfnTags(resource){
-  // Kept for Checkov generator compatibility — returns flat Azure tag object
+  // Kept for Checkov generator compatibility: returns flat Azure tag object
   if(resource.tags&&typeof resource.tags==='object'&&!Array.isArray(resource.tags))return resource.tags;
   const t={};
   (resource.Tags||[]).filter(tag=>tag.Key&&!tag.Key.startsWith('aws:')&&!tag.Key.startsWith('microsoft:')).forEach(tag=>{t[tag.Key]=tag.Value||'';});
@@ -27158,7 +27158,7 @@ function _ckNsgs(sgs,resources,seen){
   });
 }
 function _ckNacls(nacls,resources,seen){
-  // NACLs do not exist in Azure — omit silently
+  // NACLs do not exist in Azure: omit silently
 }
 function _ckRts(rts,resources,seen){
   rts.forEach(function(rt){
@@ -27251,7 +27251,7 @@ function _ckRbac(roles,resources,seen){
     resources.push({type:'Microsoft.Authorization/roleDefinitions',apiVersion:'2022-04-01',
       name:'[guid(subscription().id, \''+id+'\')]',
       properties:{roleName:role.RoleName||role.name||id,
-        description:'Custom role — review permissions',type:'CustomRole',
+        description:'Custom role: review permissions',type:'CustomRole',
         permissions:[{actions:[],notActions:[],dataActions:[],notDataActions:[]}],
         assignableScopes:['[subscription().id]']}});
   });
@@ -27286,7 +27286,7 @@ function generateCheckovCfn(ctx,iamData){
   var template={
     '$schema':'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#',
     contentVersion:'1.0.0.0',
-    description:'Generated by Azure Mapper for Checkov scanning (--framework arm) — '+new Date().toISOString().split('T')[0],
+    description:'Generated by Azure Mapper for Checkov scanning (--framework arm): '+new Date().toISOString().split('T')[0],
     parameters:{
       location:{type:'string',defaultValue:'eastus'},
       adminPassword:{type:'securestring',defaultValue:''}

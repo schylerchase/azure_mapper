@@ -9,7 +9,7 @@ import { runBUDRChecks } from './budr-engine.js';
 import { analyzeRoleAssignments, getRbacData } from './iam-engine.js';
 
 // ============================================================================
-// Checkov ID mapping — CKV_AZURE_* equivalents
+// Checkov ID mapping: CKV_AZURE_* equivalents
 // ============================================================================
 const CKV_MAP = {
   'CIS-9':     'CKV_AZURE_9',    // NSG allows RDP from 0.0.0.0/0
@@ -40,7 +40,7 @@ let _complianceFindings = [];
 let _complianceCacheData = null;
 
 // ============================================================================
-// Helpers — Azure NSG rule evaluation
+// Helpers: Azure NSG rule evaluation
 // ============================================================================
 
 /**
@@ -343,7 +343,7 @@ function runCISAzureChecks(data) {
       f.push(_finding({
         id: 'CIS-44', framework: 'CIS_AZURE', severity: 'HIGH',
         title: 'Storage account minimum TLS < 1.2',
-        message: `Storage account "${_rn(sa)}" uses ${minTls} — TLS 1.2 is the minimum secure version`,
+        message: `Storage account "${_rn(sa)}" uses ${minTls}: TLS 1.2 is the minimum secure version`,
         resource: _rn(sa), resourceId: sa.id || '', resourceType: 'Microsoft.Storage/storageAccounts',
         remediation: 'Set minimumTlsVersion to TLS1_2 on the storage account',
       }));
@@ -426,7 +426,7 @@ function runCISAzureChecks(data) {
       f.push(_finding({
         id: 'CIS-BASTION', framework: 'CIS_AZURE', severity: 'HIGH',
         title: 'Bastion not deployed in hub VNet',
-        message: `Hub VNet "${_rn(hub)}" has no Azure Bastion host deployed — RDP/SSH jump host missing`,
+        message: `Hub VNet "${_rn(hub)}" has no Azure Bastion host deployed: RDP/SSH jump host missing`,
         resource: _rn(hub), resourceId: hub.id || '', resourceType: 'Microsoft.Network/virtualNetworks',
         remediation: 'Deploy Azure Bastion in the hub VNet for secure remote access without public IPs',
       }));
@@ -502,7 +502,7 @@ function runCISAzureChecks(data) {
       f.push(_finding({
         id: 'PE-PENDING', framework: 'CIS_AZURE', severity: 'HIGH',
         title: 'Private Endpoint connection pending approval',
-        message: `PE "${peName}" has a pending connection — traffic will not flow until approved`,
+        message: `PE "${peName}" has a pending connection: traffic will not flow until approved`,
         resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
         remediation: 'Approve the private endpoint connection on the target resource or remove the PE if not needed',
       }));
@@ -513,7 +513,7 @@ function runCISAzureChecks(data) {
       f.push(_finding({
         id: 'PE-ORPHAN', framework: 'CIS_AZURE', severity: 'MEDIUM',
         title: 'Private Endpoint connection ' + state.toLowerCase(),
-        message: `PE "${peName}" has a ${state.toLowerCase()} connection — endpoint is orphaned and should be cleaned up`,
+        message: `PE "${peName}" has a ${state.toLowerCase()} connection: endpoint is orphaned and should be cleaned up`,
         resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
         remediation: 'Remove the orphaned private endpoint or re-create the connection to the target service',
       }));
@@ -526,7 +526,7 @@ function runCISAzureChecks(data) {
         f.push(_finding({
           id: 'PE-NO-DNS', framework: 'CIS_AZURE', severity: 'HIGH',
           title: 'No private DNS zone for Private Endpoint',
-          message: `PE "${peName}" (${groupId}) requires DNS zone "${expectedZone}" but none exists — DNS resolution will fail`,
+          message: `PE "${peName}" (${groupId}) requires DNS zone "${expectedZone}" but none exists: DNS resolution will fail`,
           resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
           remediation: 'Create private DNS zone "' + expectedZone + '" and link it to the PE\'s VNet',
         }));
@@ -544,7 +544,7 @@ function runCISAzureChecks(data) {
             f.push(_finding({
               id: 'PE-DNS-UNLINKED', framework: 'CIS_AZURE', severity: 'HIGH',
               title: 'Private DNS zone not linked to PE VNet',
-              message: `PE "${peName}" is in VNet "${vnetId.split('/').pop()}" but DNS zone "${expectedZone}" is not linked to that VNet — resolution will use public DNS`,
+              message: `PE "${peName}" is in VNet "${vnetId.split('/').pop()}" but DNS zone "${expectedZone}" is not linked to that VNet: resolution will use public DNS`,
               resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
               remediation: 'Add a virtual network link from "' + expectedZone + '" to VNet "' + vnetId.split('/').pop() + '"',
             }));
@@ -564,7 +564,7 @@ function runCISAzureChecks(data) {
           f.push(_finding({
             id: 'PE-NSG-POLICY', framework: 'CIS_AZURE', severity: 'MEDIUM',
             title: 'NSG cannot filter Private Endpoint traffic',
-            message: `Subnet "${_rn(subnet)}" has an NSG but PE network policies are disabled — NSG rules will not apply to PE "${peName}"`,
+            message: `Subnet "${_rn(subnet)}" has an NSG but PE network policies are disabled: NSG rules will not apply to PE "${peName}"`,
             resource: peName, resourceId: pe.id || '', resourceType: 'Microsoft.Network/privateEndpoints',
             remediation: 'Enable privateEndpointNetworkPolicies on the subnet to allow NSG filtering of PE traffic',
           }));
@@ -645,7 +645,7 @@ function runCAFChecks(data) {
       f.push(_finding({
         id: 'CAF-UDR', framework: 'CAF', severity: 'MEDIUM',
         title: 'Subnet without route table',
-        message: `Subnet "${subName}" has no User Defined Route (UDR) table — uses default system routes`,
+        message: `Subnet "${subName}" has no User Defined Route (UDR) table: uses default system routes`,
         resource: subName, resourceId: sub.id || '', resourceType: 'Microsoft.Network/virtualNetworks/subnets',
         remediation: 'Associate a route table for traffic control; route Internet traffic through a firewall',
       }));
@@ -659,7 +659,7 @@ function runCAFChecks(data) {
       f.push(_finding({
         id: 'CAF-EMPTY', framework: 'CAF', severity: 'LOW',
         title: 'VNet without subnets',
-        message: `VNet "${_rn(vnet)}" has no subnets configured — unused VNet`,
+        message: `VNet "${_rn(vnet)}" has no subnets configured: unused VNet`,
         resource: _rn(vnet), resourceId: vnet.id || '', resourceType: 'Microsoft.Network/virtualNetworks',
         remediation: 'Add subnets for workload segmentation or remove the unused VNet',
       }));
@@ -675,7 +675,7 @@ function runCAFChecks(data) {
     f.push(_finding({
       id: 'CAF-HUB', framework: 'CAF', severity: 'MEDIUM',
       title: 'No hub-spoke topology detected',
-      message: `${vnets.length} VNets found but no hub VNet identified — consider hub-spoke architecture`,
+      message: `${vnets.length} VNets found but no hub VNet identified: consider hub-spoke architecture`,
       resource: 'Topology', resourceId: '', resourceType: 'Microsoft.Network/virtualNetworks',
       remediation: 'Implement hub-spoke topology with centralized firewall, DNS, and shared services',
     }));
@@ -688,7 +688,7 @@ function runCAFChecks(data) {
       f.push(_finding({
         id: 'CAF-PEER', framework: 'CAF', severity: 'MEDIUM',
         title: 'Peering without forwarded traffic',
-        message: `Peering "${_rn(peer)}" does not allow forwarded traffic — spoke-to-spoke routing via hub will fail`,
+        message: `Peering "${_rn(peer)}" does not allow forwarded traffic: spoke-to-spoke routing via hub will fail`,
         resource: _rn(peer), resourceId: peer.id || '', resourceType: 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings',
         remediation: 'Enable allowForwardedTraffic on peering to support transitive routing via hub firewall',
       }));
@@ -700,7 +700,7 @@ function runCAFChecks(data) {
     f.push(_finding({
       id: 'CAF-FW', framework: 'CAF', severity: 'HIGH',
       title: 'Missing Azure Firewall in hub',
-      message: 'Hub VNet detected but no Azure Firewall deployed — no centralized traffic inspection',
+      message: 'Hub VNet detected but no Azure Firewall deployed: no centralized traffic inspection',
       resource: 'Hub VNet', resourceId: '', resourceType: 'Microsoft.Network/azureFirewalls',
       remediation: 'Deploy Azure Firewall (or NVA) in the hub VNet for centralized traffic control',
     }));
@@ -711,7 +711,7 @@ function runCAFChecks(data) {
     f.push(_finding({
       id: 'CAF-DNS', framework: 'CAF', severity: 'LOW',
       title: 'No private DNS zones configured',
-      message: 'No Azure Private DNS zones found — PaaS private endpoints require private DNS for resolution',
+      message: 'No Azure Private DNS zones found: PaaS private endpoints require private DNS for resolution',
       resource: 'DNS', resourceId: '', resourceType: 'Microsoft.Network/privateDnsZones',
       remediation: 'Create private DNS zones for Azure services (e.g., privatelink.blob.core.windows.net)',
     }));
@@ -735,7 +735,7 @@ function runCAFChecks(data) {
         f.push(_finding({
           id: 'CAF-PIP', framework: 'CAF', severity: 'MEDIUM',
           title: 'VM using public IP directly',
-          message: `VM "${_rn(vm)}" has a public IP assigned — use Azure Bastion or Load Balancer instead`,
+          message: `VM "${_rn(vm)}" has a public IP assigned: use Azure Bastion or Load Balancer instead`,
           resource: _rn(vm), resourceId: vm.id || '', resourceType: 'Microsoft.Compute/virtualMachines',
           remediation: 'Remove public IP; access VMs via Azure Bastion, VPN, or Load Balancer',
         }));
@@ -785,7 +785,7 @@ function runCAFChecks(data) {
       f.push(_finding({
         id: 'CAF-DIAG', framework: 'CAF', severity: 'MEDIUM',
         title: 'NSG without diagnostic settings',
-        message: `NSG "${_rn(nsg)}" has no diagnostic settings — flow logs and events not captured`,
+        message: `NSG "${_rn(nsg)}" has no diagnostic settings: flow logs and events not captured`,
         resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
         remediation: 'Enable diagnostic settings to send NSG flow logs to Log Analytics or Storage',
       }));
@@ -797,7 +797,7 @@ function runCAFChecks(data) {
     f.push(_finding({
       id: 'CAF-LOCK', framework: 'CAF', severity: 'MEDIUM',
       title: 'No resource locks detected',
-      message: 'No resource locks found — production resources can be accidentally deleted',
+      message: 'No resource locks found: production resources can be accidentally deleted',
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.Authorization/locks',
       remediation: 'Apply CanNotDelete locks on critical resources (VNets, firewalls, databases)',
     }));
@@ -812,7 +812,7 @@ function runCAFChecks(data) {
     f.push(_finding({
       id: 'CAF-TAG', framework: 'CAF', severity: 'LOW',
       title: 'Resources without tags',
-      message: `${untagged.length} resource(s) missing tags — cost tracking and ownership unclear`,
+      message: `${untagged.length} resource(s) missing tags: cost tracking and ownership unclear`,
       resource: 'Multiple', resourceId: '', resourceType: 'Various',
       remediation: 'Apply tagging policy (Environment, Owner, CostCenter, Application)',
     }));
@@ -846,7 +846,7 @@ function runCAFChecks(data) {
         f.push(_finding({
           id: 'CAF-CIDR', framework: 'CAF', severity: 'LOW',
           title: 'VNet address space too large',
-          message: `VNet "${_rn(vnet)}" uses ${cidr} (/${mask}) — larger than /16 wastes IP space`,
+          message: `VNet "${_rn(vnet)}" uses ${cidr} (/${mask}): larger than /16 wastes IP space`,
           resource: _rn(vnet), resourceId: vnet.id || '', resourceType: 'Microsoft.Network/virtualNetworks',
           remediation: 'Use /16 or smaller address spaces; plan CIDR allocation to avoid overlap',
         }));
@@ -909,7 +909,7 @@ function runRBACChecks(data) {
       f.push(_finding({
         id: 'RBAC-SP-OWNER', framework: 'RBAC', severity: 'HIGH',
         title: 'Service principal with Owner role',
-        message: `Service principal "${principalId}" has Owner role — excessive for automation`,
+        message: `Service principal "${principalId}" has Owner role: excessive for automation`,
         resource: principalId, resourceId: ra.id || '', resourceType: 'Microsoft.Authorization/roleAssignments',
         remediation: 'Assign Contributor or custom role with least-privilege permissions',
       }));
@@ -953,7 +953,7 @@ function runRBACChecks(data) {
         f.push(_finding({
           id: 'RBAC-CUSTOM-STAR', framework: 'RBAC', severity: 'CRITICAL',
           title: 'Custom role with wildcard actions',
-          message: `Custom role "${props.roleName || _rn(rd)}" has "*" in actions — equivalent to Owner`,
+          message: `Custom role "${props.roleName || _rn(rd)}" has "*" in actions: equivalent to Owner`,
           resource: props.roleName || _rn(rd), resourceId: rd.id || '', resourceType: 'Microsoft.Authorization/roleDefinitions',
           remediation: 'Scope custom role actions to specific resource providers and operations',
         }));
@@ -1000,7 +1000,7 @@ function runRBACChecks(data) {
     f.push(_finding({
       id: 'RBAC-CLASSIC', framework: 'RBAC', severity: 'MEDIUM',
       title: 'Classic administrators present',
-      message: `${classicAdmins.length} classic administrator(s) found — legacy access model`,
+      message: `${classicAdmins.length} classic administrator(s) found: legacy access model`,
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.Authorization/classicAdministrators',
       remediation: 'Migrate classic administrators to Azure RBAC role assignments',
     }));
@@ -1029,7 +1029,7 @@ function runSOC2Checks(data) {
       f.push(_finding({
         id: 'SOC2-TLS', framework: 'SOC2', severity: 'HIGH',
         title: 'Storage account TLS < 1.2',
-        message: `Storage account "${_rn(sa)}" does not enforce TLS 1.2 minimum — data in transit at risk`,
+        message: `Storage account "${_rn(sa)}" does not enforce TLS 1.2 minimum: data in transit at risk`,
         resource: _rn(sa), resourceId: sa.id || '', resourceType: 'Microsoft.Storage/storageAccounts',
         remediation: 'Set minimumTlsVersion to TLS1_2 on all storage accounts',
       }));
@@ -1066,7 +1066,7 @@ function runSOC2Checks(data) {
       f.push(_finding({
         id: 'SOC2-FLOWLOG', framework: 'SOC2', severity: 'HIGH',
         title: 'NSG flow logs not enabled',
-        message: `NSG "${_rn(nsg)}" does not have flow logs enabled — insufficient audit trail`,
+        message: `NSG "${_rn(nsg)}" does not have flow logs enabled: insufficient audit trail`,
         resource: _rn(nsg), resourceId: nsg.id || '', resourceType: 'Microsoft.Network/networkSecurityGroups',
         remediation: 'Enable NSG flow logs (v2) and send to Log Analytics for retention and analysis',
       }));
@@ -1079,7 +1079,7 @@ function runSOC2Checks(data) {
     f.push(_finding({
       id: 'SOC2-MONITOR', framework: 'SOC2', severity: 'HIGH',
       title: 'No Azure Monitor / Log Analytics configured',
-      message: 'No Log Analytics workspaces or diagnostic settings found — insufficient monitoring',
+      message: 'No Log Analytics workspaces or diagnostic settings found: insufficient monitoring',
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.OperationalInsights/workspaces',
       remediation: 'Deploy Log Analytics workspace and enable diagnostic settings on all resources',
     }));
@@ -1093,7 +1093,7 @@ function runSOC2Checks(data) {
       f.push(_finding({
         id: 'SOC2-KV-RBAC', framework: 'SOC2', severity: 'MEDIUM',
         title: 'Key Vault not using RBAC authorization',
-        message: `Key Vault "${_rn(kv)}" uses access policies instead of RBAC — less auditable`,
+        message: `Key Vault "${_rn(kv)}" uses access policies instead of RBAC: less auditable`,
         resource: _rn(kv), resourceId: kv.id || '', resourceType: 'Microsoft.KeyVault/vaults',
         remediation: 'Enable RBAC authorization mode for centralized access management and audit logging',
       }));
@@ -1146,7 +1146,7 @@ function runPCIChecks(data) {
       f.push(_finding({
         id: 'PCI-SEG', framework: 'PCI', severity: 'CRITICAL',
         title: 'PCI subnet without NSG',
-        message: `PCI-scoped subnet "${sub.name || sid(sub.id)}" has no NSG — network segmentation violation`,
+        message: `PCI-scoped subnet "${sub.name || sid(sub.id)}" has no NSG: network segmentation violation`,
         resource: sub.name || sid(sub.id), resourceId: sub.id || '', resourceType: 'Microsoft.Network/virtualNetworks/subnets',
         remediation: 'Apply strict NSG rules isolating cardholder data environment from other subnets',
       }));
@@ -1161,7 +1161,7 @@ function runPCIChecks(data) {
       f.push(_finding({
         id: 'PCI-SQL', framework: 'PCI', severity: 'CRITICAL',
         title: 'SQL server publicly accessible',
-        message: `SQL server "${_rn(srv)}" has public network access enabled — CDE exposure`,
+        message: `SQL server "${_rn(srv)}" has public network access enabled: CDE exposure`,
         resource: _rn(srv), resourceId: srv.id || '', resourceType: 'Microsoft.Sql/servers',
         remediation: 'Disable public access; use private endpoints for database connectivity',
       }));
@@ -1173,12 +1173,12 @@ function runPCIChecks(data) {
     const props = disk.properties || disk;
     const enc = props.encryption || {};
     if (enc.type === 'EncryptionAtRestWithPlatformKey' || !enc.type) {
-      // Platform-managed keys are minimum — but CMK is preferred for PCI
+      // Platform-managed keys are minimum: but CMK is preferred for PCI
       if (!enc.diskEncryptionSetId) {
         f.push(_finding({
           id: 'PCI-ENCRYPT', framework: 'PCI', severity: 'HIGH',
           title: 'Disk without customer-managed encryption',
-          message: `Managed disk "${_rn(disk)}" uses platform-managed keys — CMK required for PCI`,
+          message: `Managed disk "${_rn(disk)}" uses platform-managed keys: CMK required for PCI`,
           resource: _rn(disk), resourceId: disk.id || '', resourceType: 'Microsoft.Compute/disks',
           remediation: 'Enable encryption with customer-managed keys via Disk Encryption Set',
         }));
@@ -1195,7 +1195,7 @@ function runPCIChecks(data) {
       f.push(_finding({
         id: 'PCI-WAF', framework: 'PCI', severity: 'HIGH',
         title: 'Application Gateway without WAF',
-        message: `Application Gateway "${_rn(ag)}" uses "${sku.tier || sku.name || 'Standard'}" tier — WAF required for PCI`,
+        message: `Application Gateway "${_rn(ag)}" uses "${sku.tier || sku.name || 'Standard'}" tier: WAF required for PCI`,
         resource: _rn(ag), resourceId: ag.id || '', resourceType: 'Microsoft.Network/applicationGateways',
         remediation: 'Upgrade to WAF_v2 SKU and enable OWASP rule sets for web application protection',
         checkovId: 'CKV_AZURE_120',
@@ -1209,7 +1209,7 @@ function runPCIChecks(data) {
     f.push(_finding({
       id: 'PCI-IDS', framework: 'PCI', severity: 'HIGH',
       title: 'No Microsoft Defender plans enabled',
-      message: 'No Microsoft Defender for Cloud plans found — intrusion detection requirement unmet',
+      message: 'No Microsoft Defender for Cloud plans found: intrusion detection requirement unmet',
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.Security/pricings',
       remediation: 'Enable Microsoft Defender for Cloud on all resource types (servers, SQL, storage, etc.)',
     }));
@@ -1223,7 +1223,7 @@ function runPCIChecks(data) {
       f.push(_finding({
         id: 'PCI-STORAGE', framework: 'PCI', severity: 'CRITICAL',
         title: 'Storage account without encryption configuration',
-        message: `Storage account "${_rn(sa)}" has no explicit encryption — data at rest violation`,
+        message: `Storage account "${_rn(sa)}" has no explicit encryption: data at rest violation`,
         resource: _rn(sa), resourceId: sa.id || '', resourceType: 'Microsoft.Storage/storageAccounts',
         remediation: 'Enable encryption with customer-managed keys for cardholder data storage',
       }));
@@ -1236,7 +1236,7 @@ function runPCIChecks(data) {
     f.push(_finding({
       id: 'PCI-REVIEW', framework: 'PCI', severity: 'MEDIUM',
       title: 'No access reviews configured',
-      message: 'No Azure AD access reviews found — periodic access review required for PCI',
+      message: 'No Azure AD access reviews found: periodic access review required for PCI',
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.Authorization/accessReviewScheduleDefinitions',
       remediation: 'Configure quarterly access reviews for privileged roles via Azure AD PIM',
     }));
@@ -1247,7 +1247,7 @@ function runPCIChecks(data) {
     f.push(_finding({
       id: 'PCI-LOG', framework: 'PCI', severity: 'HIGH',
       title: 'Insufficient logging for PCI compliance',
-      message: 'No Log Analytics workspace or NSG flow logs — audit trail requirement unmet',
+      message: 'No Log Analytics workspace or NSG flow logs: audit trail requirement unmet',
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.OperationalInsights/workspaces',
       remediation: 'Deploy Log Analytics and enable diagnostic settings with 1-year retention',
     }));
@@ -1318,7 +1318,7 @@ function runBUDRAzureChecks(data) {
     f.push(_finding({
       id: 'BUDR-RSV', framework: 'BUDR', severity: 'HIGH',
       title: 'No Recovery Services Vault',
-      message: `${vms.length} VM(s) found but no Recovery Services Vault — no centralized backup infrastructure`,
+      message: `${vms.length} VM(s) found but no Recovery Services Vault: no centralized backup infrastructure`,
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.RecoveryServices/vaults',
       remediation: 'Create a Recovery Services Vault and configure backup policies for all VMs',
     }));
@@ -1334,7 +1334,7 @@ function runBUDRAzureChecks(data) {
     f.push(_finding({
       id: 'BUDR-REGION', framework: 'BUDR', severity: 'HIGH',
       title: 'Single-region deployment',
-      message: `All resources deployed in "${region}" — no geographic disaster recovery capability`,
+      message: `All resources deployed in "${region}": no geographic disaster recovery capability`,
       resource: region, resourceId: '', resourceType: 'Various',
       remediation: 'Implement cross-region DR strategy using Azure Site Recovery or geo-replication',
     }));
@@ -1349,7 +1349,7 @@ function runBUDRAzureChecks(data) {
       f.push(_finding({
         id: 'BUDR-AVAIL', framework: 'BUDR', severity: 'MEDIUM',
         title: 'VM without availability set or zone',
-        message: `VM "${_rn(vm)}" has no availability set or availability zone — single point of failure`,
+        message: `VM "${_rn(vm)}" has no availability set or availability zone: single point of failure`,
         resource: _rn(vm), resourceId: vm.id || '', resourceType: 'Microsoft.Compute/virtualMachines',
         remediation: 'Deploy VMs in availability zones or availability sets for HA',
       }));
@@ -1371,7 +1371,7 @@ function runBUDRAzureChecks(data) {
       f.push(_finding({
         id: 'BUDR-SNAP', framework: 'BUDR', severity: 'MEDIUM',
         title: 'Managed disk without snapshots',
-        message: `Attached disk "${_rn(disk)}" has no snapshots — point-in-time recovery unavailable`,
+        message: `Attached disk "${_rn(disk)}" has no snapshots: point-in-time recovery unavailable`,
         resource: _rn(disk), resourceId: disk.id || '', resourceType: 'Microsoft.Compute/disks',
         remediation: 'Create a snapshot policy or use Azure Backup for automatic disk snapshots',
       }));
@@ -1387,7 +1387,7 @@ function runBUDRAzureChecks(data) {
       f.push(_finding({
         id: 'BUDR-GEO', framework: 'BUDR', severity: 'MEDIUM',
         title: 'Storage account without geo-redundancy',
-        message: `Storage account "${_rn(sa)}" uses ${replication} — no geographic redundancy`,
+        message: `Storage account "${_rn(sa)}" uses ${replication}: no geographic redundancy`,
         resource: _rn(sa), resourceId: sa.id || '', resourceType: 'Microsoft.Storage/storageAccounts',
         remediation: 'Use GRS or RA-GRS replication for critical data; GZRS for zone + geo redundancy',
       }));
@@ -1403,7 +1403,7 @@ function runBUDRAzureChecks(data) {
       f.push(_finding({
         id: 'BUDR-AKS-PDB', framework: 'BUDR', severity: 'MEDIUM',
         title: 'AKS cluster with single-node pools',
-        message: `AKS cluster "${_rn(aks)}" has single-node agent pools — no pod disruption budget effective`,
+        message: `AKS cluster "${_rn(aks)}" has single-node agent pools: no pod disruption budget effective`,
         resource: _rn(aks), resourceId: aks.id || '', resourceType: 'Microsoft.ContainerService/managedClusters',
         remediation: 'Scale agent pools to 2+ nodes and configure PodDisruptionBudgets for workloads',
       }));
@@ -1424,7 +1424,7 @@ function runBUDRAzureChecks(data) {
       f.push(_finding({
         id: 'BUDR-FUNC', framework: 'BUDR', severity: 'LOW',
         title: 'Function app without deployment slots',
-        message: `Function app "${_rn(fa)}" has no deployment slots — no zero-downtime deployment`,
+        message: `Function app "${_rn(fa)}" has no deployment slots: no zero-downtime deployment`,
         resource: _rn(fa), resourceId: fa.id || '', resourceType: 'Microsoft.Web/sites',
         remediation: 'Create staging deployment slot for blue-green deployments and rollback capability',
       }));
@@ -1443,7 +1443,7 @@ function runBUDRAzureChecks(data) {
       f.push(_finding({
         id: 'BUDR-REDIS', framework: 'BUDR', severity: 'MEDIUM',
         title: 'Redis cache without data persistence',
-        message: `Premium Redis cache "${_rn(rc)}" has no RDB or AOF persistence — data loss on restart`,
+        message: `Premium Redis cache "${_rn(rc)}" has no RDB or AOF persistence: data loss on restart`,
         resource: _rn(rc), resourceId: rc.id || '', resourceType: 'Microsoft.Cache/Redis',
         remediation: 'Enable RDB snapshots or AOF persistence for durable caching',
       }));
@@ -1477,7 +1477,7 @@ function runFedRAMPChecks(data, framework) {
     f.push(_finding({
       id: 'FEDRAMP-AC2', framework, severity: 'MEDIUM',
       title: 'AC-2: Large number of role assignments',
-      message: `${roleCount} role assignments found — review for inactive or excessive access`,
+      message: `${roleCount} role assignments found: review for inactive or excessive access`,
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.Authorization/roleAssignments',
       remediation: 'Conduct quarterly access reviews; remove stale assignments; use PIM for JIT access',
     }));
@@ -1493,24 +1493,24 @@ function runFedRAMPChecks(data, framework) {
     f.push(_finding({
       id: 'FEDRAMP-AC6', framework, severity: 'HIGH',
       title: 'AC-6: Excessive Owner role assignments',
-      message: `${ownerAssignments.length} Owner role assignments — violates least privilege principle`,
+      message: `${ownerAssignments.length} Owner role assignments: violates least privilege principle`,
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.Authorization/roleAssignments',
       remediation: 'Reduce Owner assignments; use Contributor or custom roles with scoped permissions',
     }));
   }
 
-  // AU-2: Audit events — verify logging infrastructure
+  // AU-2: Audit events: verify logging infrastructure
   if (logAnalytics.length === 0) {
     f.push(_finding({
       id: 'FEDRAMP-AU2', framework, severity: 'CRITICAL',
       title: 'AU-2: No audit logging infrastructure',
-      message: 'No Log Analytics workspace found — audit event collection requirement unmet',
+      message: 'No Log Analytics workspace found: audit event collection requirement unmet',
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.OperationalInsights/workspaces',
       remediation: 'Deploy Log Analytics workspace; enable Azure Activity Log and resource diagnostic settings',
     }));
   }
 
-  // CM-7: Least functionality — check for overly permissive NSG rules
+  // CM-7: Least functionality: check for overly permissive NSG rules
   let openRuleCount = 0;
   nsgs.forEach(nsg => {
     const rules = _getRules(nsg);
@@ -1526,7 +1526,7 @@ function runFedRAMPChecks(data, framework) {
     f.push(_finding({
       id: 'FEDRAMP-CM7', framework, severity: 'HIGH',
       title: 'CM-7: Overly permissive network rules',
-      message: `${openRuleCount} NSG rule(s) allow all inbound traffic — least functionality violated`,
+      message: `${openRuleCount} NSG rule(s) allow all inbound traffic: least functionality violated`,
       resource: 'NSGs', resourceId: '', resourceType: 'Microsoft.Network/networkSecurityGroups',
       remediation: 'Remove or restrict all "allow any" inbound rules to specific required ports and sources',
     }));
@@ -1542,18 +1542,18 @@ function runFedRAMPChecks(data, framework) {
     f.push(_finding({
       id: 'FEDRAMP-IA2', framework, severity: 'CRITICAL',
       title: 'IA-2: No MFA conditional access policy',
-      message: 'No conditional access policy enforcing MFA found — identification/authentication gap',
+      message: 'No conditional access policy enforcing MFA found: identification/authentication gap',
       resource: 'Azure AD', resourceId: '', resourceType: 'Microsoft.Authorization/conditionalAccessPolicies',
       remediation: 'Create conditional access policy requiring MFA for all users on sensitive operations',
     }));
   }
 
-  // SC-7: Boundary protection — firewall presence
+  // SC-7: Boundary protection: firewall presence
   if (firewalls.length === 0 && nsgs.length > 0) {
     f.push(_finding({
       id: 'FEDRAMP-SC7', framework, severity: 'HIGH',
       title: 'SC-7: No centralized boundary protection',
-      message: 'No Azure Firewall deployed — boundary protection relies only on NSGs',
+      message: 'No Azure Firewall deployed: boundary protection relies only on NSGs',
       resource: 'Network', resourceId: '', resourceType: 'Microsoft.Network/azureFirewalls',
       remediation: 'Deploy Azure Firewall for centralized boundary protection and traffic inspection',
     }));
@@ -1569,7 +1569,7 @@ function runFedRAMPChecks(data, framework) {
     f.push(_finding({
       id: 'FEDRAMP-SC28', framework, severity: 'HIGH',
       title: 'SC-28: Unprotected data at rest',
-      message: `${unencryptedDisks.length} managed disk(s) without explicit encryption — data at rest protection gap`,
+      message: `${unencryptedDisks.length} managed disk(s) without explicit encryption: data at rest protection gap`,
       resource: 'Multiple', resourceId: '', resourceType: 'Microsoft.Compute/disks',
       remediation: 'Enable encryption with customer-managed keys for all managed disks',
     }));
@@ -1580,7 +1580,7 @@ function runFedRAMPChecks(data, framework) {
     f.push(_finding({
       id: 'FEDRAMP-SI4', framework, severity: 'HIGH',
       title: 'SI-4: No system monitoring',
-      message: 'No Microsoft Defender for Cloud plans enabled — continuous monitoring requirement unmet',
+      message: 'No Microsoft Defender for Cloud plans enabled: continuous monitoring requirement unmet',
       resource: 'Subscription', resourceId: '', resourceType: 'Microsoft.Security/pricings',
       remediation: 'Enable Microsoft Defender for Cloud on all resource types for continuous monitoring',
     }));
@@ -1608,7 +1608,7 @@ export function invalidateComplianceCache() {
 }
 
 // ============================================================================
-// Main entry point — runs all applicable checks based on cloud environment
+// Main entry point: runs all applicable checks based on cloud environment
 // ============================================================================
 
 /**

@@ -951,15 +951,15 @@ export function generateDemo() {
   const pciSqlId = rid('rg-pci-compliant', 'Microsoft.Sql', 'servers', 'sql-pci');
   makePe('pe-sql-pci', 'rg-pci-compliant', 'PCI-Data@vnet-pci', pciSqlId, ['sqlServer'], '10.5.3.10', { dnsZone: 'privatelink.database.windows.net' });
 
-  // Staging SQL PE — Pending approval (tests PE-PENDING compliance check)
+  // Staging SQL PE: Pending approval (tests PE-PENDING compliance check)
   const stagingSqlId = rid('rg-staging-workloads', 'Microsoft.Sql', 'servers', 'sql-staging');
   makePe('pe-sql-staging', 'rg-staging-workloads', 'App@vnet-staging', stagingSqlId, ['sqlServer'], '172.17.0.0', { state: 'Pending', stateDesc: 'Awaiting approval', dnsZone: 'privatelink.database.windows.net' });
 
-  // Dev Cosmos DB PE — Rejected (tests PE-ORPHAN compliance check)
+  // Dev Cosmos DB PE: Rejected (tests PE-ORPHAN compliance check)
   const devCosmosId = rid('rg-dev-workloads', 'Microsoft.DocumentDB', 'databaseAccounts', 'cosmos-dev');
   makePe('pe-cosmos-dev', 'rg-dev-workloads', 'App@vnet-dev', devCosmosId, ['cosmosdb'], '169.254.168.0', { state: 'Rejected', stateDesc: 'Access denied by resource owner', dnsZone: 'privatelink.documents.azure.com' });
 
-  // Synapse PE — no matching DNS zone (tests PE-NO-DNS compliance check)
+  // Synapse PE: no matching DNS zone (tests PE-NO-DNS compliance check)
   const synapseId = rid('rg-data-platform', 'Microsoft.Synapse', 'workspaces', 'synapse-data-prod');
   makePe('pe-synapse-sql', 'rg-data-platform', 'SQL@vnet-data', synapseId, ['Sql'], '10.0.0.2', { dnsZone: 'privatelink.sql.azuresynapse.net' });
 

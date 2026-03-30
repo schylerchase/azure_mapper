@@ -361,7 +361,7 @@ function _rptInitInteractive(root){
       e.target.textContent=expand?'Collapse All':'Expand All';
       return;
     }
-    /* Resource link — scroll within report preview */
+    /* Resource link: scroll within report preview */
     var resLink=e.target.closest('.rpt-res-link');
     if(resLink){
       e.preventDefault();
@@ -681,7 +681,7 @@ function _xlsxAddSheet(wb,name,headers,rows,opts){
     var addr=XLSX.utils.encode_cell({r:0,c:i});
     if(ws[addr]) ws[addr].s=hdrStyle;
   });
-  // Style severity column — colored text + tinted fill (cache by value)
+  // Style severity column: colored text + tinted fill (cache by value)
   if(typeof opts.sevCol==='number'){
     var _sevCache={};
     for(var r=1;r<data.length;r++){
@@ -738,11 +738,11 @@ function _xlsxAddSheet(wb,name,headers,rows,opts){
   }
   // Row height for header
   ws['!rows']=[{hpx:28}];
-  // Autofilter — enables sort/filter dropdowns
+  // Autofilter: enables sort/filter dropdowns
   var lastCol=XLSX.utils.encode_col(headers.length-1);
   var lastRow=data.length;
   ws['!autofilter']={ref:'A1:'+lastCol+lastRow};
-  // Freeze panes — freeze header row
+  // Freeze panes: freeze header row
   ws['!views']=[{state:'frozen',ySplit:1}];
   XLSX.utils.book_append_sheet(wb,ws,name);
 }
@@ -782,7 +782,7 @@ function _rptBuildXlsxSummary(wb){
   var r=0;
   var hasLogo=!!_rptState.logo;
   var tCol=hasLogo?1:0;
-  // Title row — merged across columns (skip col 0 when logo present)
+  // Title row: merged across columns (skip col 0 when logo present)
   var titleAddr=XLSX.utils.encode_cell({r:r,c:tCol});
   ws[titleAddr]={v:_rptState.title||'Azure Infrastructure Assessment',t:'s',
     s:{font:{bold:true,sz:18,color:{rgb:_XLSX_COLORS.titleFg},name:'Calibri'},
@@ -1008,7 +1008,7 @@ async function _xlsxInjectLogo(zip){
     var w=914400,h=457200;
     var aspect=logo.width/logo.height;
     if(aspect>2){h=w/aspect;}else if(aspect<2){w=h*aspect;}
-    // Drawing XML — oneCellAnchor at A1 (col 0, row 0) with padding
+    // Drawing XML: oneCellAnchor at A1 (col 0, row 0) with padding
     var drawXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'+
       '<xdr:oneCellAnchor>'+
@@ -1021,13 +1021,13 @@ async function _xlsxInjectLogo(zip){
       '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>'+
       '</xdr:pic><xdr:clientData/></xdr:oneCellAnchor></xdr:wsDr>';
     zip.file('xl/drawings/drawing1.xml',drawXml);
-    // Drawing rels — link image
+    // Drawing rels: link image
     zip.file('xl/drawings/_rels/drawing1.xml.rels',
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
       '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/image1.'+ext+'"/>'+
       '</Relationships>');
-    // Sheet1 rels — link drawing
+    // Sheet1 rels: link drawing
     var wsRelsPath='xl/worksheets/_rels/sheet1.xml.rels';
     var wsRels;
     try{wsRels=await zip.file(wsRelsPath).async('string');}catch(e){wsRels=null;}
@@ -1055,7 +1055,7 @@ async function _xlsxPostProcess(wbBuf,sheetNames){
     var f=zip.file(path);
     if(!f) continue;
     var xml=await f.async('string');
-    // Skip Summary sheet (index 0) — it's a dashboard, not a data table
+    // Skip Summary sheet (index 0): it's a dashboard, not a data table
     if(i===0) continue;
     // Inject pane into sheetView to freeze row 1
     var paneXml='<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>';
@@ -1394,7 +1394,7 @@ function matchFile(fname, content){
   for(const fm of fileMap){
     for(const p of fm.patterns){if(base===p||base===p+'s')return fm.id}
   }
-  // contains match — sort candidates by longest pattern first to avoid partial matches
+  // contains match: sort candidates by longest pattern first to avoid partial matches
   const candidates=[];
   for(const fm of fileMap){
     for(const p of fm.patterns){if(base.includes(p))candidates.push({id:fm.id,p,len:p.length})}
@@ -1410,7 +1410,7 @@ function matchFile(fname, content){
     }
     return best;
   }
-  // content-based fallback — detect by JSON keys
+  // content-based fallback: detect by JSON keys
   if(content){
     const snip=content.slice(0,500);
     if(snip.includes('"Reservations"'))return 'in_ec2';
@@ -1462,7 +1462,7 @@ document.getElementById('dlBash').addEventListener('click',function(){
   document.getElementById('exportScriptMenu').style.display='none';
   var script=[
 '#!/usr/bin/env bash',
-'# Azure Network Mapper — Data Export Script',
+'# Azure Network Mapper: Data Export Script',
 '# Exports all Azure CLI data needed for the mapper tool.',
 '# Usage:',
 '#   ./export-azure-data.sh                   # default subscription + region',
@@ -1477,7 +1477,7 @@ document.getElementById('dlBash').addEventListener('click',function(){
 'AZ_FLAGS=(); [ -n "$PROFILE" ] && AZ_FLAGS+=(--profile "$PROFILE"); [ -n "$REGION" ] && AZ_FLAGS+=(--region "$REGION")',
 '[ -z "$OUTDIR" ] && OUTDIR="./azure-export-${PROFILE:-default}-$(date +%Y%m%d-%H%M%S)"',
 'mkdir -p "$OUTDIR"',
-'echo "Azure Network Mapper — Data Export"',
+'echo "Azure Network Mapper: Data Export"',
 'echo "  Profile: ${PROFILE:-default}  Region: ${REGION:-default}  Output: $OUTDIR"',
 'echo ""',
 'run(){ local label="$1" fn="$2"; shift 2; printf "  %-35s" "$label..."; if output=$(az "${AZ_FLAGS[@]}" "$@" 2>&1); then echo "$output" > "$OUTDIR/$fn"; echo "OK ($(wc -c < "$OUTDIR/$fn" | tr -d \' \') bytes)"; else echo "SKIP"; fi; }',
@@ -1551,7 +1551,7 @@ document.getElementById('dlBash').addEventListener('click',function(){
   ].join('\n');
   var blob=new Blob([script],{type:'text/x-shellscript'});
   downloadBlob(blob,'export-azure-data.sh');
-  _showToast('Bash script downloaded — run: chmod +x export-azure-data.sh && ./export-azure-data.sh');
+  _showToast('Bash script downloaded: run: chmod +x export-azure-data.sh && ./export-azure-data.sh');
 });
 document.getElementById('dlPowershell').addEventListener('click',function(){
   document.getElementById('exportScriptMenu').style.display='none';
@@ -1660,7 +1660,7 @@ document.getElementById('dlPowershell').addEventListener('click',function(){
   ].join('\r\n');
   var blob=new Blob([script],{type:'text/plain'});
   downloadBlob(blob,'export-azure-data.ps1');
-  _showToast('PowerShell script downloaded — run: ./export-azure-data.ps1');
+  _showToast('PowerShell script downloaded: run: ./export-azure-data.ps1');
 });
 document.getElementById('fileInput').addEventListener('change',async function(){
   const files=[...this.files];
@@ -1756,7 +1756,7 @@ document.getElementById('loadDemo').addEventListener('click',()=>{
     ta.in_lambda=JSON.stringify({Functions:allLambda.filter(f=>f.VpcConfig&&vpcSet.has(f.VpcConfig.VpcId))});
     ta.in_elasticache=JSON.stringify({CacheClusters:allEcache.filter(e=>e.CacheSubnetGroupName?true:false)});
     ta.in_redshift=JSON.stringify({Clusters:allRedshift.filter(r=>r.ClusterSubnetGroupName?true:false)});
-    // Shared non-VPC data — give to both accounts
+    // Shared non-VPC data: give to both accounts
     if(demo.s3)ta.in_s3=JSON.stringify(demo.s3);
     if(demo.r53)ta.in_r53=JSON.stringify(demo.r53);
     if(demo.r53records)ta.in_r53records=JSON.stringify(demo.r53records);
@@ -1796,7 +1796,7 @@ document.getElementById('loadDemo').addEventListener('click',()=>{
 // store layout data globally for export
 let exportData={vL:[],gwP:new Map(),allS:[],tG:{},peerings:[],shGws:[]};
 
-// TODO: deduplicate — canonical version in export-utils.js
+// TODO: deduplicate: canonical version in export-utils.js
 // helper: resolve CSS vars to hex for SVG serialization
 function resolveColor(cssVar){
   const el=document.createElement('div');el.style.color=cssVar;document.body.appendChild(el);
@@ -4561,7 +4561,7 @@ updateDetailBtns();
 let _iacType='terraform'; // 'terraform' | 'arm'
 let _iacOutput=''; // raw generated text
 
-// TODO: deduplicate — canonical version in export-utils.js
+// TODO: deduplicate: canonical version in export-utils.js
 function _sanitizeName(s){
   if(!s)return 'unnamed';
   return s.replace(/[^a-zA-Z0-9_-]/g,'_').replace(/^[0-9]/,'r$&').replace(/-/g,'_').toLowerCase();
@@ -5554,7 +5554,7 @@ function _ckEc2(instances,ctx,res,seen){
     var props={InstanceType:inst.InstanceType||'t3.micro',SubnetId:inst.SubnetId||'',
       SecurityGroupIds:(inst.SecurityGroups||[]).map(function(s){return s.GroupId}),
       ImageId:inst.ImageId||'',Tags:_cfnTags(inst)};
-    // IMDSv2 — Checkov CKV_AZURE_50
+    // IMDSv2: Checkov CKV_AZURE_50
     var mo=inst.MetadataOptions||{};
     props.MetadataOptions={HttpTokens:mo.HttpTokens||'optional',HttpEndpoint:mo.HttpEndpoint||'enabled'};
     // Managed identity
@@ -5591,7 +5591,7 @@ function _ckS3(buckets,res,seen){
   buckets.forEach(function(bk){
     var id=_ckId(bk.Name,'S3',seen);
     var props={BucketName:bk.Name};
-    // Omit encryption/versioning — Checkov flags their absence, which is correct
+    // Omit encryption/versioning: Checkov flags their absence, which is correct
     if(bk.BucketEncryption) props.BucketEncryption=bk.BucketEncryption;
     if(bk.VersioningConfiguration) props.VersioningConfiguration=bk.VersioningConfiguration;
     res[id]={Type:'Microsoft.Storage/storageAccounts',Properties:props};
@@ -5675,7 +5675,7 @@ function _ckRedshift(clusters,res,seen){
 function generateCheckovCfn(ctx,iamData){
   if(!ctx||!ctx.vpcs) return null;
   var template={$schema:'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#',contentVersion:'1.0.0.0',
-    Description:'Generated by Azure Mapper for Checkov scanning — '+new Date().toISOString().split('T')[0],
+    Description:'Generated by Azure Mapper for Checkov scanning: '+new Date().toISOString().split('T')[0],
     Resources:{}};
   var res=template.Resources,seen=new Set();
   _ckVpcs(ctx.vpcs||[],res,seen);
@@ -6095,7 +6095,7 @@ window._demoAnnotations = (function(){
   };
 })();
 
-// TODO: move test harness to tests/ directory — should not ship in production code
+// TODO: move test harness to tests/ directory: should not ship in production code
 // --- Edge Case Test Framework ---
 window._edgeCaseTests = window._edgeCaseTests || {};
 

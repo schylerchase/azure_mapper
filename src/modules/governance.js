@@ -1,4 +1,4 @@
-// Governance & Inventory — state and pure logic (Azure Network Mapper)
+// Governance & Inventory: state and pure logic (Azure Network Mapper)
 // DOM rendering functions (_renderClassificationTab, _renderIAMTab, _openRulesEditor)
 // currently live in diff-engine.js due to dual-state and unified dashboard coupling.
 // See TODO in diff-engine.js for migration plan.
@@ -54,7 +54,7 @@ var _DEFAULT_CLASS_RULES = [
   { pattern: 'function.?app|container|aks|kubernetes', scope: 'type', tier: 'medium', weight: 40 },
   { pattern: 'bastion|jump|ssh', scope: 'name', tier: 'medium', weight: 35 },
   { pattern: 'firewall|azure.?firewall', scope: 'type', tier: 'high', weight: 75 },
-  // Tag-based rules — Environment tag is strongest classification signal
+  // Tag-based rules: Environment tag is strongest classification signal
   { pattern: 'prod|production|prd', scope: 'tag:Environment', tier: 'critical', weight: 120 },
   { pattern: 'staging|stage|uat|qa', scope: 'tag:Environment', tier: 'medium', weight: 110 },
   { pattern: 'dev|develop|sandbox|test', scope: 'tag:Environment', tier: 'low', weight: 110 }
@@ -263,7 +263,7 @@ function _buildInventoryData() {
   // 1. Classification tier lookup
   var classMap = {};
   (_classificationData || []).forEach(function(c) { classMap[c.id] = c; });
-  // 2. BUDR assessment lookup — use window bridge for cross-region data
+  // 2. BUDR assessment lookup: use window bridge for cross-region data
   var budrAssessments = (typeof window !== 'undefined' && window._budrAssessments) || [];
   var budrMap = {};
   (budrAssessments || []).forEach(function(a) {
@@ -296,7 +296,7 @@ function _buildInventoryData() {
  */
 function _filterInventory() {
   var st = _invState;
-  // _udashFilterByAccount is a global UI function — access via window bridge
+  // _udashFilterByAccount is a global UI function: access via window bridge
   var filterFn = (typeof window !== 'undefined' && window._udashFilterByAccount) || function(x) { return x; };
   var items = filterFn(_inventoryData).slice();
   if (st.typeFilter !== 'all') items = items.filter(function(r) { return r.type === st.typeFilter; });
@@ -781,7 +781,7 @@ function summarizePermissions(principalId, rbacData) {
 // Expose all exports to window for inline callers that haven't migrated yet
 if (typeof window !== 'undefined') {
   Object.assign(window, {
-    // State variables — direct references (for backward compat reading)
+    // State variables: direct references (for backward compat reading)
     _govDashState, _iamDashState, _classificationData, _classificationOverrides,
     _iamReviewData, _inventoryData, _invState, _appRegistry, _appAutoDiscovered,
     _appSummaryState, _APP_TYPE_SUGGESTIONS, _invToolbarRendered,

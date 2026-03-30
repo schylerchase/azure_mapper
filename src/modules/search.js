@@ -133,13 +133,13 @@ function _onSearchInput(e){
   for(var si=0;si<_searchIndex.length&&matches.length<30;si++){
     if(_searchIndex[si].searchStr.includes(q))matches.push(_searchIndex[si]);
   }
-  // Notes are dynamic — search them live (typically small set)
+  // Notes are dynamic: search them live (typically small set)
   _getAllNotes().forEach(function(n){if(matches.length>=30)return;if((n.text||'').toLowerCase().includes(q)||(_getResourceName(n.resourceId)||'').toLowerCase().includes(q))matches.push({type:'Note',name:(n.text||'').slice(0,50),id:n.resourceId,extra:n.category||'',acct:''})});
   const isMA=_rlCtx._multiAccount;
   let h='';matches.forEach(m=>{const acctBadge=isMA&&m.acct&&m.acct!=='default'?'<span style="font-size:8px;padding:1px 5px;border-radius:3px;background:'+( getAccountColor(m.acct)||'var(--bg-tertiary)')+';color:#000;font-weight:600;white-space:nowrap">'+esc(m.acct)+'</span>':'';h+='<div class="search-result-item" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px" data-rid="'+esc(m.id)+'" data-rtype="'+esc(m.type)+'"><span style="font-size:9px;color:var(--accent-cyan);font-weight:600;width:70px">'+esc(m.type)+'</span><span style="flex:1;font-size:12px;color:var(--text-primary)">'+esc(m.name)+'</span>'+acctBadge+'<span style="font-size:10px;color:var(--text-muted)">'+esc(m.extra)+'</span></div>'});
   if(!matches.length)h='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:12px">No results</div>';
   res.innerHTML=h;
-  // Delegated click handler — replaces inline onclick attributes (CSP-safe)
+  // Delegated click handler: replaces inline onclick attributes (CSP-safe)
   res.querySelectorAll('.search-result-item').forEach(function(el){
     el.addEventListener('click',function(){
       closeSearch();
@@ -151,7 +151,7 @@ function _onSearchInput(e){
 function _zoomToElement(id){
   if(!_mapSvg||!_mapZoom||!_mapG)return;
   var el=_mapG.node().querySelector('[data-vnet-id="'+id+'"],[data-subnet-id="'+id+'"],[data-gwid="'+id+'"],[data-id="'+id+'"]');
-  // Fallback: NSGs don't have SVG nodes — zoom to their VNet instead
+  // Fallback: NSGs don't have SVG nodes: zoom to their VNet instead
   if(!el&&id&&_rlCtx){
     var nsg=(_rlCtx.nsgs||[]).find(function(s){return s.id===id});
     if(nsg&&nsg.properties&&nsg.properties.vnetId) el=_mapG.node().querySelector('[data-vnet-id="'+nsg.properties.vnetId+'"]');

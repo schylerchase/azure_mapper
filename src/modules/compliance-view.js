@@ -1,7 +1,7 @@
-// Compliance View — scoring, grouping, tier classification, and muting
+// Compliance View: scoring, grouping, tier classification, and muting
 // DOM rendering functions (_renderCompDash, _renderExecSummary, etc.)
 // remain inline until modernized in Phase 5.
-// Azure Network Mapper — compliance references updated to Azure documentation.
+// Azure Network Mapper: compliance references updated to Azure documentation.
 
 import { SEV_ORDER, PRIORITY_ORDER, PRIORITY_KEYS, EFFORT_LABELS, EFFORT_TIME, PRIORITY_META, MUTE_KEY } from './constants.js';
 import { complianceFindings } from './state.js';
@@ -33,7 +33,7 @@ export const EFFORT_MAP = {
   'IAM-1':'med','IAM-2':'med','IAM-3':'low','IAM-4':'med','IAM-5':'low',
   'IAM-6':'low','IAM-7':'low','IAM-8':'med','IAM-9':'low','IAM-10':'low',
   'IAM-11':'low','IAM-12':'med','IAM-13':'low',
-  // CKV (standalone Checkov checks — Azure equivalents)
+  // CKV (standalone Checkov checks: Azure equivalents)
   'CKV_AZURE_1':'med','CKV_AZURE_2':'med','CKV_AZURE_3':'low','CKV_AZURE_4':'low',
   'CKV_AZURE_5':'low','CKV_AZURE_6':'low','CKV_AZURE_7':'low',
   // BUDR
@@ -273,7 +273,7 @@ function _rptFilterByAccount(items, acctId) {
 }
 
 /**
- * Build a unified compliance view — single source of truth for all filter/count consumers.
+ * Build a unified compliance view: single source of truth for all filter/count consumers.
  * @param {Object} [opts] - Filter options
  * @returns {Object} View with base, filtered, tiers, sevCounts, score, etc.
  */
@@ -331,7 +331,7 @@ export function buildComplianceView(opts) {
 // Bridge: expose to window for legacy callers in app-core.js
 // TODO: replace with proper imports when app-core.js is modularized
 if (typeof window !== 'undefined') {
-  // === Window bridge — legacy callers require these globals ===
+  // === Window bridge: legacy callers require these globals ===
   window._EFFORT_MAP = EFFORT_MAP;
   window._complianceRefs = complianceRefs;
   window._compDashState = _compDashState;

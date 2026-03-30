@@ -1,6 +1,6 @@
-// Flow Tracing — pure logic extracted from index.html FLOW TRACING region
+// Flow Tracing: pure logic extracted from index.html FLOW TRACING region
 // Azure networking model: NIC-NSG -> Subnet-NSG -> UDR -> Peering -> Subnet-NSG -> NIC-NSG
-// Zero SVG/DOM rendering — all render functions stay inline
+// Zero SVG/DOM rendering: all render functions stay inline
 // Imports network evaluation from the already-extracted network-rules module
 
 import {
@@ -145,7 +145,7 @@ function azureName(resource, fallback) {
 }
 
 // ---------------------------------------------------------------------------
-// suggestPort — map resource type to a sensible default port
+// suggestPort: map resource type to a sensible default port
 // ---------------------------------------------------------------------------
 export function suggestPort(targetType, targetResource) {
   if (targetType === 'sqldb') return 1433;
@@ -163,7 +163,7 @@ export function suggestPort(targetType, targetResource) {
 }
 
 // ---------------------------------------------------------------------------
-// hopTypeLabel — human-readable labels for hop types
+// hopTypeLabel: human-readable labels for hop types
 // ---------------------------------------------------------------------------
 const HOP_TYPE_LABELS = {
   'source': 'Source',
@@ -186,7 +186,7 @@ export function hopTypeLabel(type) {
 }
 
 // ---------------------------------------------------------------------------
-// resolveNetworkPosition — map a resource reference to its network position
+// resolveNetworkPosition: map a resource reference to its network position
 // Returns {subnetId, vnetId, cidr, nicNsg, subnetNsg, name, ip?, nicId?} or null
 // ---------------------------------------------------------------------------
 export function resolveNetworkPosition(type, id, ctx) {
@@ -322,7 +322,7 @@ export function resolveNetworkPosition(type, id, ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// findPeForTarget — find a PE that connects to a given PaaS target resource
+// findPeForTarget: find a PE that connects to a given PaaS target resource
 // Returns {pe, pePos} if found, null otherwise
 // ---------------------------------------------------------------------------
 export function findPeForTarget(targetId, ctx) {
@@ -343,7 +343,7 @@ export function findPeForTarget(targetId, ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// buildPeRedirectHop — creates a pe-redirect hop for flow path injection
+// buildPeRedirectHop: creates a pe-redirect hop for flow path injection
 // ---------------------------------------------------------------------------
 export function buildPeRedirectHop(hopN, pe, state) {
   var peName = pe.name || pe.id || 'PE';
@@ -359,7 +359,7 @@ export function buildPeRedirectHop(hopN, pe, state) {
 }
 
 // ---------------------------------------------------------------------------
-// resolveClickTarget — map an SVG element to {type, id}
+// resolveClickTarget: map an SVG element to {type, id}
 // ---------------------------------------------------------------------------
 export function resolveClickTarget(el, ctx, buildResTreeFn) {
   if (!ctx) return null;
@@ -401,7 +401,7 @@ export function resolveClickTarget(el, ctx, buildResTreeFn) {
 }
 
 // ---------------------------------------------------------------------------
-// evaluateNsgHop — evaluate a single NSG (NIC or subnet level) and produce a hop
+// evaluateNsgHop: evaluate a single NSG (NIC or subnet level) and produce a hop
 // Returns { hop, action, detail, rule }
 // ---------------------------------------------------------------------------
 function evaluateNsgHop(nsg, direction, protocol, port, srcIp, dstIp, vnetPrefixes, opts) {
@@ -426,7 +426,7 @@ function evaluateNsgHop(nsg, direction, protocol, port, srcIp, dstIp, vnetPrefix
 }
 
 // ---------------------------------------------------------------------------
-// evaluateUdrHop — evaluate UDR for a destination and produce a hop
+// evaluateUdrHop: evaluate UDR for a destination and produce a hop
 // ---------------------------------------------------------------------------
 function evaluateUdrHop(routeTable, dstIp, vnetPrefixes) {
   if (!routeTable && (!vnetPrefixes || vnetPrefixes.length === 0)) {
@@ -460,7 +460,7 @@ function evaluateUdrHop(routeTable, dstIp, vnetPrefixes) {
 }
 
 // ---------------------------------------------------------------------------
-// traceInternetToResource — path from Internet to a resource
+// traceInternetToResource: path from Internet to a resource
 // Azure: Internet -> Subnet-NSG-Inbound -> NIC-NSG-Inbound -> Target
 // ---------------------------------------------------------------------------
 export function traceInternetToResource(target, config, ctx, opts) {
@@ -509,7 +509,7 @@ export function traceInternetToResource(target, config, ctx, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// traceResourceToInternet — path from a resource outbound to the Internet
+// traceResourceToInternet: path from a resource outbound to the Internet
 // Azure: Source -> NIC-NSG-Outbound -> Subnet-NSG-Outbound -> UDR -> Internet
 // ---------------------------------------------------------------------------
 export function traceResourceToInternet(source, config, ctx, opts) {
@@ -559,7 +559,7 @@ export function traceResourceToInternet(source, config, ctx, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// traceFlowLeg — single-hop leg evaluation (dispatches to the right tracer)
+// traceFlowLeg: single-hop leg evaluation (dispatches to the right tracer)
 // ---------------------------------------------------------------------------
 export function traceFlowLeg(source, target, config, ctx, opts) {
   if (source.type === 'internet') return traceInternetToResource(target, config, ctx, opts);
@@ -568,7 +568,7 @@ export function traceFlowLeg(source, target, config, ctx, opts) {
 }
 
 // ---------------------------------------------------------------------------
-// traceFlow — main flow evaluation engine (resource-to-resource within VNets)
+// traceFlow: main flow evaluation engine (resource-to-resource within VNets)
 // Azure order:
 //   Same subnet: NIC-NSG-Out -> NIC-NSG-In
 //   Same VNet, different subnet: NIC-NSG-Out -> Subnet-NSG-Out -> UDR -> Subnet-NSG-In -> NIC-NSG-In
@@ -589,7 +589,7 @@ export function traceFlow(source, target, config, ctx) {
 
   path.push({ hop: hopN++, type: 'source', id: srcPos.name || source.id, action: 'allow', detail: 'Source: ' + (srcPos.name || source.id) + ' (' + source.type + ') in subnet ' + (srcPos.subnetId || 'unknown'), subnetId: srcPos.subnetId });
 
-  // Check if target has a Private Endpoint — if so, insert PE redirect hop
+  // Check if target has a Private Endpoint: if so, insert PE redirect hop
   if (tgtPos.isPe) {
     path.push(buildPeRedirectHop(hopN++, { id: target.id, name: tgtPos.name, properties: {} }, 'Approved'));
   } else {
@@ -597,7 +597,7 @@ export function traceFlow(source, target, config, ctx) {
     if (peMatch) {
       path.push(buildPeRedirectHop(hopN++, peMatch.pe, peMatch.state));
       if (peMatch.state !== 'Approved') {
-        path.push({ hop: hopN++, type: 'target', id: tgtPos.name || target.id, action: 'block', detail: 'PE connection is ' + peMatch.state + ' — traffic cannot reach target', subnetId: tgtPos.subnetId });
+        path.push({ hop: hopN++, type: 'target', id: tgtPos.name || target.id, action: 'block', detail: 'PE connection is ' + peMatch.state + ': traffic cannot reach target', subnetId: tgtPos.subnetId });
         return { path: path, blocked: { hop: hopN - 2, reason: 'Private Endpoint connection is ' + peMatch.state, suggestion: 'Approve the PE connection on the target resource' } };
       }
       // Re-resolve target position through PE's subnet
@@ -755,7 +755,7 @@ export function traceFlow(source, target, config, ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// findAlternatePaths — find alternate routes via intermediary resources
+// findAlternatePaths: find alternate routes via intermediary resources
 // ---------------------------------------------------------------------------
 export function findAlternatePaths(source, target, config, ctx) {
   if (!ctx) return [];

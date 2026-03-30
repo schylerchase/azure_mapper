@@ -300,7 +300,7 @@ function _renderClassificationTab(){
   var body=document.getElementById('udashBody');
   var footer=document.getElementById('udashFooter');
   var st=_govDashState;
-  // Toolbar — only rebuild on tab switch
+  // Toolbar: only rebuild on tab switch
   if(_govToolbarTab!=='classification'){
     _govToolbarTab='classification';
     var th='<label>Search</label>';
@@ -439,7 +439,7 @@ function _renderIAMTab(){
   var body=document.getElementById('udashBody');
   var footer=document.getElementById('udashFooter');
   var st=_iamDashState;
-  // Toolbar — only rebuild on tab switch
+  // Toolbar: only rebuild on tab switch
   if(_govToolbarTab!=='iam'){
     _govToolbarTab='iam';
     var th='<label>Search</label>';
@@ -716,7 +716,7 @@ function _openRulesEditor(){
         var mc=countMatches(r);
         h+='<div class="gov-rule-row'+(r.enabled===false?' disabled':'')+((!isValid)?' invalid':'')+'" data-rule-idx="'+i+'">';
         h+='<span class="gov-rule-drag" title="Drag to reorder">⠿</span>';
-        h+='<div class="gov-rule-toggle'+(r.enabled!==false?' on':'')+'" data-toggle-idx="'+i+'" title="'+(r.enabled!==false?'Enabled — click to disable':'Disabled — click to enable')+'"></div>';
+        h+='<div class="gov-rule-toggle'+(r.enabled!==false?' on':'')+'" data-toggle-idx="'+i+'" title="'+(r.enabled!==false?'Enabled: click to disable':'Disabled: click to enable')+'"></div>';
         h+='<input class="pattern'+((!isValid)?' invalid-pattern':'')+'" type="text" value="'+_escHtml(r.pattern)+'" data-field="pattern" placeholder="regex pattern…" title="'+((!isValid)?'Invalid regex!':'Regex pattern')+'">';
         h+='<select data-field="scope" style="display:none"><option value="vnet"'+(r.scope==='vnet'?' selected':'')+'>VNet Name</option><option value="type"'+(r.scope==='type'?' selected':'')+'>Type</option><option value="name"'+(r.scope==='name'?' selected':'')+'>Name</option></select>';
         h+='<select data-field="tier"><option value="critical"'+(r.tier==='critical'?' selected':'')+'>Critical</option><option value="high"'+(r.tier==='high'?' selected':'')+'>High</option><option value="medium"'+(r.tier==='medium'?' selected':'')+'>Medium</option><option value="low"'+(r.tier==='low'?' selected':'')+'>Low</option></select>';
@@ -862,7 +862,7 @@ function _openRulesEditor(){
     _govToolbarTab=null;
     overlay.remove();
     _renderClassificationTab();
-    _showToast('Rules applied — '+_classificationData.length+' resources re-classified');
+    _showToast('Rules applied: '+_classificationData.length+' resources re-classified');
   });
 }
 

@@ -1,5 +1,5 @@
-// Design Mode — pure logic, state, constants, and validation engine
-// Azure Network Mapper — rewritten from AWS design mode for Azure VNet/subnet constraints
+// Design Mode: pure logic, state, constants, and validation engine
+// Azure Network Mapper: rewritten from AWS design mode for Azure VNet/subnet constraints
 // DOM-dependent functions (showDesignForm, renderChangeLog, injectDesignToolbar,
 // exportDesignPlan) remain inline in index.html.
 
@@ -156,7 +156,7 @@ export function validateDesignChange(change, ctx) {
       errors.push('VNet address prefix must be /8 to /29, got /' + prefix);
     const isRfc1918 = _azureConstraints.vnet.rfc1918.some(r => cidrContains(r, p.addressPrefix));
     const isCgnat = cidrContains(_azureConstraints.vnet.cgnat, p.addressPrefix);
-    if (!isRfc1918 && !isCgnat) warnings.push('CIDR ' + p.addressPrefix + ' is not RFC 1918 or CGNAT range — verify this is intentional for public IP usage');
+    if (!isRfc1918 && !isCgnat) warnings.push('CIDR ' + p.addressPrefix + ' is not RFC 1918 or CGNAT range: verify this is intentional for public IP usage');
     const isReserved = _azureConstraints.vnet.reservedPrefixes.some(r => cidrOverlap(p.addressPrefix, r));
     if (isReserved) errors.push('Address prefix ' + p.addressPrefix + ' overlaps with a reserved range');
     vnets.forEach(v => {
@@ -210,7 +210,7 @@ export function validateDesignChange(change, ctx) {
       const newPrefix = prefix + 1;
       const usable = Math.pow(2, 32 - newPrefix) - _azureConstraints.subnet.reservedIps;
       warnings.push('Each half: /' + newPrefix + ' = ' + usable + ' usable IPs');
-      if (usable < 8) warnings.push('Very small subnets — limited IP capacity');
+      if (usable < 8) warnings.push('Very small subnets: limited IP capacity');
     }
     const resources = ctx ? (ctx.resourcesBySub || {})[change.target.subnetId] || [] : [];
     if (resources.length) warnings.push(resources.length + ' resource(s) will require IP-based migration');
@@ -238,7 +238,7 @@ export function validateDesignChange(change, ctx) {
         warnings.push('Exceeds limit of ' + _azureConstraints.routeTable.maxRoutesPerTable + ' routes per table');
     }
     if (dest === '0.0.0.0/0' && p.nextHopType === 'Internet')
-      warnings.push('This will route all internet traffic directly — ensure NSG rules are appropriate');
+      warnings.push('This will route all internet traffic directly: ensure NSG rules are appropriate');
   }
 
   if (change.action === 'add_nsg') {
@@ -252,7 +252,7 @@ export function validateDesignChange(change, ctx) {
       if (r.properties?.sourceAddressPrefix === '*' && r.properties?.access === 'Allow') {
         const port = r.properties?.destinationPortRange;
         if (port !== '80' && port !== '443')
-          warnings.push('Rule "' + (r.name || 'unnamed') + '" allows all sources (*) on port ' + port + ' — consider restricting');
+          warnings.push('Rule "' + (r.name || 'unnamed') + '" allows all sources (*) on port ' + port + ': consider restricting');
       }
     });
   }
@@ -279,7 +279,7 @@ export function validateDesignChange(change, ctx) {
       const affectedSubs = subnets.filter(s =>
         (s.properties?.natGateway?.id || s.natGatewayId) === t.resourceId
       );
-      if (affectedSubs.length) warnings.push(affectedSubs.length + ' subnet(s) reference this NAT Gateway — they will lose outbound connectivity');
+      if (affectedSubs.length) warnings.push(affectedSubs.length + ' subnet(s) reference this NAT Gateway: they will lose outbound connectivity');
     }
     if (t.resourceType === 'subnet') {
       const resources = ctx ? (ctx.resourcesBySub || {})[t.resourceId] || [] : [];
@@ -289,7 +289,7 @@ export function validateDesignChange(change, ctx) {
       const affectedSubs = subnets.filter(s =>
         (s.properties?.networkSecurityGroup?.id || s.nsgId) === t.resourceId
       );
-      if (affectedSubs.length) warnings.push(affectedSubs.length + ' subnet(s) reference this NSG — they will lose security rules');
+      if (affectedSubs.length) warnings.push(affectedSubs.length + ' subnet(s) reference this NSG: they will lose security rules');
     }
   }
 
@@ -361,7 +361,7 @@ export function validateDesignState(changes, ctx) {
       localPrefixes.forEach(lp => {
         remotePrefixes.forEach(rp => {
           if (cidrOverlap(lp, rp))
-            errors.push('VNet Peering ' + gn(p) + ' — address spaces overlap: ' + lp + ' / ' + rp);
+            errors.push('VNet Peering ' + gn(p) + ': address spaces overlap: ' + lp + ' / ' + rp);
         });
       });
       const pair = [p.localVnetId, p.remoteVnetId].filter(Boolean).sort().join(':');
@@ -372,14 +372,14 @@ export function validateDesignState(changes, ctx) {
     (ctx.subnets || []).forEach(s => {
       const hasNsg = s.properties?.networkSecurityGroup || s.nsgId;
       if (!hasNsg && s.name !== 'GatewaySubnet')
-        warnings.push('Subnet ' + gn(s) + ' has no NSG attached — traffic is unrestricted');
+        warnings.push('Subnet ' + gn(s) + ' has no NSG attached: traffic is unrestricted');
     });
   }
   return { valid: errors.length === 0, errors, warnings, stats };
 }
 
 // ---------------------------------------------------------------------------
-// Design Apply Functions — mutate textarea JSON via getter/setter callbacks
+// Design Apply Functions: mutate textarea JSON via getter/setter callbacks
 //
 // Each function receives:
 //   ch        - the design change object
@@ -789,8 +789,8 @@ function _applyRemoveResource(ch, getTa, setTa) {
 /**
  * Map of action names to apply functions.
  * Each apply fn signature: (change, getTa, setTa)
- *   getTa(id) => string   — read textarea value
- *   setTa(id, val)        — write textarea value
+ *   getTa(id) => string  : read textarea value
+ *   setTa(id, val)       : write textarea value
  */
 export const _designApplyFns = {
   add_vnet: _applyAddVnet,
@@ -820,7 +820,7 @@ export function _generateCLI(ch) {
 
   if (ch.action === 'add_vnet') {
     cmds.push(`az network vnet create --resource-group ${rg} --name ${ch.params.name || 'new-vnet'} --address-prefixes ${ch.params.addressPrefix} --location ${loc}`);
-    cmds.push('# Default NSG is NOT created automatically — create one explicitly if needed');
+    cmds.push('# Default NSG is NOT created automatically: create one explicitly if needed');
   }
 
   if (ch.action === 'add_subnet') {
@@ -936,9 +936,9 @@ export function _generateWarnings() {
   const splits = _designChanges.filter(c => c.action === 'split_subnet');
   if (splits.length) w.push(splits.length + ' subnet split(s) require resource migration');
   const removes = _designChanges.filter(c => c.action === 'remove_resource');
-  if (removes.length) w.push(removes.length + ' resource removal(s) — verify dependencies first');
+  if (removes.length) w.push(removes.length + ' resource removal(s): verify dependencies first');
   const noNsg = _designChanges.filter(c => c.action === 'add_subnet' && !c.params.nsgId);
-  if (noNsg.length) w.push(noNsg.length + ' new subnet(s) without NSG — consider attaching one');
+  if (noNsg.length) w.push(noNsg.length + ' new subnet(s) without NSG: consider attaching one');
   return w;
 }
 
@@ -985,7 +985,7 @@ export function getZoneCount(location) {
 // ---------------------------------------------------------------------------
 // Window bridge: expose to inline code that still calls these functions
 // ---------------------------------------------------------------------------
-// Controlled access to design state — prevents unaudited external mutations
+// Controlled access to design state: prevents unaudited external mutations
 Object.defineProperty(window, '_designMode', {
   get() { return _designMode; },
   set(v) { _designMode = v; },

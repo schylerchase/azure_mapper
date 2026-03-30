@@ -1,5 +1,5 @@
-// Multi-Tenant / Multi-Subscription — state and pure logic
-// Azure Network Mapper — multi-tenant support for Azure hierarchy:
+// Multi-Tenant / Multi-Subscription: state and pure logic
+// Azure Network Mapper: multi-tenant support for Azure hierarchy:
 //   Tenant (Azure AD) > Management Group > Subscription > Resource Group > Resources
 // Supports Azure Lighthouse delegated resource management.
 // DOM rendering functions remain inline until modernized with dom-builders.js.

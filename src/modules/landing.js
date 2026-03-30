@@ -970,7 +970,7 @@ function renderLandingZoneMap(ctx){
       const vpcIdx=vpcGwIndex[g.vid]=(vpcGwIndex[g.vid]||0)+1;
       const routeLevel=baseRouteLevel-i*8;
       const exitX=g.sgX+25+vpcIdx*10;
-      // Path stops at the shared trunk X — no more flagpole
+      // Path stops at the shared trunk X: no more flagpole
       const netPath=`M${g.sgX+16},${g.sgY} L${exitX},${g.sgY} L${exitX},${routeLevel} L${spokeTrunkX},${routeLevel}`;
       const pb=lzStructG.append('path')
         .attr('class','route-trunk animated')

@@ -154,7 +154,7 @@ export function getPortalUrl(resourceId, env = _currentCloud) {
  *
  * Note: Both GCC High and DoD share the same management endpoint
  * (usgovcloudapi.net), so this function returns CLOUDS.GCC_HIGH for
- * that endpoint — callers that need DoD precision should check the
+ * that endpoint: callers that need DoD precision should check the
  * subscription's offer ID or tenant domain out-of-band.
  *
  * @param {string} managementUrl

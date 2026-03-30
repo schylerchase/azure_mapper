@@ -1,4 +1,4 @@
-// Timeline & Annotations — state and pure logic
+// Timeline & Annotations: state and pure logic
 // DOM rendering functions (_renderTimeline, _renderNotesPanel, etc.)
 // remain inline until modernized with dom-builders.js in Phase 5.
 
@@ -16,8 +16,8 @@ let annotationAuthor = '';
 
 // Initialize from localStorage
 try { const s = localStorage.getItem(SNAP_KEY); if (s) snapshots = JSON.parse(s); } catch (e) { snapshots = []; }
-try { const s = localStorage.getItem(NOTES_KEY); if (s) annotations = JSON.parse(s); } catch (e) { /* Silent OK — localStorage may be disabled */ }
-try { annotationAuthor = localStorage.getItem('azureMapper_note_author') || ''; } catch (e) { /* Silent OK — localStorage may be disabled */ }
+try { const s = localStorage.getItem(NOTES_KEY); if (s) annotations = JSON.parse(s); } catch (e) { /* Silent OK: localStorage may be disabled */ }
+try { annotationAuthor = localStorage.getItem('azureMapper_note_author') || ''; } catch (e) { /* Silent OK: localStorage may be disabled */ }
 
 // Max snapshots (Electron gets 5, web gets constant)
 const maxSnapshots = (typeof window !== 'undefined' && window.electronAPI) ? 5 : MAX_SNAPSHOTS;

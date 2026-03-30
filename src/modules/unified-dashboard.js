@@ -1,4 +1,4 @@
-// Unified Dashboard — state and pure logic
+// Unified Dashboard: state and pure logic
 // DOM rendering functions (openUnifiedDash, _switchUdashTab, _renderBUDRDash, etc.)
 // remain inline until modernized in Phase 5.
 

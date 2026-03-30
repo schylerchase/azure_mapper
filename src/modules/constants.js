@@ -1,5 +1,5 @@
 // Core constants used across the application
-// Azure Network Mapper — rewritten from AWS equivalents
+// Azure Network Mapper: rewritten from AWS equivalents
 
 // Severity ordering for sorting findings
 export const SEV_ORDER = {
@@ -79,7 +79,7 @@ export const PRIORITY_META = {
   }
 };
 
-// Alias for backward compatibility — widely used across app-core.js, report-builder.js, etc.
+// Alias for backward compatibility: widely used across app-core.js, report-builder.js, etc.
 // TODO: Consolidate to PRIORITY_META once all inline references are migrated
 export const TIER_META = PRIORITY_META;
 

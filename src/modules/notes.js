@@ -1,5 +1,5 @@
 // ============================================================================
-// DEPRECATED — DOM rendering only.
+// DEPRECATED: DOM rendering only.
 //
 // Pure annotation logic (addAnnotation, updateAnnotation, deleteAnnotation,
 // getAllNotes, saveAnnotations, etc.) now lives in timeline.js and is the
@@ -38,7 +38,7 @@ function deleteAnnotation(resourceId,noteIndex){
   _renderNoteBadges();_renderNotesPanel();
 }
 
-// === DOM rendering functions (kept — coupled to app-core.js globals) ===
+// === DOM rendering functions (kept: coupled to app-core.js globals) ===
 
 function _getResourceName(rid){
   if(!_rlCtx)return rid;
@@ -188,7 +188,7 @@ function _renderComplianceBadges(){
   const vnetRollup={};
   Object.entries(lookup).forEach(([rid,data])=>{
     const el=_mapG.node().querySelector('[data-vnet-id="'+rid+'"],[data-subnet-id="'+rid+'"],[data-gwid="'+rid+'"],[data-id="'+rid+'"]');
-    if(el)return; // Has its own node — badge goes directly on it
+    if(el)return; // Has its own node: badge goes directly on it
     // Try to find VNet for this resource
     let vnetId=null;
     if(_rlCtx){
@@ -212,7 +212,7 @@ function _renderComplianceBadges(){
     const el=_mapG.node().querySelector('[data-vnet-id="'+rid+'"],[data-subnet-id="'+rid+'"],[data-gwid="'+rid+'"],[data-id="'+rid+'"]');
     if(!el)return;
     const bb=el.getBBox();
-    // Offset from note badges — place on opposite corner (top-left)
+    // Offset from note badges: place on opposite corner (top-left)
     const badge=nodesLayer.append('g').attr('class','comp-badge sev-'+data.worst).attr('transform','translate('+(bb.x+8)+','+(bb.y+4)+')').style('cursor','pointer');
     badge.node()._compRid=rid;
     badge.append('circle').attr('r',7);
@@ -230,7 +230,7 @@ function _renderComplianceBadges(){
       const existing=lookup[vnetId];
       data.count+=existing.count;
       if((sevOrder[existing.worst]||9)<(sevOrder[data.worst]||9))data.worst=existing.worst;
-      // Remove the direct badge we already placed — we'll replace with merged
+      // Remove the direct badge we already placed: we'll replace with merged
       _mapG.selectAll('.comp-badge').filter(function(){return d3.select(this).attr('transform')&&this._compRid===vnetId}).remove();
     }
     const el=_mapG.node().querySelector('[data-vnet-id="'+vnetId+'"]');

@@ -1,6 +1,6 @@
 // Network topology visualization and D3 graph rendering
 // Handles VNet diagram layout, subnet positioning, and resource visualization
-// TODO: convert to ES module — export renderMap, _renderMapInner and import
+// TODO: convert to ES module: export renderMap, _renderMapInner and import
 // dependencies (d3, _rlCtx, _designMode, etc.) instead of reading globals
 
 // --- Label collision detection & resolution utilities ---
@@ -75,7 +75,7 @@ function _renderMapInner(){
   document.getElementById('emptyState').style.display='none';
   document.getElementById('landingDash').style.display='none';
 
-  // parse all Azure resource inputs (cached — skips JSON.parse if textarea unchanged)
+  // parse all Azure resource inputs (cached: skips JSON.parse if textarea unchanged)
   let vnets=ext(_cachedParse('in_vnets'),['value']);
   let subnets=ext(_cachedParse('in_subnets'),['value']);
   let udrs=ext(_cachedParse('in_udrs'),['value']);
@@ -139,7 +139,7 @@ function _renderMapInner(){
       document.getElementById('landingDash').style.display='none';
       document.getElementById('emptyState').style.display='flex';
       document.getElementById('emptyTitle').textContent='Design Mode';
-      document.getElementById('emptyDesc').textContent='No infrastructure loaded — create your first VNet to start designing';
+      document.getElementById('emptyDesc').textContent='No infrastructure loaded: create your first VNet to start designing';
       const eBtn=document.getElementById('emptyDesignBtn');
       eBtn.style.display='inline-block';
       eBtn.onclick=function(){showDesignForm('add_vnet',{})};
@@ -151,7 +151,7 @@ function _renderMapInner(){
     document.getElementById('emptyState').style.display='none';document.getElementById('landingDash').style.display='flex';svg.style('display','none');return;
   }
 
-  // lookups — map subnets to their parent VNet via ARM id hierarchy
+  // lookups: map subnets to their parent VNet via ARM id hierarchy
   const subByVnet={};
   subnets.forEach(s=>{
     // Azure subnets have id like /subscriptions/.../virtualNetworks/{vnetName}/subnets/{subName}
@@ -190,7 +190,7 @@ function _renderMapInner(){
   // Public: no UDR overriding default route, or has NAT gateway, or has public IP
   subnets.forEach(s=>{
     if(!subUDR[s.id]){
-      // No UDR means default system route to Internet — public by convention
+      // No UDR means default system route to Internet: public by convention
       pubSubs.add(s.id);
     }
     // Special subnet names for Azure services
@@ -227,7 +227,7 @@ function _renderMapInner(){
     gwSet.set(g.id,{type:'vwan',id:g.id,vnetId:'shared'});
   });
 
-  // Private Endpoints — placed in subnets, tracked for summary nodes
+  // Private Endpoints: placed in subnets, tracked for summary nodes
   privateEndpoints.forEach(g=>{
     const subId=g.properties?.subnet?.id||'';
     const vnetId=subId?subId.split('/subnets/')[0]:'unk';
@@ -774,7 +774,7 @@ function _renderMapInner(){
       if(el.hasAttribute('data-net-vert')) hasNet=true;
       clonePathToOl(el);
     });
-    // Also clone paths with just data-gid (no data-vid) — e.g. bus-bar-to-gateway verticals
+    // Also clone paths with just data-gid (no data-vid): e.g. bus-bar-to-gateway verticals
     // (already included above since querySelectorAll matches all with data-gid)
 
     if(hasNet){
@@ -875,12 +875,12 @@ function _renderMapInner(){
       // 1. Clone this subnet's route-lines + junctions for this gateway
       sNode.querySelectorAll('[data-gid="'+gid+'"][data-sid="'+sid+'"]').forEach(el=>clonePathToOl(el));
 
-      // 2. Clone trunk/L-bend/junction paths — but TRIM vertical trunks to subnet↔gateway range
+      // 2. Clone trunk/L-bend/junction paths: but TRIM vertical trunks to subnet↔gateway range
       // First, find the L-bend/connector Y to use as trim target
       let bendY=gwY;
       sNode.querySelectorAll('[data-gid="'+gid+'"][data-vid="'+subVid+'"]:not([data-sid]):not([data-net-vert])').forEach(el=>{
         if(el.style.strokeDasharray==='none'&&!el.classList.contains('route-junction')){
-          // This is the L-bend or L-connector — extract its Y
+          // This is the L-bend or L-connector: extract its Y
           const bm=el.getAttribute('d').match(/^M[\d.]+,([\d.]+)/);
           if(bm) bendY=parseFloat(bm[1]);
         }
@@ -1815,7 +1815,7 @@ function _renderMapInner(){
     
     // Draw NET connections: L-shaped paths from bus-bar to each Azure Firewall.
     // Each Firewall gets its own L-bend: horizontal from NET node at bus-bar Y,
-    // then vertical down to Firewall. No continuous bus bar — eliminates dead ends.
+    // then vertical down to Firewall. No continuous bus bar: eliminates dead ends.
     const connectedFwIds=new Set(Object.keys(tG).map(k=>k.split('|')[0]));
     const connectedFwList=fwGwList.filter(p=>connectedFwIds.has(p.gw.id));
     // Group by X to handle stacked gateways at same position

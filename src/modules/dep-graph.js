@@ -1,4 +1,4 @@
-// Dependency Graph / Blast Radius — pure logic
+// Dependency Graph / Blast Radius: pure logic
 // Builds resource dependency graphs and computes blast radius for impact analysis.
 // DOM display functions (showDependencies, blast highlighting) remain inline
 // until they can be modernized with dom-builders.js in Phase 5.

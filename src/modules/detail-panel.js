@@ -405,7 +405,7 @@ function _dpTypeBadge(type){
 }
 
 // === SEARCH -> DETAIL PANEL DISPATCH ===
-// NOTE: innerHTML usage here renders pre-escaped content via esc() and _escHtml() — no raw user input
+// NOTE: innerHTML usage here renders pre-escaped content via esc() and _escHtml(): no raw user input
 var _dpSkipPush=false;
 function _openDetailForSearch(type,id){
   if(!_rlCtx) return;
@@ -578,7 +578,7 @@ function _openDetailForSearch(type,id){
       h+='</table></div></div>';
     }
   } else if(type==='Note'){
-    // For notes, just zoom — no extra panel
+    // For notes, just zoom: no extra panel
     return;
   } else {
     return; // Unknown type, no panel
@@ -595,7 +595,7 @@ const _MAX_SNAPSHOTS=30;
 let _snapshots=[];
 let _viewingHistory=false;
 let _currentSnapshot=null;// saved current state when viewing history
-// TODO: deduplicate — canonical snapshot/timeline logic is in timeline.js
+// TODO: deduplicate: canonical snapshot/timeline logic is in timeline.js
 try{const s=localStorage.getItem(_SNAP_KEY);if(s)_snapshots=JSON.parse(s)}catch(e){_snapshots=[]}
 function _saveSnapshots(){try{localStorage.setItem(_SNAP_KEY,JSON.stringify(_snapshots))}catch(e){
   // If storage full, trim oldest half

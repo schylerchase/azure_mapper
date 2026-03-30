@@ -210,7 +210,7 @@ export function analyzeRoleAssignments(assignments, definitions) {
           framework: 'RBAC',
           resource: props.principalId || '',
           resourceName: props.principalDisplayName || props.principalId || '',
-          message: roleName + ' assigned at management group scope — broad blast radius',
+          message: roleName + ' assigned at management group scope: broad blast radius',
           remediation: 'Assign roles at the most restrictive scope needed (subscription or resource group)'
         });
       }
@@ -253,7 +253,7 @@ export function analyzeRoleAssignments(assignments, definitions) {
         framework: 'RBAC',
         resource: pid,
         resourceName: firstProps.principalDisplayName || pid,
-        message: 'Principal has ' + aList.length + ' direct role assignments — consider using groups',
+        message: 'Principal has ' + aList.length + ' direct role assignments: consider using groups',
         remediation: 'Use Azure AD groups to consolidate role assignments'
       });
     }
@@ -338,7 +338,7 @@ export function findOrphanedAssignments(assignments) {
         framework: 'RBAC',
         resource: props.principalId || a.id || '',
         resourceName: props.principalId || 'Unknown Principal',
-        message: 'Orphaned role assignment — principal no longer exists in Azure AD',
+        message: 'Orphaned role assignment: principal no longer exists in Azure AD',
         remediation: 'Remove the orphaned assignment: az role assignment delete --ids ' + (a.id || '$ASSIGNMENT_ID')
       });
     }

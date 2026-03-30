@@ -1,4 +1,4 @@
-// Safe DOM builder utilities — replaces string concatenation patterns
+// Safe DOM builder utilities: replaces string concatenation patterns
 // with structured DOM API calls that auto-escape text content.
 
 import { esc } from './utils.js';

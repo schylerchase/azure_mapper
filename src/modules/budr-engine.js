@@ -14,7 +14,7 @@ function _runClassificationEngine(ctx) { if (typeof window.runClassificationEngi
 const _BUDR_STRATEGY={hot:'Hot',warm:'Warm',pilot:'Pilot Light',cold:'Cold'};
 const _BUDR_STRATEGY_ORDER={hot:0,warm:1,pilot:2,cold:3};
 const _BUDR_STRATEGY_LEGEND=[
-  {k:'critical',label:'Critical (Hot)',color:'#ef4444',icon:'🔴',desc:'Active-active — full replica running at all times. Near-zero RTO & RPO.'},
+  {k:'critical',label:'Critical (Hot)',color:'#ef4444',icon:'🔴',desc:'Active-active: full replica running at all times. Near-zero RTO & RPO.'},
   {k:'high',label:'High (Warm)',color:'#f59e0b',icon:'🟡',desc:'Scaled-down replica running. Scale up on failover. Minutes to recover.'},
   {k:'medium',label:'Medium (Pilot Light)',color:'#6366f1',icon:'🟣',desc:'Data replicated continuously, compute stopped. Spin up on failover. ~10-30 min.'},
   {k:'low',label:'Low (Cold)',color:'#64748b',icon:'⚪',desc:'Backups only, no standby. Rebuild from scratch. Hours to recover.'}
@@ -46,28 +46,28 @@ const _BUDR_RTO_RPO={
 // Estimated minutes for each BUDR profile (for tier compliance comparison)
 // rtoWhy/rpoWhy: justification for estimated values
 const _BUDR_EST_MINUTES={
-  sql_zone_redundant:{rto:5,rpo:1,rtoWhy:'Zone-redundant failover completes in 1-2 min; DNS propagation adds ~3 min',rpoWhy:'Synchronous replication across zones — data loss limited to in-flight transactions (~seconds)'},
-  sql_single_backup:{rto:30,rpo:1440,rtoWhy:'Restore from automated backup requires server provisioning + data load (~20-30 min)',rpoWhy:'Automated backups run daily — worst case RPO is 24 hours since last backup window'},
-  sql_no_backup:{rto:480,rpo:Infinity,rtoWhy:'No backups — requires manual rebuild from application layer or external source',rpoWhy:'No backup mechanism configured — all data since creation is unrecoverable'},
-  vm_vmss:{rto:3,rpo:0,rtoWhy:'VMSS health probe detects failure (1-2 min) and launches replacement from image (~1-2 min)',rpoWhy:'Stateless compute — no persistent data on instance; state lives in external stores'},
-  vm_disk_snap:{rto:15,rpo:10080,rtoWhy:'New VM creation + managed disk restore from snapshot (~10-15 min depending on disk size)',rpoWhy:'Snapshot frequency is typically weekly — worst case RPO is 7 days since last snapshot'},
-  vm_standalone:{rto:480,rpo:Infinity,rtoWhy:'No snapshot — requires full OS install, config, and application deployment from scratch',rpoWhy:'No backup mechanism — managed disk data is unrecoverable if VM or disk is lost'},
-  container_multi:{rto:1,rpo:0,rtoWhy:'Container group scheduler replaces failed containers in ~30-60 sec from registry image',rpoWhy:'Stateless containers — no persistent data; state lives in external stores (SQL, Storage, etc.)'},
-  container_single:{rto:5,rpo:0,rtoWhy:'Single container replacement takes ~2-5 min including image pull and health check',rpoWhy:'Stateless containers — no persistent data; state lives in external stores'},
-  function_app:{rto:0,rpo:0,rtoWhy:'Fully managed — Azure handles all availability; cold start adds <1 sec latency',rpoWhy:'Stateless execution — no persistent data; code stored in Storage Account'},
-  redis_zone_redundant:{rto:2,rpo:0.1,rtoWhy:'Zone-redundant replica promotion takes 1-2 min; DNS endpoint updates automatically',rpoWhy:'Async replication lag is typically <100ms — data loss limited to replication lag'},
-  redis_single:{rto:15,rpo:10080,rtoWhy:'Restore from RDB snapshot requires new cache provisioning + data load (~10-15 min)',rpoWhy:'Snapshot frequency is typically daily/weekly — worst case RPO equals snapshot interval'},
-  redis_no_snap:{rto:15,rpo:Infinity,rtoWhy:'New cache provisioning takes ~10-15 min but cache starts cold (empty)',rpoWhy:'No snapshots — entire cache contents are lost; must be rebuilt from source of truth'},
-  synapse_snap:{rto:30,rpo:1440,rtoWhy:'Restore from snapshot creates new workspace (~20-30 min depending on data size)',rpoWhy:'Automated snapshots run periodically by default — worst case RPO is snapshot interval'},
-  synapse_multi:{rto:15,rpo:5,rtoWhy:'Zone-redundant workspace redistributes work to surviving zones (~10-15 min recovery)',rpoWhy:'Synchronous replication across zones — RPO limited to in-flight queries (~minutes)'},
-  synapse_none:{rto:480,rpo:Infinity,rtoWhy:'No snapshots — requires full data reload from Storage Account/source systems (hours to days)',rpoWhy:'No backup mechanism — all warehouse data is unrecoverable'},
-  agw_zone_redundant:{rto:0,rpo:0,rtoWhy:'Fully managed zone-redundant — Azure handles node replacement transparently',rpoWhy:'Stateless gateway — no data to lose; config stored in Azure control plane'},
-  agw_single_zone:{rto:5,rpo:0,rtoWhy:'Single-zone App Gateway may need DNS failover if zone goes down (~3-5 min)',rpoWhy:'Stateless gateway — no data to lose'},
-  storage_grs:{rto:0,rpo:0,rtoWhy:'Geo-redundant storage replicates across paired regions — always available',rpoWhy:'Objects replicated synchronously within region and asynchronously to paired region'},
+  sql_zone_redundant:{rto:5,rpo:1,rtoWhy:'Zone-redundant failover completes in 1-2 min; DNS propagation adds ~3 min',rpoWhy:'Synchronous replication across zones: data loss limited to in-flight transactions (~seconds)'},
+  sql_single_backup:{rto:30,rpo:1440,rtoWhy:'Restore from automated backup requires server provisioning + data load (~20-30 min)',rpoWhy:'Automated backups run daily: worst case RPO is 24 hours since last backup window'},
+  sql_no_backup:{rto:480,rpo:Infinity,rtoWhy:'No backups: requires manual rebuild from application layer or external source',rpoWhy:'No backup mechanism configured: all data since creation is unrecoverable'},
+  vm_vmss:{rto:3,rpo:0,rtoWhy:'VMSS health probe detects failure (1-2 min) and launches replacement from image (~1-2 min)',rpoWhy:'Stateless compute: no persistent data on instance; state lives in external stores'},
+  vm_disk_snap:{rto:15,rpo:10080,rtoWhy:'New VM creation + managed disk restore from snapshot (~10-15 min depending on disk size)',rpoWhy:'Snapshot frequency is typically weekly: worst case RPO is 7 days since last snapshot'},
+  vm_standalone:{rto:480,rpo:Infinity,rtoWhy:'No snapshot: requires full OS install, config, and application deployment from scratch',rpoWhy:'No backup mechanism: managed disk data is unrecoverable if VM or disk is lost'},
+  container_multi:{rto:1,rpo:0,rtoWhy:'Container group scheduler replaces failed containers in ~30-60 sec from registry image',rpoWhy:'Stateless containers: no persistent data; state lives in external stores (SQL, Storage, etc.)'},
+  container_single:{rto:5,rpo:0,rtoWhy:'Single container replacement takes ~2-5 min including image pull and health check',rpoWhy:'Stateless containers: no persistent data; state lives in external stores'},
+  function_app:{rto:0,rpo:0,rtoWhy:'Fully managed: Azure handles all availability; cold start adds <1 sec latency',rpoWhy:'Stateless execution: no persistent data; code stored in Storage Account'},
+  redis_zone_redundant:{rto:2,rpo:0.1,rtoWhy:'Zone-redundant replica promotion takes 1-2 min; DNS endpoint updates automatically',rpoWhy:'Async replication lag is typically <100ms: data loss limited to replication lag'},
+  redis_single:{rto:15,rpo:10080,rtoWhy:'Restore from RDB snapshot requires new cache provisioning + data load (~10-15 min)',rpoWhy:'Snapshot frequency is typically daily/weekly: worst case RPO equals snapshot interval'},
+  redis_no_snap:{rto:15,rpo:Infinity,rtoWhy:'New cache provisioning takes ~10-15 min but cache starts cold (empty)',rpoWhy:'No snapshots: entire cache contents are lost; must be rebuilt from source of truth'},
+  synapse_snap:{rto:30,rpo:1440,rtoWhy:'Restore from snapshot creates new workspace (~20-30 min depending on data size)',rpoWhy:'Automated snapshots run periodically by default: worst case RPO is snapshot interval'},
+  synapse_multi:{rto:15,rpo:5,rtoWhy:'Zone-redundant workspace redistributes work to surviving zones (~10-15 min recovery)',rpoWhy:'Synchronous replication across zones: RPO limited to in-flight queries (~minutes)'},
+  synapse_none:{rto:480,rpo:Infinity,rtoWhy:'No snapshots: requires full data reload from Storage Account/source systems (hours to days)',rpoWhy:'No backup mechanism: all warehouse data is unrecoverable'},
+  agw_zone_redundant:{rto:0,rpo:0,rtoWhy:'Fully managed zone-redundant: Azure handles node replacement transparently',rpoWhy:'Stateless gateway: no data to lose; config stored in Azure control plane'},
+  agw_single_zone:{rto:5,rpo:0,rtoWhy:'Single-zone App Gateway may need DNS failover if zone goes down (~3-5 min)',rpoWhy:'Stateless gateway: no data to lose'},
+  storage_grs:{rto:0,rpo:0,rtoWhy:'Geo-redundant storage replicates across paired regions: always available',rpoWhy:'Objects replicated synchronously within region and asynchronously to paired region'},
   storage_ra_grs:{rto:0,rpo:0,rtoWhy:'Read-access geo-redundant storage provides secondary read endpoint',rpoWhy:'Full GRS replication with additional read availability in secondary region'},
-  storage_lrs:{rto:0,rpo:Infinity,rtoWhy:'Locally redundant storage is always available within a region but not across regions',rpoWhy:'No geo-replication — data loss possible if entire region is lost'},
-  disk_snapshot:{rto:15,rpo:10080,rtoWhy:'Create new managed disk from snapshot + attach to VM (~10-15 min)',rpoWhy:'Snapshot frequency is typically weekly — worst case RPO is 7 days since last snapshot'},
-  disk_no_snap:{rto:480,rpo:Infinity,rtoWhy:'No snapshots — disk data is unrecoverable if disk fails',rpoWhy:'No backup mechanism — all disk data is permanently lost on failure'}
+  storage_lrs:{rto:0,rpo:Infinity,rtoWhy:'Locally redundant storage is always available within a region but not across regions',rpoWhy:'No geo-replication: data loss possible if entire region is lost'},
+  disk_snapshot:{rto:15,rpo:10080,rtoWhy:'Create new managed disk from snapshot + attach to VM (~10-15 min)',rpoWhy:'Snapshot frequency is typically weekly: worst case RPO is 7 days since last snapshot'},
+  disk_no_snap:{rto:480,rpo:Infinity,rtoWhy:'No snapshots: disk data is unrecoverable if disk fails',rpoWhy:'No backup mechanism: all disk data is permanently lost on failure'}
 };
 // Classification tier targets in minutes (from compliance policy)
 const _TIER_TARGETS={
@@ -76,13 +76,13 @@ const _TIER_TARGETS={
   medium:{rto:720,rpo:1440,rtoLabel:'12 hours',rpoLabel:'Daily'},
   low:{rto:1440,rpo:10080,rtoLabel:'24 hours',rpoLabel:'Weekly'}
 };
-// Compare estimated restore capability vs tier target — returns compliance status
+// Compare estimated restore capability vs tier target: returns compliance status
 function _budrTierCompliance(profileKey,classTier){
   if(!profileKey||!classTier)return{status:'unknown',issues:[]};
   var est=_BUDR_EST_MINUTES[profileKey];var target=_TIER_TARGETS[classTier];
   if(!est||!target)return{status:'unknown',issues:[]};
   var issues=[];
-  if(est.rpo===Infinity)issues.push({field:'RPO',severity:'critical',msg:'No backup — RPO unrecoverable (target: '+target.rpoLabel+')'});
+  if(est.rpo===Infinity)issues.push({field:'RPO',severity:'critical',msg:'No backup: RPO unrecoverable (target: '+target.rpoLabel+')'});
   else if(est.rpo>target.rpo)issues.push({field:'RPO',severity:'warning',msg:'Est. RPO ~'+_fmtMin(est.rpo)+' exceeds '+classTier+' target of '+target.rpoLabel});
   if(est.rto>target.rto)issues.push({field:'RTO',severity:'warning',msg:'Est. RTO ~'+_fmtMin(est.rto)+' exceeds '+classTier+' target of '+target.rtoLabel});
   var status=issues.some(function(i){return i.severity==='critical'})?'fail':issues.length?'warn':'pass';
@@ -102,7 +102,7 @@ function setBudrOverrides(v) { budrOverrides = v; }
 
 function runBUDRChecks(ctx){
   const f=[];const assessments=[];
-  // Azure resources use .name directly — no Tags[Name] lookup needed
+  // Azure resources use .name directly: no Tags[Name] lookup needed
   const gn=(o)=>o.name||o.id||'unknown';
   // SQL Servers (Azure SQL)
   (ctx.sqlServers||[]).forEach(sql=>{
@@ -115,11 +115,11 @@ function runBUDRChecks(ctx){
     let profile;
     if(hasZoneRedundant&&hasBackup){profile=_BUDR_RTO_RPO.sql_zone_redundant}
     else if(hasBackup){profile=_BUDR_RTO_RPO.sql_single_backup;
-      f.push({severity:'MEDIUM',control:'BUDR-HA-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server not zone-redundant — single point of failure',remediation:'Enable zone-redundant deployment for automatic failover'})}
+      f.push({severity:'MEDIUM',control:'BUDR-HA-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server not zone-redundant: single point of failure',remediation:'Enable zone-redundant deployment for automatic failover'})}
     else{profile=_BUDR_RTO_RPO.sql_no_backup;
       f.push({severity:'CRITICAL',control:'BUDR-BAK-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server has no automated backups (retention=0)',remediation:'Set backupRetentionDays to at least 7'})}
     if(!hasZoneRedundant&&hasBackup)
-      f.push({severity:'HIGH',control:'BUDR-DR-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server single-zone with backups only — extended RTO on zone failure',remediation:'Enable zone-redundant deployment or configure geo-replication'});
+      f.push({severity:'HIGH',control:'BUDR-DR-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server single-zone with backups only: extended RTO on zone failure',remediation:'Enable zone-redundant deployment or configure geo-replication'});
     assessments.push({type:'SQL Server',id,name,profile,signals:{ZoneRedundant:hasZoneRedundant,Backup:hasBackup,BackupDays:backupDays,Encrypted:encrypted,GeoRedundant:geoRedundant}});
   });
   // VMs (Azure Virtual Machines)
@@ -151,9 +151,9 @@ function runBUDRChecks(ctx){
     let profile;
     if(inVMSS){profile=_BUDR_RTO_RPO.vm_vmss}
     else if(hasSnaps){profile=_BUDR_RTO_RPO.vm_disk_snap;
-      f.push({severity:'LOW',control:'BUDR-HA-2',framework:'BUDR',resource:id,resourceName:name,message:'VM not in a VM Scale Set — manual recovery required',remediation:'Deploy behind VMSS or configure Azure Backup for quick recovery'})}
+      f.push({severity:'LOW',control:'BUDR-HA-2',framework:'BUDR',resource:id,resourceName:name,message:'VM not in a VM Scale Set: manual recovery required',remediation:'Deploy behind VMSS or configure Azure Backup for quick recovery'})}
     else{profile=_BUDR_RTO_RPO.vm_standalone;
-      f.push({severity:'HIGH',control:'BUDR-BAK-2',framework:'BUDR',resource:id,resourceName:name,message:'VM standalone with no disk snapshots — unrecoverable on failure',remediation:'Create regular disk snapshots via Azure Backup; consider VMSS'});
+      f.push({severity:'HIGH',control:'BUDR-BAK-2',framework:'BUDR',resource:id,resourceName:name,message:'VM standalone with no disk snapshots: unrecoverable on failure',remediation:'Create regular disk snapshots via Azure Backup; consider VMSS'});
       if(!inVMSS)f.push({severity:'MEDIUM',control:'BUDR-DR-2',framework:'BUDR',resource:id,resourceName:name,message:'VM has no disaster recovery strategy',remediation:'Configure Azure Backup, use VMSS with multiple zones, or take disk snapshots'})}
     assessments.push({type:'VM',id,name,profile,signals:{VMSS:inVMSS,Snapshots:hasSnaps,SnapAgeDays:snapAgeDays,Encrypted:encrypted}});
   });
@@ -165,7 +165,7 @@ function runBUDRChecks(ctx){
     let profile;
     if(multi){profile=_BUDR_RTO_RPO.container_multi}
     else{profile=_BUDR_RTO_RPO.container_single;
-      f.push({severity:'LOW',control:'BUDR-HA-3',framework:'BUDR',resource:id,resourceName:name,message:'Container instance has only '+replicas+' container(s) — no redundancy',remediation:'Deploy multiple container instances across availability zones'})}
+      f.push({severity:'LOW',control:'BUDR-HA-3',framework:'BUDR',resource:id,resourceName:name,message:'Container instance has only '+replicas+' container(s): no redundancy',remediation:'Deploy multiple container instances across availability zones'})}
     assessments.push({type:'Container Instance',id,name,profile,signals:{Containers:replicas,MultiContainer:multi}});
   });
   // Function Apps (inherently resilient)
@@ -181,9 +181,9 @@ function runBUDRChecks(ctx){
     let profile;
     if(zoneRedundant||replicas>0){profile=_BUDR_RTO_RPO.redis_zone_redundant}
     else if(hasSnap){profile=_BUDR_RTO_RPO.redis_single;
-      f.push({severity:'MEDIUM',control:'BUDR-HA-4',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node — failover requires manual intervention',remediation:'Add replicas or enable zone-redundant configuration for automatic failover'})}
+      f.push({severity:'MEDIUM',control:'BUDR-HA-4',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node: failover requires manual intervention',remediation:'Add replicas or enable zone-redundant configuration for automatic failover'})}
     else{profile=_BUDR_RTO_RPO.redis_no_snap;
-      f.push({severity:'HIGH',control:'BUDR-BAK-3',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node with no persistence — data loss risk',remediation:'Enable RDB/AOF persistence and add read replicas'})}
+      f.push({severity:'HIGH',control:'BUDR-BAK-3',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node with no persistence: data loss risk',remediation:'Enable RDB/AOF persistence and add read replicas'})}
     assessments.push({type:'Redis Cache',id,name,profile,signals:{Replicas:replicas,Snapshots:hasSnap,ZoneRedundant:zoneRedundant}});
   });
   // Synapse Workspaces
@@ -194,9 +194,9 @@ function runBUDRChecks(ctx){
     let profile;
     if(multiZone&&hasSnap){profile=_BUDR_RTO_RPO.synapse_multi}
     else if(hasSnap){profile=_BUDR_RTO_RPO.synapse_snap;
-      f.push({severity:'MEDIUM',control:'BUDR-HA-5',framework:'BUDR',resource:id,resourceName:name,message:'Synapse Workspace without zone-redundant compute — no compute redundancy',remediation:'Enable zone-redundant SQL pools for HA'})}
+      f.push({severity:'MEDIUM',control:'BUDR-HA-5',framework:'BUDR',resource:id,resourceName:name,message:'Synapse Workspace without zone-redundant compute: no compute redundancy',remediation:'Enable zone-redundant SQL pools for HA'})}
     else{profile=_BUDR_RTO_RPO.synapse_none;
-      f.push({severity:'HIGH',control:'BUDR-BAK-4',framework:'BUDR',resource:id,resourceName:name,message:'Synapse Workspace with no backup configuration — data loss risk',remediation:'Configure automated backups with adequate retention'})}
+      f.push({severity:'HIGH',control:'BUDR-BAK-4',framework:'BUDR',resource:id,resourceName:name,message:'Synapse Workspace with no backup configuration: data loss risk',remediation:'Configure automated backups with adequate retention'})}
     assessments.push({type:'Synapse Workspace',id,name,profile,signals:{Snapshots:hasSnap,MultiZone:multiZone}});
   });
   // App Gateways
@@ -206,10 +206,10 @@ function runBUDRChecks(ctx){
     let profile;
     if(zones>=2){profile=_BUDR_RTO_RPO.agw_zone_redundant}
     else{profile=_BUDR_RTO_RPO.agw_single_zone;
-      f.push({severity:'MEDIUM',control:'BUDR-HA-6',framework:'BUDR',resource:id,resourceName:name,message:'App Gateway in single zone only — no failover',remediation:'Deploy across 2+ availability zones'})}
+      f.push({severity:'MEDIUM',control:'BUDR-HA-6',framework:'BUDR',resource:id,resourceName:name,message:'App Gateway in single zone only: no failover',remediation:'Deploy across 2+ availability zones'})}
     assessments.push({type:'App Gateway',id,name,profile,signals:{ZoneCount:zones}});
   });
-  // Managed Disks (standalone — not already counted via VM)
+  // Managed Disks (standalone: not already counted via VM)
   (ctx.disks||[]).forEach(disk=>{
     if((disk.properties&&disk.properties.diskState)!=='Attached')return;
     const id=disk.id;const name=gn(disk);
@@ -229,7 +229,7 @@ function runBUDRChecks(ctx){
     if(isRAGRS){profile=_BUDR_RTO_RPO.storage_ra_grs}
     else if(isGRS){profile=_BUDR_RTO_RPO.storage_grs}
     else{profile=_BUDR_RTO_RPO.storage_lrs;
-      f.push({severity:'HIGH',control:'BUDR-STG-1',framework:'BUDR',resource:id,resourceName:name,message:'Storage Account uses LRS — no geo-redundancy, data loss risk on region failure',remediation:'Upgrade to GRS or RA-GRS to protect against regional outages'})}
+      f.push({severity:'HIGH',control:'BUDR-STG-1',framework:'BUDR',resource:id,resourceName:name,message:'Storage Account uses LRS: no geo-redundancy, data loss risk on region failure',remediation:'Upgrade to GRS or RA-GRS to protect against regional outages'})}
     assessments.push({type:'Storage Account',id,name,profile,signals:{SKU:skuName,GeoRedundant:isGRS,ReadAccess:isRAGRS}});
   });
   // Enrich assessments with account/vnet/region from raw resources
@@ -371,7 +371,7 @@ export {
   _getBudrComplianceCounts
 };
 
-// State — clean names + setters
+// State: clean names + setters
 export {
   budrFindings,
   budrAssessments,

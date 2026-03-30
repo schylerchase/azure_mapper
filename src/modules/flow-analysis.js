@@ -1,4 +1,4 @@
-// Flow Analysis — auto-discovery engine (pure logic)
+// Flow Analysis: auto-discovery engine (pure logic)
 // D3/SVG visualization (_renderFlowAnalysisOverlay, _renderTierBadges, etc.)
 // remains inline until modernized in Phase 5.
 

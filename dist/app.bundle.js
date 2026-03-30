@@ -102,7 +102,7 @@ var AppBundle = (() => {
   function safeParse(t) {
     if (!t || !t.trim()) return null;
     if (t.length > MAX_PARSE_BYTES) {
-      console.warn(`safeParse: input exceeds ${MAX_PARSE_BYTES / 1024 / 1024} MB limit (${(t.length / 1024 / 1024).toFixed(1)} MB) \u2014 rejected`);
+      console.warn(`safeParse: input exceeds ${MAX_PARSE_BYTES / 1024 / 1024} MB limit (${(t.length / 1024 / 1024).toFixed(1)} MB): rejected`);
       return null;
     }
     try {
@@ -2263,7 +2263,7 @@ var AppBundle = (() => {
   var _BUDR_STRATEGY = { hot: "Hot", warm: "Warm", pilot: "Pilot Light", cold: "Cold" };
   var _BUDR_STRATEGY_ORDER = { hot: 0, warm: 1, pilot: 2, cold: 3 };
   var _BUDR_STRATEGY_LEGEND = [
-    { k: "critical", label: "Critical (Hot)", color: "#ef4444", icon: "\u{1F534}", desc: "Active-active \u2014 full replica running at all times. Near-zero RTO & RPO." },
+    { k: "critical", label: "Critical (Hot)", color: "#ef4444", icon: "\u{1F534}", desc: "Active-active: full replica running at all times. Near-zero RTO & RPO." },
     { k: "high", label: "High (Warm)", color: "#f59e0b", icon: "\u{1F7E1}", desc: "Scaled-down replica running. Scale up on failover. Minutes to recover." },
     { k: "medium", label: "Medium (Pilot Light)", color: "#6366f1", icon: "\u{1F7E3}", desc: "Data replicated continuously, compute stopped. Spin up on failover. ~10-30 min." },
     { k: "low", label: "Low (Cold)", color: "#64748b", icon: "\u26AA", desc: "Backups only, no standby. Rebuild from scratch. Hours to recover." }
@@ -2293,28 +2293,28 @@ var AppBundle = (() => {
     disk_no_snap: { rto: "~8 hr", rpo: "total loss", tier: "at_risk", strategy: "cold" }
   };
   var _BUDR_EST_MINUTES = {
-    sql_zone_redundant: { rto: 5, rpo: 1, rtoWhy: "Zone-redundant failover completes in 1-2 min; DNS propagation adds ~3 min", rpoWhy: "Synchronous replication across zones \u2014 data loss limited to in-flight transactions (~seconds)" },
-    sql_single_backup: { rto: 30, rpo: 1440, rtoWhy: "Restore from automated backup requires server provisioning + data load (~20-30 min)", rpoWhy: "Automated backups run daily \u2014 worst case RPO is 24 hours since last backup window" },
-    sql_no_backup: { rto: 480, rpo: Infinity, rtoWhy: "No backups \u2014 requires manual rebuild from application layer or external source", rpoWhy: "No backup mechanism configured \u2014 all data since creation is unrecoverable" },
-    vm_vmss: { rto: 3, rpo: 0, rtoWhy: "VMSS health probe detects failure (1-2 min) and launches replacement from image (~1-2 min)", rpoWhy: "Stateless compute \u2014 no persistent data on instance; state lives in external stores" },
-    vm_disk_snap: { rto: 15, rpo: 10080, rtoWhy: "New VM creation + managed disk restore from snapshot (~10-15 min depending on disk size)", rpoWhy: "Snapshot frequency is typically weekly \u2014 worst case RPO is 7 days since last snapshot" },
-    vm_standalone: { rto: 480, rpo: Infinity, rtoWhy: "No snapshot \u2014 requires full OS install, config, and application deployment from scratch", rpoWhy: "No backup mechanism \u2014 managed disk data is unrecoverable if VM or disk is lost" },
-    container_multi: { rto: 1, rpo: 0, rtoWhy: "Container group scheduler replaces failed containers in ~30-60 sec from registry image", rpoWhy: "Stateless containers \u2014 no persistent data; state lives in external stores (SQL, Storage, etc.)" },
-    container_single: { rto: 5, rpo: 0, rtoWhy: "Single container replacement takes ~2-5 min including image pull and health check", rpoWhy: "Stateless containers \u2014 no persistent data; state lives in external stores" },
-    function_app: { rto: 0, rpo: 0, rtoWhy: "Fully managed \u2014 Azure handles all availability; cold start adds <1 sec latency", rpoWhy: "Stateless execution \u2014 no persistent data; code stored in Storage Account" },
-    redis_zone_redundant: { rto: 2, rpo: 0.1, rtoWhy: "Zone-redundant replica promotion takes 1-2 min; DNS endpoint updates automatically", rpoWhy: "Async replication lag is typically <100ms \u2014 data loss limited to replication lag" },
-    redis_single: { rto: 15, rpo: 10080, rtoWhy: "Restore from RDB snapshot requires new cache provisioning + data load (~10-15 min)", rpoWhy: "Snapshot frequency is typically daily/weekly \u2014 worst case RPO equals snapshot interval" },
-    redis_no_snap: { rto: 15, rpo: Infinity, rtoWhy: "New cache provisioning takes ~10-15 min but cache starts cold (empty)", rpoWhy: "No snapshots \u2014 entire cache contents are lost; must be rebuilt from source of truth" },
-    synapse_snap: { rto: 30, rpo: 1440, rtoWhy: "Restore from snapshot creates new workspace (~20-30 min depending on data size)", rpoWhy: "Automated snapshots run periodically by default \u2014 worst case RPO is snapshot interval" },
-    synapse_multi: { rto: 15, rpo: 5, rtoWhy: "Zone-redundant workspace redistributes work to surviving zones (~10-15 min recovery)", rpoWhy: "Synchronous replication across zones \u2014 RPO limited to in-flight queries (~minutes)" },
-    synapse_none: { rto: 480, rpo: Infinity, rtoWhy: "No snapshots \u2014 requires full data reload from Storage Account/source systems (hours to days)", rpoWhy: "No backup mechanism \u2014 all warehouse data is unrecoverable" },
-    agw_zone_redundant: { rto: 0, rpo: 0, rtoWhy: "Fully managed zone-redundant \u2014 Azure handles node replacement transparently", rpoWhy: "Stateless gateway \u2014 no data to lose; config stored in Azure control plane" },
-    agw_single_zone: { rto: 5, rpo: 0, rtoWhy: "Single-zone App Gateway may need DNS failover if zone goes down (~3-5 min)", rpoWhy: "Stateless gateway \u2014 no data to lose" },
-    storage_grs: { rto: 0, rpo: 0, rtoWhy: "Geo-redundant storage replicates across paired regions \u2014 always available", rpoWhy: "Objects replicated synchronously within region and asynchronously to paired region" },
+    sql_zone_redundant: { rto: 5, rpo: 1, rtoWhy: "Zone-redundant failover completes in 1-2 min; DNS propagation adds ~3 min", rpoWhy: "Synchronous replication across zones: data loss limited to in-flight transactions (~seconds)" },
+    sql_single_backup: { rto: 30, rpo: 1440, rtoWhy: "Restore from automated backup requires server provisioning + data load (~20-30 min)", rpoWhy: "Automated backups run daily: worst case RPO is 24 hours since last backup window" },
+    sql_no_backup: { rto: 480, rpo: Infinity, rtoWhy: "No backups: requires manual rebuild from application layer or external source", rpoWhy: "No backup mechanism configured: all data since creation is unrecoverable" },
+    vm_vmss: { rto: 3, rpo: 0, rtoWhy: "VMSS health probe detects failure (1-2 min) and launches replacement from image (~1-2 min)", rpoWhy: "Stateless compute: no persistent data on instance; state lives in external stores" },
+    vm_disk_snap: { rto: 15, rpo: 10080, rtoWhy: "New VM creation + managed disk restore from snapshot (~10-15 min depending on disk size)", rpoWhy: "Snapshot frequency is typically weekly: worst case RPO is 7 days since last snapshot" },
+    vm_standalone: { rto: 480, rpo: Infinity, rtoWhy: "No snapshot: requires full OS install, config, and application deployment from scratch", rpoWhy: "No backup mechanism: managed disk data is unrecoverable if VM or disk is lost" },
+    container_multi: { rto: 1, rpo: 0, rtoWhy: "Container group scheduler replaces failed containers in ~30-60 sec from registry image", rpoWhy: "Stateless containers: no persistent data; state lives in external stores (SQL, Storage, etc.)" },
+    container_single: { rto: 5, rpo: 0, rtoWhy: "Single container replacement takes ~2-5 min including image pull and health check", rpoWhy: "Stateless containers: no persistent data; state lives in external stores" },
+    function_app: { rto: 0, rpo: 0, rtoWhy: "Fully managed: Azure handles all availability; cold start adds <1 sec latency", rpoWhy: "Stateless execution: no persistent data; code stored in Storage Account" },
+    redis_zone_redundant: { rto: 2, rpo: 0.1, rtoWhy: "Zone-redundant replica promotion takes 1-2 min; DNS endpoint updates automatically", rpoWhy: "Async replication lag is typically <100ms: data loss limited to replication lag" },
+    redis_single: { rto: 15, rpo: 10080, rtoWhy: "Restore from RDB snapshot requires new cache provisioning + data load (~10-15 min)", rpoWhy: "Snapshot frequency is typically daily/weekly: worst case RPO equals snapshot interval" },
+    redis_no_snap: { rto: 15, rpo: Infinity, rtoWhy: "New cache provisioning takes ~10-15 min but cache starts cold (empty)", rpoWhy: "No snapshots: entire cache contents are lost; must be rebuilt from source of truth" },
+    synapse_snap: { rto: 30, rpo: 1440, rtoWhy: "Restore from snapshot creates new workspace (~20-30 min depending on data size)", rpoWhy: "Automated snapshots run periodically by default: worst case RPO is snapshot interval" },
+    synapse_multi: { rto: 15, rpo: 5, rtoWhy: "Zone-redundant workspace redistributes work to surviving zones (~10-15 min recovery)", rpoWhy: "Synchronous replication across zones: RPO limited to in-flight queries (~minutes)" },
+    synapse_none: { rto: 480, rpo: Infinity, rtoWhy: "No snapshots: requires full data reload from Storage Account/source systems (hours to days)", rpoWhy: "No backup mechanism: all warehouse data is unrecoverable" },
+    agw_zone_redundant: { rto: 0, rpo: 0, rtoWhy: "Fully managed zone-redundant: Azure handles node replacement transparently", rpoWhy: "Stateless gateway: no data to lose; config stored in Azure control plane" },
+    agw_single_zone: { rto: 5, rpo: 0, rtoWhy: "Single-zone App Gateway may need DNS failover if zone goes down (~3-5 min)", rpoWhy: "Stateless gateway: no data to lose" },
+    storage_grs: { rto: 0, rpo: 0, rtoWhy: "Geo-redundant storage replicates across paired regions: always available", rpoWhy: "Objects replicated synchronously within region and asynchronously to paired region" },
     storage_ra_grs: { rto: 0, rpo: 0, rtoWhy: "Read-access geo-redundant storage provides secondary read endpoint", rpoWhy: "Full GRS replication with additional read availability in secondary region" },
-    storage_lrs: { rto: 0, rpo: Infinity, rtoWhy: "Locally redundant storage is always available within a region but not across regions", rpoWhy: "No geo-replication \u2014 data loss possible if entire region is lost" },
-    disk_snapshot: { rto: 15, rpo: 10080, rtoWhy: "Create new managed disk from snapshot + attach to VM (~10-15 min)", rpoWhy: "Snapshot frequency is typically weekly \u2014 worst case RPO is 7 days since last snapshot" },
-    disk_no_snap: { rto: 480, rpo: Infinity, rtoWhy: "No snapshots \u2014 disk data is unrecoverable if disk fails", rpoWhy: "No backup mechanism \u2014 all disk data is permanently lost on failure" }
+    storage_lrs: { rto: 0, rpo: Infinity, rtoWhy: "Locally redundant storage is always available within a region but not across regions", rpoWhy: "No geo-replication: data loss possible if entire region is lost" },
+    disk_snapshot: { rto: 15, rpo: 10080, rtoWhy: "Create new managed disk from snapshot + attach to VM (~10-15 min)", rpoWhy: "Snapshot frequency is typically weekly: worst case RPO is 7 days since last snapshot" },
+    disk_no_snap: { rto: 480, rpo: Infinity, rtoWhy: "No snapshots: disk data is unrecoverable if disk fails", rpoWhy: "No backup mechanism: all disk data is permanently lost on failure" }
   };
   var _TIER_TARGETS = {
     critical: { rto: 240, rpo: 60, rtoLabel: "2-4 hours", rpoLabel: "Hourly" },
@@ -2328,7 +2328,7 @@ var AppBundle = (() => {
     var target = _TIER_TARGETS[classTier];
     if (!est || !target) return { status: "unknown", issues: [] };
     var issues = [];
-    if (est.rpo === Infinity) issues.push({ field: "RPO", severity: "critical", msg: "No backup \u2014 RPO unrecoverable (target: " + target.rpoLabel + ")" });
+    if (est.rpo === Infinity) issues.push({ field: "RPO", severity: "critical", msg: "No backup: RPO unrecoverable (target: " + target.rpoLabel + ")" });
     else if (est.rpo > target.rpo) issues.push({ field: "RPO", severity: "warning", msg: "Est. RPO ~" + _fmtMin(est.rpo) + " exceeds " + classTier + " target of " + target.rpoLabel });
     if (est.rto > target.rto) issues.push({ field: "RTO", severity: "warning", msg: "Est. RTO ~" + _fmtMin(est.rto) + " exceeds " + classTier + " target of " + target.rtoLabel });
     var status = issues.some(function(i) {
@@ -2372,13 +2372,13 @@ var AppBundle = (() => {
         profile = _BUDR_RTO_RPO.sql_zone_redundant;
       } else if (hasBackup) {
         profile = _BUDR_RTO_RPO.sql_single_backup;
-        f.push({ severity: "MEDIUM", control: "BUDR-HA-1", framework: "BUDR", resource: id, resourceName: name, message: "SQL Server not zone-redundant \u2014 single point of failure", remediation: "Enable zone-redundant deployment for automatic failover" });
+        f.push({ severity: "MEDIUM", control: "BUDR-HA-1", framework: "BUDR", resource: id, resourceName: name, message: "SQL Server not zone-redundant: single point of failure", remediation: "Enable zone-redundant deployment for automatic failover" });
       } else {
         profile = _BUDR_RTO_RPO.sql_no_backup;
         f.push({ severity: "CRITICAL", control: "BUDR-BAK-1", framework: "BUDR", resource: id, resourceName: name, message: "SQL Server has no automated backups (retention=0)", remediation: "Set backupRetentionDays to at least 7" });
       }
       if (!hasZoneRedundant && hasBackup)
-        f.push({ severity: "HIGH", control: "BUDR-DR-1", framework: "BUDR", resource: id, resourceName: name, message: "SQL Server single-zone with backups only \u2014 extended RTO on zone failure", remediation: "Enable zone-redundant deployment or configure geo-replication" });
+        f.push({ severity: "HIGH", control: "BUDR-DR-1", framework: "BUDR", resource: id, resourceName: name, message: "SQL Server single-zone with backups only: extended RTO on zone failure", remediation: "Enable zone-redundant deployment or configure geo-replication" });
       assessments.push({ type: "SQL Server", id, name, profile, signals: { ZoneRedundant: hasZoneRedundant, Backup: hasBackup, BackupDays: backupDays, Encrypted: encrypted, GeoRedundant: geoRedundant } });
     });
     const vmssInstIds = /* @__PURE__ */ new Set();
@@ -2419,10 +2419,10 @@ var AppBundle = (() => {
         profile = _BUDR_RTO_RPO.vm_vmss;
       } else if (hasSnaps) {
         profile = _BUDR_RTO_RPO.vm_disk_snap;
-        f.push({ severity: "LOW", control: "BUDR-HA-2", framework: "BUDR", resource: id, resourceName: name, message: "VM not in a VM Scale Set \u2014 manual recovery required", remediation: "Deploy behind VMSS or configure Azure Backup for quick recovery" });
+        f.push({ severity: "LOW", control: "BUDR-HA-2", framework: "BUDR", resource: id, resourceName: name, message: "VM not in a VM Scale Set: manual recovery required", remediation: "Deploy behind VMSS or configure Azure Backup for quick recovery" });
       } else {
         profile = _BUDR_RTO_RPO.vm_standalone;
-        f.push({ severity: "HIGH", control: "BUDR-BAK-2", framework: "BUDR", resource: id, resourceName: name, message: "VM standalone with no disk snapshots \u2014 unrecoverable on failure", remediation: "Create regular disk snapshots via Azure Backup; consider VMSS" });
+        f.push({ severity: "HIGH", control: "BUDR-BAK-2", framework: "BUDR", resource: id, resourceName: name, message: "VM standalone with no disk snapshots: unrecoverable on failure", remediation: "Create regular disk snapshots via Azure Backup; consider VMSS" });
         if (!inVMSS) f.push({ severity: "MEDIUM", control: "BUDR-DR-2", framework: "BUDR", resource: id, resourceName: name, message: "VM has no disaster recovery strategy", remediation: "Configure Azure Backup, use VMSS with multiple zones, or take disk snapshots" });
       }
       assessments.push({ type: "VM", id, name, profile, signals: { VMSS: inVMSS, Snapshots: hasSnaps, SnapAgeDays: snapAgeDays, Encrypted: encrypted } });
@@ -2437,7 +2437,7 @@ var AppBundle = (() => {
         profile = _BUDR_RTO_RPO.container_multi;
       } else {
         profile = _BUDR_RTO_RPO.container_single;
-        f.push({ severity: "LOW", control: "BUDR-HA-3", framework: "BUDR", resource: id, resourceName: name, message: "Container instance has only " + replicas + " container(s) \u2014 no redundancy", remediation: "Deploy multiple container instances across availability zones" });
+        f.push({ severity: "LOW", control: "BUDR-HA-3", framework: "BUDR", resource: id, resourceName: name, message: "Container instance has only " + replicas + " container(s): no redundancy", remediation: "Deploy multiple container instances across availability zones" });
       }
       assessments.push({ type: "Container Instance", id, name, profile, signals: { Containers: replicas, MultiContainer: multi } });
     });
@@ -2455,10 +2455,10 @@ var AppBundle = (() => {
         profile = _BUDR_RTO_RPO.redis_zone_redundant;
       } else if (hasSnap) {
         profile = _BUDR_RTO_RPO.redis_single;
-        f.push({ severity: "MEDIUM", control: "BUDR-HA-4", framework: "BUDR", resource: id, resourceName: name, message: "Redis Cache single node \u2014 failover requires manual intervention", remediation: "Add replicas or enable zone-redundant configuration for automatic failover" });
+        f.push({ severity: "MEDIUM", control: "BUDR-HA-4", framework: "BUDR", resource: id, resourceName: name, message: "Redis Cache single node: failover requires manual intervention", remediation: "Add replicas or enable zone-redundant configuration for automatic failover" });
       } else {
         profile = _BUDR_RTO_RPO.redis_no_snap;
-        f.push({ severity: "HIGH", control: "BUDR-BAK-3", framework: "BUDR", resource: id, resourceName: name, message: "Redis Cache single node with no persistence \u2014 data loss risk", remediation: "Enable RDB/AOF persistence and add read replicas" });
+        f.push({ severity: "HIGH", control: "BUDR-BAK-3", framework: "BUDR", resource: id, resourceName: name, message: "Redis Cache single node with no persistence: data loss risk", remediation: "Enable RDB/AOF persistence and add read replicas" });
       }
       assessments.push({ type: "Redis Cache", id, name, profile, signals: { Replicas: replicas, Snapshots: hasSnap, ZoneRedundant: zoneRedundant } });
     });
@@ -2472,10 +2472,10 @@ var AppBundle = (() => {
         profile = _BUDR_RTO_RPO.synapse_multi;
       } else if (hasSnap) {
         profile = _BUDR_RTO_RPO.synapse_snap;
-        f.push({ severity: "MEDIUM", control: "BUDR-HA-5", framework: "BUDR", resource: id, resourceName: name, message: "Synapse Workspace without zone-redundant compute \u2014 no compute redundancy", remediation: "Enable zone-redundant SQL pools for HA" });
+        f.push({ severity: "MEDIUM", control: "BUDR-HA-5", framework: "BUDR", resource: id, resourceName: name, message: "Synapse Workspace without zone-redundant compute: no compute redundancy", remediation: "Enable zone-redundant SQL pools for HA" });
       } else {
         profile = _BUDR_RTO_RPO.synapse_none;
-        f.push({ severity: "HIGH", control: "BUDR-BAK-4", framework: "BUDR", resource: id, resourceName: name, message: "Synapse Workspace with no backup configuration \u2014 data loss risk", remediation: "Configure automated backups with adequate retention" });
+        f.push({ severity: "HIGH", control: "BUDR-BAK-4", framework: "BUDR", resource: id, resourceName: name, message: "Synapse Workspace with no backup configuration: data loss risk", remediation: "Configure automated backups with adequate retention" });
       }
       assessments.push({ type: "Synapse Workspace", id, name, profile, signals: { Snapshots: hasSnap, MultiZone: multiZone } });
     });
@@ -2488,7 +2488,7 @@ var AppBundle = (() => {
         profile = _BUDR_RTO_RPO.agw_zone_redundant;
       } else {
         profile = _BUDR_RTO_RPO.agw_single_zone;
-        f.push({ severity: "MEDIUM", control: "BUDR-HA-6", framework: "BUDR", resource: id, resourceName: name, message: "App Gateway in single zone only \u2014 no failover", remediation: "Deploy across 2+ availability zones" });
+        f.push({ severity: "MEDIUM", control: "BUDR-HA-6", framework: "BUDR", resource: id, resourceName: name, message: "App Gateway in single zone only: no failover", remediation: "Deploy across 2+ availability zones" });
       }
       assessments.push({ type: "App Gateway", id, name, profile, signals: { ZoneCount: zones } });
     });
@@ -2514,7 +2514,7 @@ var AppBundle = (() => {
         profile = _BUDR_RTO_RPO.storage_grs;
       } else {
         profile = _BUDR_RTO_RPO.storage_lrs;
-        f.push({ severity: "HIGH", control: "BUDR-STG-1", framework: "BUDR", resource: id, resourceName: name, message: "Storage Account uses LRS \u2014 no geo-redundancy, data loss risk on region failure", remediation: "Upgrade to GRS or RA-GRS to protect against regional outages" });
+        f.push({ severity: "HIGH", control: "BUDR-STG-1", framework: "BUDR", resource: id, resourceName: name, message: "Storage Account uses LRS: no geo-redundancy, data loss risk on region failure", remediation: "Upgrade to GRS or RA-GRS to protect against regional outages" });
       }
       assessments.push({ type: "Storage Account", id, name, profile, signals: { SKU: skuName, GeoRedundant: isGRS, ReadAccess: isRAGRS } });
     });
@@ -2806,7 +2806,7 @@ var AppBundle = (() => {
             framework: "RBAC",
             resource: props.principalId || "",
             resourceName: props.principalDisplayName || props.principalId || "",
-            message: roleName + " assigned at management group scope \u2014 broad blast radius",
+            message: roleName + " assigned at management group scope: broad blast radius",
             remediation: "Assign roles at the most restrictive scope needed (subscription or resource group)"
           });
         }
@@ -2845,7 +2845,7 @@ var AppBundle = (() => {
           framework: "RBAC",
           resource: pid,
           resourceName: firstProps.principalDisplayName || pid,
-          message: "Principal has " + aList.length + " direct role assignments \u2014 consider using groups",
+          message: "Principal has " + aList.length + " direct role assignments: consider using groups",
           remediation: "Use Azure AD groups to consolidate role assignments"
         });
       }
@@ -2909,7 +2909,7 @@ var AppBundle = (() => {
           framework: "RBAC",
           resource: props.principalId || a.id || "",
           resourceName: props.principalId || "Unknown Principal",
-          message: "Orphaned role assignment \u2014 principal no longer exists in Azure AD",
+          message: "Orphaned role assignment: principal no longer exists in Azure AD",
           remediation: "Remove the orphaned assignment: az role assignment delete --ids " + (a.id || "$ASSIGNMENT_ID")
         });
       }
@@ -3330,7 +3330,7 @@ var AppBundle = (() => {
           framework: "CIS_AZURE",
           severity: "HIGH",
           title: "Storage account minimum TLS < 1.2",
-          message: `Storage account "${_rn(sa)}" uses ${minTls} \u2014 TLS 1.2 is the minimum secure version`,
+          message: `Storage account "${_rn(sa)}" uses ${minTls}: TLS 1.2 is the minimum secure version`,
           resource: _rn(sa),
           resourceId: sa.id || "",
           resourceType: "Microsoft.Storage/storageAccounts",
@@ -3423,7 +3423,7 @@ var AppBundle = (() => {
           framework: "CIS_AZURE",
           severity: "HIGH",
           title: "Bastion not deployed in hub VNet",
-          message: `Hub VNet "${_rn(hub)}" has no Azure Bastion host deployed \u2014 RDP/SSH jump host missing`,
+          message: `Hub VNet "${_rn(hub)}" has no Azure Bastion host deployed: RDP/SSH jump host missing`,
           resource: _rn(hub),
           resourceId: hub.id || "",
           resourceType: "Microsoft.Network/virtualNetworks",
@@ -3496,7 +3496,7 @@ var AppBundle = (() => {
           framework: "CIS_AZURE",
           severity: "HIGH",
           title: "Private Endpoint connection pending approval",
-          message: `PE "${peName}" has a pending connection \u2014 traffic will not flow until approved`,
+          message: `PE "${peName}" has a pending connection: traffic will not flow until approved`,
           resource: peName,
           resourceId: pe.id || "",
           resourceType: "Microsoft.Network/privateEndpoints",
@@ -3509,7 +3509,7 @@ var AppBundle = (() => {
           framework: "CIS_AZURE",
           severity: "MEDIUM",
           title: "Private Endpoint connection " + state.toLowerCase(),
-          message: `PE "${peName}" has a ${state.toLowerCase()} connection \u2014 endpoint is orphaned and should be cleaned up`,
+          message: `PE "${peName}" has a ${state.toLowerCase()} connection: endpoint is orphaned and should be cleaned up`,
           resource: peName,
           resourceId: pe.id || "",
           resourceType: "Microsoft.Network/privateEndpoints",
@@ -3524,7 +3524,7 @@ var AppBundle = (() => {
             framework: "CIS_AZURE",
             severity: "HIGH",
             title: "No private DNS zone for Private Endpoint",
-            message: `PE "${peName}" (${groupId}) requires DNS zone "${expectedZone}" but none exists \u2014 DNS resolution will fail`,
+            message: `PE "${peName}" (${groupId}) requires DNS zone "${expectedZone}" but none exists: DNS resolution will fail`,
             resource: peName,
             resourceId: pe.id || "",
             resourceType: "Microsoft.Network/privateEndpoints",
@@ -3544,7 +3544,7 @@ var AppBundle = (() => {
                 framework: "CIS_AZURE",
                 severity: "HIGH",
                 title: "Private DNS zone not linked to PE VNet",
-                message: `PE "${peName}" is in VNet "${vnetId.split("/").pop()}" but DNS zone "${expectedZone}" is not linked to that VNet \u2014 resolution will use public DNS`,
+                message: `PE "${peName}" is in VNet "${vnetId.split("/").pop()}" but DNS zone "${expectedZone}" is not linked to that VNet: resolution will use public DNS`,
                 resource: peName,
                 resourceId: pe.id || "",
                 resourceType: "Microsoft.Network/privateEndpoints",
@@ -3566,7 +3566,7 @@ var AppBundle = (() => {
               framework: "CIS_AZURE",
               severity: "MEDIUM",
               title: "NSG cannot filter Private Endpoint traffic",
-              message: `Subnet "${_rn(subnet)}" has an NSG but PE network policies are disabled \u2014 NSG rules will not apply to PE "${peName}"`,
+              message: `Subnet "${_rn(subnet)}" has an NSG but PE network policies are disabled: NSG rules will not apply to PE "${peName}"`,
               resource: peName,
               resourceId: pe.id || "",
               resourceType: "Microsoft.Network/privateEndpoints",
@@ -3638,7 +3638,7 @@ var AppBundle = (() => {
           framework: "CAF",
           severity: "MEDIUM",
           title: "Subnet without route table",
-          message: `Subnet "${subName}" has no User Defined Route (UDR) table \u2014 uses default system routes`,
+          message: `Subnet "${subName}" has no User Defined Route (UDR) table: uses default system routes`,
           resource: subName,
           resourceId: sub.id || "",
           resourceType: "Microsoft.Network/virtualNetworks/subnets",
@@ -3654,7 +3654,7 @@ var AppBundle = (() => {
           framework: "CAF",
           severity: "LOW",
           title: "VNet without subnets",
-          message: `VNet "${_rn(vnet)}" has no subnets configured \u2014 unused VNet`,
+          message: `VNet "${_rn(vnet)}" has no subnets configured: unused VNet`,
           resource: _rn(vnet),
           resourceId: vnet.id || "",
           resourceType: "Microsoft.Network/virtualNetworks",
@@ -3672,7 +3672,7 @@ var AppBundle = (() => {
         framework: "CAF",
         severity: "MEDIUM",
         title: "No hub-spoke topology detected",
-        message: `${vnets.length} VNets found but no hub VNet identified \u2014 consider hub-spoke architecture`,
+        message: `${vnets.length} VNets found but no hub VNet identified: consider hub-spoke architecture`,
         resource: "Topology",
         resourceId: "",
         resourceType: "Microsoft.Network/virtualNetworks",
@@ -3687,7 +3687,7 @@ var AppBundle = (() => {
           framework: "CAF",
           severity: "MEDIUM",
           title: "Peering without forwarded traffic",
-          message: `Peering "${_rn(peer)}" does not allow forwarded traffic \u2014 spoke-to-spoke routing via hub will fail`,
+          message: `Peering "${_rn(peer)}" does not allow forwarded traffic: spoke-to-spoke routing via hub will fail`,
           resource: _rn(peer),
           resourceId: peer.id || "",
           resourceType: "Microsoft.Network/virtualNetworks/virtualNetworkPeerings",
@@ -3701,7 +3701,7 @@ var AppBundle = (() => {
         framework: "CAF",
         severity: "HIGH",
         title: "Missing Azure Firewall in hub",
-        message: "Hub VNet detected but no Azure Firewall deployed \u2014 no centralized traffic inspection",
+        message: "Hub VNet detected but no Azure Firewall deployed: no centralized traffic inspection",
         resource: "Hub VNet",
         resourceId: "",
         resourceType: "Microsoft.Network/azureFirewalls",
@@ -3714,7 +3714,7 @@ var AppBundle = (() => {
         framework: "CAF",
         severity: "LOW",
         title: "No private DNS zones configured",
-        message: "No Azure Private DNS zones found \u2014 PaaS private endpoints require private DNS for resolution",
+        message: "No Azure Private DNS zones found: PaaS private endpoints require private DNS for resolution",
         resource: "DNS",
         resourceId: "",
         resourceType: "Microsoft.Network/privateDnsZones",
@@ -3740,7 +3740,7 @@ var AppBundle = (() => {
             framework: "CAF",
             severity: "MEDIUM",
             title: "VM using public IP directly",
-            message: `VM "${_rn(vm)}" has a public IP assigned \u2014 use Azure Bastion or Load Balancer instead`,
+            message: `VM "${_rn(vm)}" has a public IP assigned: use Azure Bastion or Load Balancer instead`,
             resource: _rn(vm),
             resourceId: vm.id || "",
             resourceType: "Microsoft.Compute/virtualMachines",
@@ -3796,7 +3796,7 @@ var AppBundle = (() => {
           framework: "CAF",
           severity: "MEDIUM",
           title: "NSG without diagnostic settings",
-          message: `NSG "${_rn(nsg)}" has no diagnostic settings \u2014 flow logs and events not captured`,
+          message: `NSG "${_rn(nsg)}" has no diagnostic settings: flow logs and events not captured`,
           resource: _rn(nsg),
           resourceId: nsg.id || "",
           resourceType: "Microsoft.Network/networkSecurityGroups",
@@ -3810,7 +3810,7 @@ var AppBundle = (() => {
         framework: "CAF",
         severity: "MEDIUM",
         title: "No resource locks detected",
-        message: "No resource locks found \u2014 production resources can be accidentally deleted",
+        message: "No resource locks found: production resources can be accidentally deleted",
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.Authorization/locks",
@@ -3827,7 +3827,7 @@ var AppBundle = (() => {
         framework: "CAF",
         severity: "LOW",
         title: "Resources without tags",
-        message: `${untagged.length} resource(s) missing tags \u2014 cost tracking and ownership unclear`,
+        message: `${untagged.length} resource(s) missing tags: cost tracking and ownership unclear`,
         resource: "Multiple",
         resourceId: "",
         resourceType: "Various",
@@ -3865,7 +3865,7 @@ var AppBundle = (() => {
             framework: "CAF",
             severity: "LOW",
             title: "VNet address space too large",
-            message: `VNet "${_rn(vnet)}" uses ${cidr} (/${mask}) \u2014 larger than /16 wastes IP space`,
+            message: `VNet "${_rn(vnet)}" uses ${cidr} (/${mask}): larger than /16 wastes IP space`,
             resource: _rn(vnet),
             resourceId: vnet.id || "",
             resourceType: "Microsoft.Network/virtualNetworks",
@@ -3893,7 +3893,7 @@ var AppBundle = (() => {
           framework: "SOC2",
           severity: "HIGH",
           title: "Storage account TLS < 1.2",
-          message: `Storage account "${_rn(sa)}" does not enforce TLS 1.2 minimum \u2014 data in transit at risk`,
+          message: `Storage account "${_rn(sa)}" does not enforce TLS 1.2 minimum: data in transit at risk`,
           resource: _rn(sa),
           resourceId: sa.id || "",
           resourceType: "Microsoft.Storage/storageAccounts",
@@ -3934,7 +3934,7 @@ var AppBundle = (() => {
           framework: "SOC2",
           severity: "HIGH",
           title: "NSG flow logs not enabled",
-          message: `NSG "${_rn(nsg)}" does not have flow logs enabled \u2014 insufficient audit trail`,
+          message: `NSG "${_rn(nsg)}" does not have flow logs enabled: insufficient audit trail`,
           resource: _rn(nsg),
           resourceId: nsg.id || "",
           resourceType: "Microsoft.Network/networkSecurityGroups",
@@ -3949,7 +3949,7 @@ var AppBundle = (() => {
         framework: "SOC2",
         severity: "HIGH",
         title: "No Azure Monitor / Log Analytics configured",
-        message: "No Log Analytics workspaces or diagnostic settings found \u2014 insufficient monitoring",
+        message: "No Log Analytics workspaces or diagnostic settings found: insufficient monitoring",
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.OperationalInsights/workspaces",
@@ -3965,7 +3965,7 @@ var AppBundle = (() => {
           framework: "SOC2",
           severity: "MEDIUM",
           title: "Key Vault not using RBAC authorization",
-          message: `Key Vault "${_rn(kv)}" uses access policies instead of RBAC \u2014 less auditable`,
+          message: `Key Vault "${_rn(kv)}" uses access policies instead of RBAC: less auditable`,
           resource: _rn(kv),
           resourceId: kv.id || "",
           resourceType: "Microsoft.KeyVault/vaults",
@@ -4017,7 +4017,7 @@ var AppBundle = (() => {
           framework: "PCI",
           severity: "CRITICAL",
           title: "PCI subnet without NSG",
-          message: `PCI-scoped subnet "${sub.name || sid(sub.id)}" has no NSG \u2014 network segmentation violation`,
+          message: `PCI-scoped subnet "${sub.name || sid(sub.id)}" has no NSG: network segmentation violation`,
           resource: sub.name || sid(sub.id),
           resourceId: sub.id || "",
           resourceType: "Microsoft.Network/virtualNetworks/subnets",
@@ -4034,7 +4034,7 @@ var AppBundle = (() => {
           framework: "PCI",
           severity: "CRITICAL",
           title: "SQL server publicly accessible",
-          message: `SQL server "${_rn(srv)}" has public network access enabled \u2014 CDE exposure`,
+          message: `SQL server "${_rn(srv)}" has public network access enabled: CDE exposure`,
           resource: _rn(srv),
           resourceId: srv.id || "",
           resourceType: "Microsoft.Sql/servers",
@@ -4052,7 +4052,7 @@ var AppBundle = (() => {
             framework: "PCI",
             severity: "HIGH",
             title: "Disk without customer-managed encryption",
-            message: `Managed disk "${_rn(disk)}" uses platform-managed keys \u2014 CMK required for PCI`,
+            message: `Managed disk "${_rn(disk)}" uses platform-managed keys: CMK required for PCI`,
             resource: _rn(disk),
             resourceId: disk.id || "",
             resourceType: "Microsoft.Compute/disks",
@@ -4071,7 +4071,7 @@ var AppBundle = (() => {
           framework: "PCI",
           severity: "HIGH",
           title: "Application Gateway without WAF",
-          message: `Application Gateway "${_rn(ag)}" uses "${sku.tier || sku.name || "Standard"}" tier \u2014 WAF required for PCI`,
+          message: `Application Gateway "${_rn(ag)}" uses "${sku.tier || sku.name || "Standard"}" tier: WAF required for PCI`,
           resource: _rn(ag),
           resourceId: ag.id || "",
           resourceType: "Microsoft.Network/applicationGateways",
@@ -4087,7 +4087,7 @@ var AppBundle = (() => {
         framework: "PCI",
         severity: "HIGH",
         title: "No Microsoft Defender plans enabled",
-        message: "No Microsoft Defender for Cloud plans found \u2014 intrusion detection requirement unmet",
+        message: "No Microsoft Defender for Cloud plans found: intrusion detection requirement unmet",
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.Security/pricings",
@@ -4103,7 +4103,7 @@ var AppBundle = (() => {
           framework: "PCI",
           severity: "CRITICAL",
           title: "Storage account without encryption configuration",
-          message: `Storage account "${_rn(sa)}" has no explicit encryption \u2014 data at rest violation`,
+          message: `Storage account "${_rn(sa)}" has no explicit encryption: data at rest violation`,
           resource: _rn(sa),
           resourceId: sa.id || "",
           resourceType: "Microsoft.Storage/storageAccounts",
@@ -4118,7 +4118,7 @@ var AppBundle = (() => {
         framework: "PCI",
         severity: "MEDIUM",
         title: "No access reviews configured",
-        message: "No Azure AD access reviews found \u2014 periodic access review required for PCI",
+        message: "No Azure AD access reviews found: periodic access review required for PCI",
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.Authorization/accessReviewScheduleDefinitions",
@@ -4131,7 +4131,7 @@ var AppBundle = (() => {
         framework: "PCI",
         severity: "HIGH",
         title: "Insufficient logging for PCI compliance",
-        message: "No Log Analytics workspace or NSG flow logs \u2014 audit trail requirement unmet",
+        message: "No Log Analytics workspace or NSG flow logs: audit trail requirement unmet",
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.OperationalInsights/workspaces",
@@ -4201,7 +4201,7 @@ var AppBundle = (() => {
         framework: "BUDR",
         severity: "HIGH",
         title: "No Recovery Services Vault",
-        message: `${vms.length} VM(s) found but no Recovery Services Vault \u2014 no centralized backup infrastructure`,
+        message: `${vms.length} VM(s) found but no Recovery Services Vault: no centralized backup infrastructure`,
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.RecoveryServices/vaults",
@@ -4219,7 +4219,7 @@ var AppBundle = (() => {
         framework: "BUDR",
         severity: "HIGH",
         title: "Single-region deployment",
-        message: `All resources deployed in "${region}" \u2014 no geographic disaster recovery capability`,
+        message: `All resources deployed in "${region}": no geographic disaster recovery capability`,
         resource: region,
         resourceId: "",
         resourceType: "Various",
@@ -4236,7 +4236,7 @@ var AppBundle = (() => {
           framework: "BUDR",
           severity: "MEDIUM",
           title: "VM without availability set or zone",
-          message: `VM "${_rn(vm)}" has no availability set or availability zone \u2014 single point of failure`,
+          message: `VM "${_rn(vm)}" has no availability set or availability zone: single point of failure`,
           resource: _rn(vm),
           resourceId: vm.id || "",
           resourceType: "Microsoft.Compute/virtualMachines",
@@ -4260,7 +4260,7 @@ var AppBundle = (() => {
           framework: "BUDR",
           severity: "MEDIUM",
           title: "Managed disk without snapshots",
-          message: `Attached disk "${_rn(disk)}" has no snapshots \u2014 point-in-time recovery unavailable`,
+          message: `Attached disk "${_rn(disk)}" has no snapshots: point-in-time recovery unavailable`,
           resource: _rn(disk),
           resourceId: disk.id || "",
           resourceType: "Microsoft.Compute/disks",
@@ -4278,7 +4278,7 @@ var AppBundle = (() => {
           framework: "BUDR",
           severity: "MEDIUM",
           title: "Storage account without geo-redundancy",
-          message: `Storage account "${_rn(sa)}" uses ${replication} \u2014 no geographic redundancy`,
+          message: `Storage account "${_rn(sa)}" uses ${replication}: no geographic redundancy`,
           resource: _rn(sa),
           resourceId: sa.id || "",
           resourceType: "Microsoft.Storage/storageAccounts",
@@ -4296,7 +4296,7 @@ var AppBundle = (() => {
           framework: "BUDR",
           severity: "MEDIUM",
           title: "AKS cluster with single-node pools",
-          message: `AKS cluster "${_rn(aks)}" has single-node agent pools \u2014 no pod disruption budget effective`,
+          message: `AKS cluster "${_rn(aks)}" has single-node agent pools: no pod disruption budget effective`,
           resource: _rn(aks),
           resourceId: aks.id || "",
           resourceType: "Microsoft.ContainerService/managedClusters",
@@ -4319,7 +4319,7 @@ var AppBundle = (() => {
           framework: "BUDR",
           severity: "LOW",
           title: "Function app without deployment slots",
-          message: `Function app "${_rn(fa)}" has no deployment slots \u2014 no zero-downtime deployment`,
+          message: `Function app "${_rn(fa)}" has no deployment slots: no zero-downtime deployment`,
           resource: _rn(fa),
           resourceId: fa.id || "",
           resourceType: "Microsoft.Web/sites",
@@ -4339,7 +4339,7 @@ var AppBundle = (() => {
           framework: "BUDR",
           severity: "MEDIUM",
           title: "Redis cache without data persistence",
-          message: `Premium Redis cache "${_rn(rc)}" has no RDB or AOF persistence \u2014 data loss on restart`,
+          message: `Premium Redis cache "${_rn(rc)}" has no RDB or AOF persistence: data loss on restart`,
           resource: _rn(rc),
           resourceId: rc.id || "",
           resourceType: "Microsoft.Cache/Redis",
@@ -4370,7 +4370,7 @@ var AppBundle = (() => {
         framework,
         severity: "MEDIUM",
         title: "AC-2: Large number of role assignments",
-        message: `${roleCount} role assignments found \u2014 review for inactive or excessive access`,
+        message: `${roleCount} role assignments found: review for inactive or excessive access`,
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.Authorization/roleAssignments",
@@ -4388,7 +4388,7 @@ var AppBundle = (() => {
         framework,
         severity: "HIGH",
         title: "AC-6: Excessive Owner role assignments",
-        message: `${ownerAssignments.length} Owner role assignments \u2014 violates least privilege principle`,
+        message: `${ownerAssignments.length} Owner role assignments: violates least privilege principle`,
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.Authorization/roleAssignments",
@@ -4401,7 +4401,7 @@ var AppBundle = (() => {
         framework,
         severity: "CRITICAL",
         title: "AU-2: No audit logging infrastructure",
-        message: "No Log Analytics workspace found \u2014 audit event collection requirement unmet",
+        message: "No Log Analytics workspace found: audit event collection requirement unmet",
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.OperationalInsights/workspaces",
@@ -4424,7 +4424,7 @@ var AppBundle = (() => {
         framework,
         severity: "HIGH",
         title: "CM-7: Overly permissive network rules",
-        message: `${openRuleCount} NSG rule(s) allow all inbound traffic \u2014 least functionality violated`,
+        message: `${openRuleCount} NSG rule(s) allow all inbound traffic: least functionality violated`,
         resource: "NSGs",
         resourceId: "",
         resourceType: "Microsoft.Network/networkSecurityGroups",
@@ -4442,7 +4442,7 @@ var AppBundle = (() => {
         framework,
         severity: "CRITICAL",
         title: "IA-2: No MFA conditional access policy",
-        message: "No conditional access policy enforcing MFA found \u2014 identification/authentication gap",
+        message: "No conditional access policy enforcing MFA found: identification/authentication gap",
         resource: "Azure AD",
         resourceId: "",
         resourceType: "Microsoft.Authorization/conditionalAccessPolicies",
@@ -4455,7 +4455,7 @@ var AppBundle = (() => {
         framework,
         severity: "HIGH",
         title: "SC-7: No centralized boundary protection",
-        message: "No Azure Firewall deployed \u2014 boundary protection relies only on NSGs",
+        message: "No Azure Firewall deployed: boundary protection relies only on NSGs",
         resource: "Network",
         resourceId: "",
         resourceType: "Microsoft.Network/azureFirewalls",
@@ -4473,7 +4473,7 @@ var AppBundle = (() => {
         framework,
         severity: "HIGH",
         title: "SC-28: Unprotected data at rest",
-        message: `${unencryptedDisks.length} managed disk(s) without explicit encryption \u2014 data at rest protection gap`,
+        message: `${unencryptedDisks.length} managed disk(s) without explicit encryption: data at rest protection gap`,
         resource: "Multiple",
         resourceId: "",
         resourceType: "Microsoft.Compute/disks",
@@ -4486,7 +4486,7 @@ var AppBundle = (() => {
         framework,
         severity: "HIGH",
         title: "SI-4: No system monitoring",
-        message: "No Microsoft Defender for Cloud plans enabled \u2014 continuous monitoring requirement unmet",
+        message: "No Microsoft Defender for Cloud plans enabled: continuous monitoring requirement unmet",
         resource: "Subscription",
         resourceId: "",
         resourceType: "Microsoft.Security/pricings",
@@ -5641,7 +5641,7 @@ var AppBundle = (() => {
         errors.push("VNet address prefix must be /8 to /29, got /" + prefix);
       const isRfc1918 = _azureConstraints.vnet.rfc1918.some((r) => cidrContains(r, p.addressPrefix));
       const isCgnat = cidrContains(_azureConstraints.vnet.cgnat, p.addressPrefix);
-      if (!isRfc1918 && !isCgnat) warnings.push("CIDR " + p.addressPrefix + " is not RFC 1918 or CGNAT range \u2014 verify this is intentional for public IP usage");
+      if (!isRfc1918 && !isCgnat) warnings.push("CIDR " + p.addressPrefix + " is not RFC 1918 or CGNAT range: verify this is intentional for public IP usage");
       const isReserved = _azureConstraints.vnet.reservedPrefixes.some((r) => cidrOverlap(p.addressPrefix, r));
       if (isReserved) errors.push("Address prefix " + p.addressPrefix + " overlaps with a reserved range");
       vnets.forEach((v) => {
@@ -5698,7 +5698,7 @@ var AppBundle = (() => {
         const newPrefix = prefix + 1;
         const usable = Math.pow(2, 32 - newPrefix) - _azureConstraints.subnet.reservedIps;
         warnings.push("Each half: /" + newPrefix + " = " + usable + " usable IPs");
-        if (usable < 8) warnings.push("Very small subnets \u2014 limited IP capacity");
+        if (usable < 8) warnings.push("Very small subnets: limited IP capacity");
       }
       const resources = ctx ? (ctx.resourcesBySub || {})[change.target.subnetId] || [] : [];
       if (resources.length) warnings.push(resources.length + " resource(s) will require IP-based migration");
@@ -5725,7 +5725,7 @@ var AppBundle = (() => {
           warnings.push("Exceeds limit of " + _azureConstraints.routeTable.maxRoutesPerTable + " routes per table");
       }
       if (dest === "0.0.0.0/0" && p.nextHopType === "Internet")
-        warnings.push("This will route all internet traffic directly \u2014 ensure NSG rules are appropriate");
+        warnings.push("This will route all internet traffic directly: ensure NSG rules are appropriate");
     }
     if (change.action === "add_nsg") {
       const p = change.params;
@@ -5738,7 +5738,7 @@ var AppBundle = (() => {
         if (r.properties?.sourceAddressPrefix === "*" && r.properties?.access === "Allow") {
           const port = r.properties?.destinationPortRange;
           if (port !== "80" && port !== "443")
-            warnings.push('Rule "' + (r.name || "unnamed") + '" allows all sources (*) on port ' + port + " \u2014 consider restricting");
+            warnings.push('Rule "' + (r.name || "unnamed") + '" allows all sources (*) on port ' + port + ": consider restricting");
         }
       });
     }
@@ -5763,7 +5763,7 @@ var AppBundle = (() => {
         const affectedSubs = subnets.filter(
           (s) => (s.properties?.natGateway?.id || s.natGatewayId) === t.resourceId
         );
-        if (affectedSubs.length) warnings.push(affectedSubs.length + " subnet(s) reference this NAT Gateway \u2014 they will lose outbound connectivity");
+        if (affectedSubs.length) warnings.push(affectedSubs.length + " subnet(s) reference this NAT Gateway: they will lose outbound connectivity");
       }
       if (t.resourceType === "subnet") {
         const resources = ctx ? (ctx.resourcesBySub || {})[t.resourceId] || [] : [];
@@ -5773,7 +5773,7 @@ var AppBundle = (() => {
         const affectedSubs = subnets.filter(
           (s) => (s.properties?.networkSecurityGroup?.id || s.nsgId) === t.resourceId
         );
-        if (affectedSubs.length) warnings.push(affectedSubs.length + " subnet(s) reference this NSG \u2014 they will lose security rules");
+        if (affectedSubs.length) warnings.push(affectedSubs.length + " subnet(s) reference this NSG: they will lose security rules");
       }
     }
     if (change.action === "add_peering") {
@@ -5840,7 +5840,7 @@ var AppBundle = (() => {
         localPrefixes.forEach((lp) => {
           remotePrefixes.forEach((rp) => {
             if (cidrOverlap(lp, rp))
-              errors.push("VNet Peering " + gn(p) + " \u2014 address spaces overlap: " + lp + " / " + rp);
+              errors.push("VNet Peering " + gn(p) + ": address spaces overlap: " + lp + " / " + rp);
           });
         });
         const pair = [p.localVnetId, p.remoteVnetId].filter(Boolean).sort().join(":");
@@ -5850,7 +5850,7 @@ var AppBundle = (() => {
       (ctx.subnets || []).forEach((s) => {
         const hasNsg = s.properties?.networkSecurityGroup || s.nsgId;
         if (!hasNsg && s.name !== "GatewaySubnet")
-          warnings.push("Subnet " + gn(s) + " has no NSG attached \u2014 traffic is unrestricted");
+          warnings.push("Subnet " + gn(s) + " has no NSG attached: traffic is unrestricted");
       });
     }
     return { valid: errors.length === 0, errors, warnings, stats };
@@ -6261,7 +6261,7 @@ var AppBundle = (() => {
     const loc = ch.params.location || _designLocation;
     if (ch.action === "add_vnet") {
       cmds.push(`az network vnet create --resource-group ${rg} --name ${ch.params.name || "new-vnet"} --address-prefixes ${ch.params.addressPrefix} --location ${loc}`);
-      cmds.push("# Default NSG is NOT created automatically \u2014 create one explicitly if needed");
+      cmds.push("# Default NSG is NOT created automatically: create one explicitly if needed");
     }
     if (ch.action === "add_subnet") {
       const vnetName = ch.params.vnetName || "$VNET_NAME";
@@ -6363,9 +6363,9 @@ var AppBundle = (() => {
     const splits = _designChanges.filter((c) => c.action === "split_subnet");
     if (splits.length) w.push(splits.length + " subnet split(s) require resource migration");
     const removes = _designChanges.filter((c) => c.action === "remove_resource");
-    if (removes.length) w.push(removes.length + " resource removal(s) \u2014 verify dependencies first");
+    if (removes.length) w.push(removes.length + " resource removal(s): verify dependencies first");
     const noNsg = _designChanges.filter((c) => c.action === "add_subnet" && !c.params.nsgId);
-    if (noNsg.length) w.push(noNsg.length + " new subnet(s) without NSG \u2014 consider attaching one");
+    if (noNsg.length) w.push(noNsg.length + " new subnet(s) without NSG: consider attaching one");
     return w;
   }
   function importDesignPlan(json, enterFn, addChangeFn) {
@@ -7064,7 +7064,7 @@ var AppBundle = (() => {
       if (peMatch) {
         path.push(buildPeRedirectHop(hopN++, peMatch.pe, peMatch.state));
         if (peMatch.state !== "Approved") {
-          path.push({ hop: hopN++, type: "target", id: tgtPos.name || target.id, action: "block", detail: "PE connection is " + peMatch.state + " \u2014 traffic cannot reach target", subnetId: tgtPos.subnetId });
+          path.push({ hop: hopN++, type: "target", id: tgtPos.name || target.id, action: "block", detail: "PE connection is " + peMatch.state + ": traffic cannot reach target", subnetId: tgtPos.subnetId });
           return { path, blocked: { hop: hopN - 2, reason: "Private Endpoint connection is " + peMatch.state, suggestion: "Approve the PE connection on the target resource" } };
         }
         var pePos = resolveNetworkPosition("pe", peMatch.pe.id, ctx);
@@ -8638,7 +8638,7 @@ var AppBundle = (() => {
     "IAM-11": "low",
     "IAM-12": "med",
     "IAM-13": "low",
-    // CKV (standalone Checkov checks — Azure equivalents)
+    // CKV (standalone Checkov checks: Azure equivalents)
     "CKV_AZURE_1": "med",
     "CKV_AZURE_2": "med",
     "CKV_AZURE_3": "low",
@@ -9125,7 +9125,7 @@ var AppBundle = (() => {
     { pattern: "function.?app|container|aks|kubernetes", scope: "type", tier: "medium", weight: 40 },
     { pattern: "bastion|jump|ssh", scope: "name", tier: "medium", weight: 35 },
     { pattern: "firewall|azure.?firewall", scope: "type", tier: "high", weight: 75 },
-    // Tag-based rules — Environment tag is strongest classification signal
+    // Tag-based rules: Environment tag is strongest classification signal
     { pattern: "prod|production|prd", scope: "tag:Environment", tier: "critical", weight: 120 },
     { pattern: "staging|stage|uat|qa", scope: "tag:Environment", tier: "medium", weight: 110 },
     { pattern: "dev|develop|sandbox|test", scope: "tag:Environment", tier: "low", weight: 110 }
@@ -9935,7 +9935,7 @@ var AppBundle = (() => {
   }
   if (typeof window !== "undefined") {
     Object.assign(window, {
-      // State variables — direct references (for backward compat reading)
+      // State variables: direct references (for backward compat reading)
       _govDashState,
       _iamDashState,
       _classificationData,
@@ -10456,7 +10456,7 @@ var AppBundle = (() => {
     lines.push("#");
     lines.push("# REVIEW BEFORE APPLYING:");
     lines.push("# - Resource group names must be unique in your subscription");
-    lines.push("# - VM admin passwords are placeholders \u2014 use Azure Key Vault");
+    lines.push("# - VM admin passwords are placeholders: use Azure Key Vault");
     lines.push("# - Managed identity and RBAC assignments are not included");
     lines.push("# - DNS and custom DHCP settings may need manual configuration");
     lines.push("");
@@ -10487,7 +10487,7 @@ var AppBundle = (() => {
       lines.push("}");
       lines.push("");
       lines.push('variable "admin_password" {');
-      lines.push('  description = "Admin password for VMs \u2014 use Key Vault in production"');
+      lines.push('  description = "Admin password for VMs: use Key Vault in production"');
       lines.push("  type        = string");
       lines.push("  sensitive   = true");
       lines.push('  default     = "CHANGE_ME_P@ssw0rd!"');

@@ -1,4 +1,4 @@
-// IAC Generator — Terraform (azurerm), ARM Template, Bicep, Checkov, az CLI
+// IAC Generator: Terraform (azurerm), ARM Template, Bicep, Checkov, az CLI
 // DOM handlers (modal output, download, copy) remain inline in index.html.
 
 import { rlCtx } from './state.js';
@@ -171,7 +171,7 @@ export function generateTerraform(data, options) {
   lines.push('#');
   lines.push('# REVIEW BEFORE APPLYING:');
   lines.push('# - Resource group names must be unique in your subscription');
-  lines.push('# - VM admin passwords are placeholders — use Azure Key Vault');
+  lines.push('# - VM admin passwords are placeholders: use Azure Key Vault');
   lines.push('# - Managed identity and RBAC assignments are not included');
   lines.push('# - DNS and custom DHCP settings may need manual configuration');
   lines.push('');
@@ -206,7 +206,7 @@ export function generateTerraform(data, options) {
     lines.push('}');
     lines.push('');
     lines.push('variable "admin_password" {');
-    lines.push('  description = "Admin password for VMs — use Key Vault in production"');
+    lines.push('  description = "Admin password for VMs: use Key Vault in production"');
     lines.push('  type        = string');
     lines.push('  sensitive   = true');
     lines.push('  default     = "CHANGE_ME_P@ssw0rd!"');
