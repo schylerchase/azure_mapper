@@ -11667,7 +11667,9 @@ if(_isElectron){
         importFolder({_structure:'flat',files:flatFiles});
       }
     }catch(e){
-      if(e.name!=='AbortError')console.error('Folder import error:',e);
+      if(e.name==='AbortError')return;// user cancelled
+      console.warn('showDirectoryPicker failed, using file input fallback:',e.message);
+      _folderFallback();
     }
   });
 }
