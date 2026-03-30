@@ -1587,11 +1587,14 @@ function _renderMapInner(){
       const acCol=vl.vnet._ctxColor||getAccountColor(vl.vnet._subscriptionId);
       if(acCol){
         const acLbl=vl.vnet._subscriptionLabel||vl.vnet._subscriptionId;
-        // Expand stripe height to fit full label text (never truncate)
-        const lblH=Math.max(vl.h, acLbl.length*7+16);
-        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',lblH).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
-        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+lblH-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+lblH-6))+')')
-          .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.5px')
+        // Stripe matches VNet height; scale font to fit label within available space
+        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',vl.h).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
+        const maxTextH=vl.h-12;
+        const idealFontPx=7;
+        const neededH=acLbl.length*idealFontPx*0.65;
+        const fontPx=neededH>maxTextH?Math.max(4,idealFontPx*(maxTextH/neededH)):idealFontPx;
+        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+vl.h-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+vl.h-6))+')')
+          .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc('+fontPx.toFixed(1)+'px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.3px')
           .text(acLbl);
       }
     }

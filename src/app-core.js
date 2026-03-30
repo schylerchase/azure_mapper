@@ -7470,10 +7470,10 @@ function renderLandingZoneMap(ctx){
       const lzAcCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
       if(lzAcCol){
         const lzAcLbl=vl.vpc._accountLabel||vl.vpc._subscriptionId;
-        const lzLblH=Math.max(vl.h, lzAcLbl.length*7+16);
-        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',lzLblH).attr('fill',lzAcCol).attr('rx',2).attr('opacity',.7);
-        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+lzLblH-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+lzLblH-6))+')')
-          .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.5px')
+        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',vl.h).attr('fill',lzAcCol).attr('rx',2).attr('opacity',.7);
+        var lzMaxTH=vl.h-12;var lzIdealF=7;var lzNeedH=lzAcLbl.length*lzIdealF*0.65;var lzFPx=lzNeedH>lzMaxTH?Math.max(4,lzIdealF*(lzMaxTH/lzNeedH)):lzIdealF;
+        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+vl.h-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+vl.h-6))+')')
+          .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc('+lzFPx.toFixed(1)+'px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.3px')
           .text(lzAcLbl);
       }
     }
@@ -10226,10 +10226,10 @@ function _renderMapInner(){
       const acCol=vl.vpc._ctxColor||getAccountColor(vl.vpc._subscriptionId);
       if(acCol){
         const acLbl=vl.vpc._accountLabel||vl.vpc._subscriptionId;
-        const lblH=Math.max(vl.h, acLbl.length*7+16);
-        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',lblH).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
-        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+lblH-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+lblH-6))+')')
-          .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(7px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.5px')
+        vG.append('rect').attr('x',vl.x).attr('y',vl.y).attr('width',8).attr('height',vl.h).attr('fill',acCol).attr('rx',2).attr('opacity',.7);
+        var maxTH=vl.h-12;var idealF=7;var needH=acLbl.length*idealF*0.65;var fPx=needH>maxTH?Math.max(4,idealF*(maxTH/needH)):idealF;
+        vG.append('text').attr('x',vl.x+5).attr('y',vl.y+vl.h-6).attr('transform','rotate(-90,'+((vl.x+5))+','+((vl.y+vl.h-6))+')')
+          .attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc('+fPx.toFixed(1)+'px * var(--txt-scale,1))').attr('fill','#fff').attr('font-weight','600').attr('letter-spacing','.3px')
           .text(acLbl);
       }
     }
