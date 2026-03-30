@@ -8864,6 +8864,33 @@ function _renderMapInner(){
   if(iamRaw&&!_iamData)_iamData=parseIAMData(iamRaw);
   function tagResource(r){if(!r)return r;r._subscriptionId=detectAccountId(r)||userAccount||'default';r._region=detectRegion(r)||'unknown';return r}
   [vpcs,subnets,igws,nats,sgs,instances,albs,rdsInstances,ecsServices,lambdaFns,peerings].forEach(arr=>arr.forEach(tagResource));
+  // Normalize Azure-native properties → internal format (supports flat az CLI exports)
+  vpcs.forEach(v=>{
+    if(!v.VpcId)v.VpcId=v.id||'';
+    if(!v.CidrBlock)v.CidrBlock=(v.addressSpace&&v.addressSpace.addressPrefixes&&v.addressSpace.addressPrefixes[0])||'';
+    if(!v.tags&&v.name)v.tags={Name:v.name};
+  });
+  subnets.forEach(s=>{
+    if(!s.SubnetId)s.SubnetId=s.id||'';
+    if(!s.VpcId)s.VpcId=(s.id||'').split('/subnets/')[0]||'';
+    if(!s.CidrBlock)s.CidrBlock=s.addressPrefix||'';
+    if(!s.tags&&s.name)s.tags={Name:s.name};
+  });
+  rts.forEach(r=>{
+    if(!r.RouteTableId)r.RouteTableId=r.id||'';
+    if(!r.VpcId){const subs=r.subnets||[];if(subs[0]&&subs[0].id)r.VpcId=subs[0].id.split('/subnets/')[0]||''}
+    if(!r.tags&&r.name)r.tags={Name:r.name};
+  });
+  sgs.forEach(s=>{
+    if(!s.GroupId)s.GroupId=s.id||'';
+    if(!s.tags&&s.name)s.tags={Name:s.name};
+  });
+  enis.forEach(e=>{
+    if(!e.NetworkInterfaceId)e.NetworkInterfaceId=e.id||'';
+    if(!e.SubnetId&&e.ipConfigurations&&e.ipConfigurations[0]&&e.ipConfigurations[0].subnet)e.SubnetId=e.ipConfigurations[0].subnet.id||'';
+    if(!e.VpcId&&e.SubnetId)e.VpcId=(e.SubnetId||'').split('/subnets/')[0]||'';
+    if(!e.tags&&e.name)e.tags={Name:e.name};
+  });
   } // end else (textarea parse path)
   console.log('[PERF] parse phase: '+(performance.now()-_t0).toFixed(1)+'ms');
   const _t1=performance.now();
