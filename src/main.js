@@ -12,7 +12,7 @@ import { _prefs, loadPrefs, savePrefs } from './modules/prefs.js';
 import { CLOUDS, getCloudEnv, setCloudEnv, getCloudConfig, getComplianceFrameworks, isServiceAvailable, getPortalUrl, detectCloudFromEndpoint } from './modules/cloud-env.js';
 
 // Feature engines
-import { generateDemo } from './modules/demo-data.js';
+// Note: demo-data and iac-generator are lazy-loaded via window._loadDemoData / window._loadIacGenerator
 import { ipToInt, intToIp, parseCIDR, cidrToString, splitCIDR, cidrContains, cidrOverlap, ipInCIDR } from './modules/cidr-engine.js';
 import { runComplianceChecks, invalidateComplianceCache } from './modules/compliance-engine.js';
 
@@ -85,8 +85,7 @@ import * as Governance from './modules/governance.js';
 // Export utilities (VSDX layout, XML builders, downloadBlob — DOM export handlers remain inline)
 import * as ExportUtils from './modules/export-utils.js';
 
-// IaC generator (Terraform azurerm, ARM, Bicep, Checkov — DOM modal remains inline)
-import * as IacGenerator from './modules/iac-generator.js';
+// IaC generator: lazy-loaded via window._loadIacGenerator() — not in initial bundle
 
 // Normalization utilities (extracted from app-core.js for unit testability)
 import { _normalizeAzureResources, _normTags, matchFile, fileMap, _friendlyFolderLabel } from './modules/normalization.js';
@@ -123,9 +122,6 @@ window.AppModules = {
 
   // Compliance
   runComplianceChecks, invalidateComplianceCache,
-
-  // Engines
-  generateDemo,
 
   // Network rules (Azure NSG + UDR)
   evaluateNsgRules, evaluateNsgPath, evaluateRoute,
@@ -173,7 +169,7 @@ window.AppModules = {
 
   // Phase 5: Core
   ExportUtils,
-  IacGenerator,
+  // IacGenerator: lazy-loaded via window._loadIacGenerator() — not in AppModules at startup
 
   // Note: diff-engine and report-builder loaded via separate script tags (DOM-dependent)
 
@@ -186,5 +182,44 @@ Object.assign(window, window.AppModules);
 
 // Initialize _complianceFindings on window so inline code can reference it before first run
 if (!window._complianceFindings) window._complianceFindings = [];
+
+// Lazy loader: demo-data.bundle.js — loaded on first Demo button click
+// Resolves to the generateDemo function after the bundle script executes
+window._loadDemoData = function() {
+  return new Promise(function(resolve) {
+    if (window.generateDemo) return resolve(window.generateDemo);
+    var s = document.createElement('script');
+    s.src = 'dist/demo-data.bundle.js';
+    s.onload = function() {
+      window.generateDemo = window.DemoDataModule && window.DemoDataModule.generateDemo;
+      resolve(window.generateDemo);
+    };
+    s.onerror = function() {
+      console.error('Failed to load demo-data.bundle.js');
+      resolve(null);
+    };
+    document.head.appendChild(s);
+  });
+};
+
+// Lazy loader: iac-generator.bundle.js — loaded on first IaC modal open
+// Resolves to the IacGeneratorModule namespace after the bundle script executes
+window._loadIacGenerator = function() {
+  return new Promise(function(resolve) {
+    if (window.IacGeneratorModule) return resolve(window.IacGeneratorModule);
+    var s = document.createElement('script');
+    s.src = 'dist/iac-generator.bundle.js';
+    s.onload = function() {
+      window.IacGenerator = window.IacGeneratorModule;
+      if (window.AppModules) window.AppModules.IacGenerator = window.IacGeneratorModule;
+      resolve(window.IacGeneratorModule);
+    };
+    s.onerror = function() {
+      console.error('Failed to load iac-generator.bundle.js');
+      resolve(null);
+    };
+    document.head.appendChild(s);
+  });
+};
 
 console.log('Azure Network Mapper modules loaded');

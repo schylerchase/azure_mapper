@@ -1,5 +1,8 @@
 node_modules/
 dist/*.map
+dist/meta.json
+dist/demo-data.bundle.js
+dist/iac-generator.bundle.js
 out/
 *.dmg
 *.zip

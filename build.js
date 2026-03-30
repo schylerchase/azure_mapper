@@ -21,11 +21,46 @@ const buildConfig = {
   sourcemap: isDev,
   target: 'es2022',
   platform: 'browser',
+  metafile: isProd,
   define: {
     'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development')
   },
   logLevel: 'info'
 };
+
+// Build demo-data.js as a separate lazy-loadable bundle (IIFE)
+async function buildDemoData() {
+  await esbuild.build({
+    entryPoints: ['src/modules/demo-data.js'],
+    bundle: true,
+    outfile: 'dist/demo-data.bundle.js',
+    format: 'iife',
+    globalName: 'DemoDataModule',
+    minify: isProd,
+    target: 'es2022',
+    platform: 'browser',
+    logLevel: 'silent'
+  });
+  const size = (fs.statSync('dist/demo-data.bundle.js').size / 1024).toFixed(1);
+  console.log(`  dist/demo-data.bundle.js    ${size}kb`);
+}
+
+// Build iac-generator.js as a separate lazy-loadable bundle (IIFE)
+async function buildIacGenerator() {
+  await esbuild.build({
+    entryPoints: ['src/modules/iac-generator.js'],
+    bundle: true,
+    outfile: 'dist/iac-generator.bundle.js',
+    format: 'iife',
+    globalName: 'IacGeneratorModule',
+    minify: isProd,
+    target: 'es2022',
+    platform: 'browser',
+    logLevel: 'silent'
+  });
+  const size = (fs.statSync('dist/iac-generator.bundle.js').size / 1024).toFixed(1);
+  console.log(`  dist/iac-generator.bundle.js ${size}kb`);
+}
 
 // Build custom D3 bundle (5 modules vs full 30+ module d3.min.js)
 async function buildD3() {
@@ -68,9 +103,11 @@ if (watch) {
     console.log('  Copied app-core.js');
   });
 } else {
-  esbuild.build(buildConfig).then(async () => {
+  esbuild.build(buildConfig).then(async (result) => {
     await buildCore();
     await buildD3();
+    await buildDemoData();
+    await buildIacGenerator();
 
     // Log bundle sizes
     const bundleSize = (fs.statSync('dist/app.bundle.js').size / 1024).toFixed(1);
@@ -79,6 +116,14 @@ if (watch) {
     console.log(`  dist/app-core.js    ${coreSize}kb`);
 
     if (!isProd) return;
+
+    // Write metafile for bundle composition analysis
+    if (result.metafile) {
+      fs.writeFileSync('dist/meta.json', JSON.stringify(result.metafile));
+      const text = esbuild.analyzeMetafileSync(result.metafile, { verbose: false });
+      console.log(text);
+    }
+
     // Auto-inject content hashes into index.html for cache busting
     const bundleHash = crypto.createHash('md5').update(fs.readFileSync('dist/app.bundle.js')).digest('hex').slice(0, 8);
     const coreHash = crypto.createHash('md5').update(fs.readFileSync('dist/app-core.js')).digest('hex').slice(0, 8);
