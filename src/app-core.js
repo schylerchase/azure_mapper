@@ -8774,6 +8774,44 @@ function renderExecutiveOverview(ctx){
   setTimeout(()=>d3.select('#zoomFit').dispatch('click'),100);
 }
 
+// Shared Azure normalization: maps Azure-native properties to internal format.
+// Called from both _renderMapInner (textarea parse) and _buildRlCtxFromData (multi-view).
+function _normalizeAzureResources(d){
+  // Tag normalization: Azure {Name:"val"} → [{Key:"Name",Value:"val"}] array
+  function _normTags(r){
+    if(!r)return;var tg=r.tags;
+    if(tg&&!Array.isArray(tg)&&typeof tg==='object')r.Tags=Object.keys(tg).map(function(k){return{Key:k,Value:tg[k]||''}});
+    if(!r.Tags&&!r.tags&&r.name)r.Tags=[{Key:'Name',Value:r.name}];
+  }
+  var allArrays=[d.vpcs,d.subnets,d.rts,d.sgs,d.enis,d.nats,d.vpces,d.instances,d.albs,d.tgs,d.peerings,d.vpns,d.volumes,d.snapshots,d.s3bk,d.zones,d.wafAcls,d.rdsInstances,d.ecsServices,d.lambdaFns,d.ecacheClusters,d.redshiftClusters,d.tgwAttachments,d.cfDistributions];
+  allArrays.forEach(function(arr){if(arr)arr.forEach(_normTags)});
+  // Property mappings
+  if(d.vpcs)d.vpcs.forEach(function(v){if(!v.VpcId)v.VpcId=v.id||'';if(!v.CidrBlock)v.CidrBlock=(v.addressSpace&&v.addressSpace.addressPrefixes&&v.addressSpace.addressPrefixes[0])||''});
+  if(d.subnets)d.subnets.forEach(function(s){if(!s.SubnetId)s.SubnetId=s.id||'';if(!s.VpcId)s.VpcId=(s.id||'').split('/subnets/')[0]||'';if(!s.CidrBlock)s.CidrBlock=s.addressPrefix||''});
+  if(d.rts)d.rts.forEach(function(r){if(!r.RouteTableId)r.RouteTableId=r.id||'';if(!r.VpcId){var subs=r.subnets||[];if(subs[0]&&subs[0].id)r.VpcId=subs[0].id.split('/subnets/')[0]||''}if(!r.Routes&&r.routes)r.Routes=r.routes.map(function(rt){return{DestinationCidrBlock:rt.addressPrefix||'',GatewayId:rt.nextHopType||'',State:'active',_azRoute:rt}})});
+  if(d.sgs)d.sgs.forEach(function(s){if(!s.GroupId)s.GroupId=s.id||'';if(!s.GroupName)s.GroupName=s.name||'';if(!s.VpcId&&s.subnets&&s.subnets[0]&&s.subnets[0].id)s.VpcId=s.subnets[0].id.split('/subnets/')[0]||'';if(!s.IpPermissions&&(s.securityRules||s.defaultSecurityRules)){var allRules=[].concat(s.securityRules||[]).concat(s.defaultSecurityRules||[]);s.IpPermissions=allRules.filter(function(r){return(r.direction||'').toLowerCase()==='inbound'}).map(function(r){return{IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,IpRanges:[{CidrIp:r.sourceAddressPrefix||'*'}],_azRule:r}});s.IpPermissionsEgress=allRules.filter(function(r){return(r.direction||'').toLowerCase()==='outbound'}).map(function(r){return{IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,IpRanges:[{CidrIp:r.destinationAddressPrefix||'*'}],_azRule:r}})}});
+  if(d.enis)d.enis.forEach(function(e){if(!e.NetworkInterfaceId)e.NetworkInterfaceId=e.id||'';if(!e.SubnetId&&e.ipConfigurations&&e.ipConfigurations[0]&&e.ipConfigurations[0].subnet)e.SubnetId=e.ipConfigurations[0].subnet.id||'';if(!e.VpcId&&e.SubnetId)e.VpcId=(e.SubnetId||'').split('/subnets/')[0]||''});
+  if(d.nats)d.nats.forEach(function(n){if(!n.NatGatewayId)n.NatGatewayId=n.id||'';if(!n.SubnetId&&n.subnets&&n.subnets[0])n.SubnetId=n.subnets[0].id||'';if(!n.VpcId&&n.SubnetId)n.VpcId=(n.SubnetId||'').split('/subnets/')[0]||''});
+  if(d.vpces)d.vpces.forEach(function(v){if(!v.VpcEndpointId)v.VpcEndpointId=v.id||'';if(!v.ServiceName&&v.privateLinkServiceConnections&&v.privateLinkServiceConnections[0]){var plc=v.privateLinkServiceConnections[0];v.ServiceName=(plc.groupIds&&plc.groupIds[0])||plc.privateLinkServiceId||''}if(!v.SubnetId&&v.subnet)v.SubnetId=v.subnet.id||'';if(!v.VpcId&&v.SubnetId)v.VpcId=(v.SubnetId||'').split('/subnets/')[0]||''});
+  if(d.instances)d.instances.forEach(function(i){if(!i.InstanceId)i.InstanceId=i.id||'';if(!i.InstanceType&&i.hardwareProfile)i.InstanceType=i.hardwareProfile.vmSize||'';if(!i.SubnetId&&i.networkProfile&&i.networkProfile.networkInterfaces&&i.networkProfile.networkInterfaces[0])i._nicId=i.networkProfile.networkInterfaces[0].id||''});
+  if(d.albs)d.albs.forEach(function(a){if(!a.LoadBalancerArn)a.LoadBalancerArn=a.id||'';if(!a.LoadBalancerName)a.LoadBalancerName=a.name||'';if(!a.AvailabilityZones&&a.frontendIPConfigurations)a.AvailabilityZones=a.frontendIPConfigurations.filter(function(f){return f.subnet}).map(function(f){return{SubnetId:f.subnet.id||''}})});
+  if(d.tgs)d.tgs.forEach(function(t){if(!t.TargetGroupArn)t.TargetGroupArn=t.id||'';if(!t.TargetGroupName)t.TargetGroupName=t.name||'';if(!t.LoadBalancerArns&&t.loadBalancingRules)t.LoadBalancerArns=t.loadBalancingRules.map(function(r){return(r.id||'').split('/loadBalancingRules/')[0]}).filter(Boolean)});
+  if(d.peerings)d.peerings.forEach(function(p){if(!p.VpcPeeringConnectionId)p.VpcPeeringConnectionId=p.id||'';if(!p.RequesterVpcInfo&&p.localVirtualNetwork)p.RequesterVpcInfo={VpcId:p.localVirtualNetwork.id||'',CidrBlock:p.localAddressSpace&&p.localAddressSpace.addressPrefixes&&p.localAddressSpace.addressPrefixes[0]||''};if(!p.AccepterVpcInfo&&p.remoteVirtualNetwork)p.AccepterVpcInfo={VpcId:p.remoteVirtualNetwork.id||'',CidrBlock:p.remoteAddressSpace&&p.remoteAddressSpace.addressPrefixes&&p.remoteAddressSpace.addressPrefixes[0]||''};if(!p.Status&&p.peeringState)p.Status={Code:p.peeringState}});
+  if(d.vpns)d.vpns.forEach(function(v){if(!v.VpnGatewayId)v.VpnGatewayId=v.virtualNetworkGateway1&&v.virtualNetworkGateway1.id||v.id||'';if(!v.State)v.State=v.connectionStatus||v.provisioningState||''});
+  if(d.volumes)d.volumes.forEach(function(v){if(!v.VolumeId)v.VolumeId=v.id||'';if(!v.Size&&v.diskSizeGb)v.Size=v.diskSizeGb;if(!v.VolumeType&&v.sku)v.VolumeType=v.sku.name||'';if(!v.State)v.State=v.diskState||v.provisioningState||'';if(!v.Attachments&&v.managedBy)v.Attachments=[{InstanceId:v.managedBy}]});
+  if(d.snapshots)d.snapshots.forEach(function(s){if(!s.SnapshotId)s.SnapshotId=s.id||'';if(!s.VolumeId&&s.creationData)s.VolumeId=s.creationData.sourceResourceId||'';if(!s.VolumeSize&&s.diskSizeGb)s.VolumeSize=s.diskSizeGb;if(!s.State)s.State=s.provisioningState||''});
+  if(d.s3bk)d.s3bk.forEach(function(s){if(!s.Name)s.Name=s.name||''});
+  if(d.zones)d.zones.forEach(function(z){if(!z.Id)z.Id=z.id||'';if(!z.Config)z.Config={PrivateZone:z.zoneType==='Private'}});
+  if(d.wafAcls)d.wafAcls.forEach(function(w){if(!w.ResourceArns&&w.applicationGateways)w.ResourceArns=w.applicationGateways.map(function(a){return a.id||''})});
+  if(d.rdsInstances)d.rdsInstances.forEach(function(r){if(!r.DBInstanceIdentifier)r.DBInstanceIdentifier=r.name||'';if(!r.DBInstanceClass&&r.sku)r.DBInstanceClass=r.sku.tier||r.sku.name||'';if(!r.Engine)r.Engine=r.version||r.kind||'SQL'});
+  if(d.ecsServices)d.ecsServices.forEach(function(c){if(!c.serviceName)c.serviceName=c.name||'';if(!c.serviceArn)c.serviceArn=c.id||''});
+  if(d.lambdaFns)d.lambdaFns.forEach(function(f){if(!f.FunctionName)f.FunctionName=f.name||'';if(!f.FunctionArn)f.FunctionArn=f.id||'';if(!f.Runtime){var lv=f.siteConfig&&f.siteConfig.linuxFxVersion;f.Runtime=lv||f.kind||''}if(!f.VpcConfig&&f.virtualNetworkSubnetId)f.VpcConfig={SubnetIds:[f.virtualNetworkSubnetId]}});
+  if(d.ecacheClusters)d.ecacheClusters.forEach(function(c){if(!c.CacheClusterId)c.CacheClusterId=c.name||'';if(!c.Engine&&c.sku)c.Engine=c.sku.family||'Redis';if(!c.CacheNodeType&&c.sku)c.CacheNodeType=c.sku.capacity||'';if(!c.CacheClusterStatus)c.CacheClusterStatus=c.provisioningState||''});
+  if(d.redshiftClusters)d.redshiftClusters.forEach(function(c){if(!c.ClusterIdentifier)c.ClusterIdentifier=c.name||'';if(!c.NumberOfNodes&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NumberOfNodes=c.agentPoolProfiles[0].count||1;if(!c.NodeType&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NodeType=c.agentPoolProfiles[0].vmSize||'';if(!c.ClusterStatus)c.ClusterStatus=c.provisioningState||''});
+  if(d.tgwAttachments)d.tgwAttachments.forEach(function(t){if(!t.TransitGatewayId)t.TransitGatewayId=t.id||'';if(!t.State)t.State=t.provisioningState||''});
+  if(d.cfDistributions)d.cfDistributions.forEach(function(c){if(!c.Id)c.Id=c.id||'';if(!c.DomainName&&c.frontendEndpoints&&c.frontendEndpoints[0])c.DomainName=c.frontendEndpoints[0].hostName||c.frontendEndpoints[0].name||''});
+}
+
 var _renderMapTimer=null;
 var _prebuiltCtx=null;
 var _parseCache={};
@@ -8879,152 +8917,6 @@ function _renderMapInner(){
   if(iamRaw&&!_iamData)_iamData=parseIAMData(iamRaw);
   function tagResource(r){if(!r)return r;r._subscriptionId=detectAccountId(r)||userAccount||'default';r._region=detectRegion(r)||'unknown';return r}
   [vpcs,subnets,igws,nats,sgs,instances,albs,rdsInstances,ecsServices,lambdaFns,peerings].forEach(arr=>arr.forEach(tagResource));
-  // Normalize Azure-native properties → internal format (supports flat az CLI exports)
-  // Tag normalization: Azure uses {Name:"value"} objects, code expects [{Key:"Name",Value:"value"}] arrays
-  function _normTags(r){
-    if(!r)return;
-    var tg=r.tags;
-    if(tg&&!Array.isArray(tg)&&typeof tg==='object'){
-      r.Tags=Object.keys(tg).map(function(k){return{Key:k,Value:tg[k]||''}});
-    }
-    if(!r.Tags&&!r.tags&&r.name)r.Tags=[{Key:'Name',Value:r.name}];
-  }
-  [vpcs,subnets,rts,sgs,enis,nats,vpces,instances,albs,tgs,peerings,vpns,volumes,snapshots,s3bk,zones,wafAcls,rdsInstances,ecsServices,lambdaFns,ecacheClusters,redshiftClusters,tgwAttachments,cfDistributions].forEach(function(arr){arr.forEach(_normTags)});
-  vpcs.forEach(v=>{
-    if(!v.VpcId)v.VpcId=v.id||'';
-    if(!v.CidrBlock)v.CidrBlock=(v.addressSpace&&v.addressSpace.addressPrefixes&&v.addressSpace.addressPrefixes[0])||'';
-  });
-  subnets.forEach(s=>{
-    if(!s.SubnetId)s.SubnetId=s.id||'';
-    if(!s.VpcId)s.VpcId=(s.id||'').split('/subnets/')[0]||'';
-    if(!s.CidrBlock)s.CidrBlock=s.addressPrefix||'';
-  });
-  rts.forEach(r=>{
-    if(!r.RouteTableId)r.RouteTableId=r.id||'';
-    if(!r.VpcId){const subs=r.subnets||[];if(subs[0]&&subs[0].id)r.VpcId=subs[0].id.split('/subnets/')[0]||''}
-    // Map Azure routes → Routes array for firewall tab
-    if(!r.Routes&&r.routes){r.Routes=r.routes.map(rt=>({DestinationCidrBlock:rt.addressPrefix||'',GatewayId:rt.nextHopType||'',State:'active',_azRoute:rt}))}
-  });
-  sgs.forEach(s=>{
-    if(!s.GroupId)s.GroupId=s.id||'';
-    if(!s.GroupName)s.GroupName=s.name||'';
-    // Derive VpcId from subnet associations
-    if(!s.VpcId&&s.subnets&&s.subnets[0]&&s.subnets[0].id)s.VpcId=s.subnets[0].id.split('/subnets/')[0]||'';
-    if(!s.VpcId&&s.networkInterfaces&&s.networkInterfaces[0]&&s.networkInterfaces[0].id)s.VpcId='';// NIC-level NSG: no VNet
-    // Map Azure securityRules → IpPermissions/IpPermissionsEgress for firewall tab
-    if(!s.IpPermissions&&(s.securityRules||s.defaultSecurityRules)){
-      const allRules=[...(s.securityRules||[]),...(s.defaultSecurityRules||[])];
-      s.IpPermissions=allRules.filter(r=>(r.direction||'').toLowerCase()==='inbound').map(r=>({
-        IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,
-        ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,
-        IpRanges:[{CidrIp:r.sourceAddressPrefix||'*'}],_azRule:r
-      }));
-      s.IpPermissionsEgress=allRules.filter(r=>(r.direction||'').toLowerCase()==='outbound').map(r=>({
-        IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,
-        ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,
-        IpRanges:[{CidrIp:r.destinationAddressPrefix||'*'}],_azRule:r
-      }));
-    }
-  });
-  enis.forEach(e=>{
-    if(!e.NetworkInterfaceId)e.NetworkInterfaceId=e.id||'';
-    if(!e.SubnetId&&e.ipConfigurations&&e.ipConfigurations[0]&&e.ipConfigurations[0].subnet)e.SubnetId=e.ipConfigurations[0].subnet.id||'';
-    if(!e.VpcId&&e.SubnetId)e.VpcId=(e.SubnetId||'').split('/subnets/')[0]||'';
-  });
-  nats.forEach(n=>{
-    if(!n.NatGatewayId)n.NatGatewayId=n.id||'';
-    if(!n.SubnetId&&n.subnets&&n.subnets[0])n.SubnetId=n.subnets[0].id||'';
-    if(!n.VpcId&&n.SubnetId)n.VpcId=(n.SubnetId||'').split('/subnets/')[0]||'';
-  });
-  vpces.forEach(v=>{
-    if(!v.VpcEndpointId)v.VpcEndpointId=v.id||'';
-    if(!v.ServiceName&&v.privateLinkServiceConnections&&v.privateLinkServiceConnections[0]){const plc=v.privateLinkServiceConnections[0];v.ServiceName=(plc.groupIds&&plc.groupIds[0])||plc.privateLinkServiceId||''}
-    if(!v.SubnetId&&v.subnet)v.SubnetId=v.subnet.id||'';
-    if(!v.VpcId&&v.SubnetId)v.VpcId=(v.SubnetId||'').split('/subnets/')[0]||'';
-  });
-  instances.forEach(i=>{
-    if(!i.InstanceId)i.InstanceId=i.id||'';
-    if(!i.InstanceType&&i.hardwareProfile)i.InstanceType=i.hardwareProfile.vmSize||'';
-    if(!i.SubnetId&&i.networkProfile&&i.networkProfile.networkInterfaces&&i.networkProfile.networkInterfaces[0]){const nic=i.networkProfile.networkInterfaces[0];i._nicId=nic.id||''}
-  });
-  albs.forEach(a=>{
-    if(!a.LoadBalancerArn)a.LoadBalancerArn=a.id||'';
-    if(!a.LoadBalancerName)a.LoadBalancerName=a.name||'';
-    if(!a.AvailabilityZones&&a.frontendIPConfigurations){a.AvailabilityZones=a.frontendIPConfigurations.filter(f=>f.subnet).map(f=>({SubnetId:f.subnet.id||''}))}
-  });
-  tgs.forEach(t=>{
-    if(!t.TargetGroupArn)t.TargetGroupArn=t.id||'';
-    if(!t.TargetGroupName)t.TargetGroupName=t.name||'';
-    if(!t.LoadBalancerArns&&t.loadBalancingRules)t.LoadBalancerArns=t.loadBalancingRules.map(r=>(r.id||'').split('/loadBalancingRules/')[0]).filter(Boolean);
-  });
-  peerings.forEach(p=>{
-    if(!p.VpcPeeringConnectionId)p.VpcPeeringConnectionId=p.id||'';
-    if(!p.RequesterVpcInfo&&p.localVirtualNetwork)p.RequesterVpcInfo={VpcId:p.localVirtualNetwork.id||'',CidrBlock:p.localAddressSpace&&p.localAddressSpace.addressPrefixes&&p.localAddressSpace.addressPrefixes[0]||''};
-    if(!p.AccepterVpcInfo&&p.remoteVirtualNetwork)p.AccepterVpcInfo={VpcId:p.remoteVirtualNetwork.id||'',CidrBlock:p.remoteAddressSpace&&p.remoteAddressSpace.addressPrefixes&&p.remoteAddressSpace.addressPrefixes[0]||''};
-    if(!p.Status&&p.peeringState)p.Status={Code:p.peeringState};
-  });
-  vpns.forEach(v=>{
-    if(!v.VpnGatewayId)v.VpnGatewayId=v.virtualNetworkGateway1&&v.virtualNetworkGateway1.id||v.id||'';
-    if(!v.State)v.State=v.connectionStatus||v.provisioningState||'';
-  });
-  volumes.forEach(v=>{
-    if(!v.VolumeId)v.VolumeId=v.id||'';
-    if(!v.Size&&v.diskSizeGb)v.Size=v.diskSizeGb;
-    if(!v.VolumeType&&v.sku)v.VolumeType=v.sku.name||'';
-    if(!v.State)v.State=v.diskState||v.provisioningState||'';
-    if(!v.Attachments&&v.managedBy)v.Attachments=[{InstanceId:v.managedBy}];
-  });
-  snapshots.forEach(s=>{
-    if(!s.SnapshotId)s.SnapshotId=s.id||'';
-    if(!s.VolumeId&&s.creationData)s.VolumeId=s.creationData.sourceResourceId||'';
-    if(!s.VolumeSize&&s.diskSizeGb)s.VolumeSize=s.diskSizeGb;
-    if(!s.State)s.State=s.provisioningState||'';
-  });
-  s3bk.forEach(s=>{
-    if(!s.Name)s.Name=s.name||'';
-  });
-  zones.forEach(z=>{
-    if(!z.Id)z.Id=z.id||'';
-    if(!z.Config)z.Config={PrivateZone:z.zoneType==='Private'};
-  });
-  wafAcls.forEach(w=>{
-    if(!w.ResourceArns&&w.applicationGateways)w.ResourceArns=w.applicationGateways.map(a=>a.id||'');
-  });
-  rdsInstances.forEach(r=>{
-    if(!r.DBInstanceIdentifier)r.DBInstanceIdentifier=r.name||'';
-    if(!r.DBInstanceClass&&r.sku)r.DBInstanceClass=r.sku.tier||r.sku.name||'';
-    if(!r.Engine)r.Engine=r.version||r.kind||'SQL';
-  });
-  ecsServices.forEach(c=>{
-    if(!c.serviceName)c.serviceName=c.name||'';
-    if(!c.serviceArn)c.serviceArn=c.id||'';
-  });
-  lambdaFns.forEach(f=>{
-    if(!f.FunctionName)f.FunctionName=f.name||'';
-    if(!f.FunctionArn)f.FunctionArn=f.id||'';
-    if(!f.Runtime){const lv=f.siteConfig&&f.siteConfig.linuxFxVersion;f.Runtime=lv||f.kind||''}
-    if(!f.VpcConfig&&f.virtualNetworkSubnetId)f.VpcConfig={SubnetIds:[f.virtualNetworkSubnetId]};
-  });
-  ecacheClusters.forEach(c=>{
-    if(!c.CacheClusterId)c.CacheClusterId=c.name||'';
-    if(!c.Engine&&c.sku)c.Engine=c.sku.family||'Redis';
-    if(!c.CacheNodeType&&c.sku)c.CacheNodeType=c.sku.capacity||'';
-    if(!c.CacheClusterStatus)c.CacheClusterStatus=c.provisioningState||'';
-  });
-  redshiftClusters.forEach(c=>{
-    if(!c.ClusterIdentifier)c.ClusterIdentifier=c.name||'';
-    if(!c.NumberOfNodes&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NumberOfNodes=c.agentPoolProfiles[0].count||1;
-    if(!c.NodeType&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NodeType=c.agentPoolProfiles[0].vmSize||'';
-    if(!c.ClusterStatus)c.ClusterStatus=c.provisioningState||'';
-  });
-  tgwAttachments.forEach(t=>{
-    if(!t.TransitGatewayId)t.TransitGatewayId=t.id||'';
-    if(!t.State)t.State=t.provisioningState||'';
-  });
-  cfDistributions.forEach(c=>{
-    if(!c.Id)c.Id=c.id||'';
-    if(!c.DomainName&&c.frontendEndpoints&&c.frontendEndpoints[0])c.DomainName=c.frontendEndpoints[0].hostName||c.frontendEndpoints[0].name||'';
-  });
   } // end else (textarea parse path)
   console.log('[PERF] parse phase: '+(performance.now()-_t0).toFixed(1)+'ms');
   const _t1=performance.now();
@@ -12868,6 +12760,8 @@ function _buildRlCtxFromData(textareas, accountLabel){
     [vpcs,subnets,igwRaw,natRaw,sgs,instances,albs,rdsInstances,ecsServices,lambdaFns,
      peerings,volumes,snapshots,enis,ecacheClusters,redshiftClusters,
      nacls,rts,vpceRaw,vpns,s3bk,zones,wafAcls,cfDistributions,tgs].forEach(arr=>arr.forEach(tagResource));
+    // Azure normalization (shared with _renderMapInner)
+    _normalizeAzureResources({vpcs,subnets,rts,sgs,enis,nats:natRaw,vpces:vpceRaw,instances,albs,tgs,peerings,vpns,volumes,snapshots,s3bk,zones,wafAcls,rdsInstances,ecsServices,lambdaFns,ecacheClusters,redshiftClusters,tgwAttachments:tgwAttRaw,cfDistributions});
     // VPC→region fallback: derive from subnets' AZs, propagate to VPC-linked resources
     const vpcRegion={};
     subnets.forEach(s=>{if(s.VpcId&&s._region&&s._region!=='unknown')vpcRegion[s.VpcId]=s._region});
