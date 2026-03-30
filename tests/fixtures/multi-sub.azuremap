@@ -1,6 +1,7 @@
 {
   "_format": "azuremap",
   "_version": "2.0",
+  "multiViewMode": true,
   "accounts": [
     {
       "id": "sub-aaa",
