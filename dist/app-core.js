@@ -23317,6 +23317,19 @@ document.getElementById('clearBtn').addEventListener('click',()=>{document.query
 document.getElementById('landingDemo').addEventListener('click',function(){document.getElementById('loadDemo').click()});
 document.getElementById('landingImport').addEventListener('click',function(){document.getElementById('uploadBtn').click()});
 document.getElementById('landingImportReport').addEventListener('click',function(){document.getElementById('importReportInput').click()});
+// Landing card navigation — import data first, then open the feature
+var _lcActions={
+  'lc-topology':function(){document.getElementById('uploadBtn').click()},
+  'lc-compliance':function(){if(_rlCtx)openUnifiedDash('compliance');else{document.getElementById('uploadBtn').click()}},
+  'lc-flow':function(){if(_rlCtx)openUnifiedDash('flow');else{document.getElementById('uploadBtn').click()}},
+  'lc-design':function(){if(_rlCtx&&typeof toggleDesignMode==='function')toggleDesignMode();else{document.getElementById('uploadBtn').click()}},
+  'lc-multisub':function(){document.getElementById('uploadBtn').click()},
+  'lc-budr':function(){if(_rlCtx)openUnifiedDash('budr');else{document.getElementById('uploadBtn').click()}},
+  'lc-reports':function(){if(_rlCtx)openUnifiedDash('reports');else{document.getElementById('uploadBtn').click()}},
+  'lc-iac':function(){if(_rlCtx&&typeof openIaCPanel==='function')openIaCPanel();else{document.getElementById('uploadBtn').click()}},
+  'lc-governance':function(){if(_rlCtx)openUnifiedDash('classification');else{document.getElementById('uploadBtn').click()}}
+};
+Object.keys(_lcActions).forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',_lcActions[id])});
 document.getElementById('loadDemo').addEventListener('click',()=>{
   try{
   // OPTIMIZED: Generate demo data on first load (lazy initialization)
