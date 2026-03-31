@@ -23087,9 +23087,10 @@ var _lcActions={
   'lc-governance':function(){if(_rlCtx)openUnifiedDash('classification');else{document.getElementById('uploadBtn').click()}}
 };
 Object.keys(_lcActions).forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',_lcActions[id])});
-document.getElementById('loadDemo').addEventListener('click',()=>{
+document.getElementById('loadDemo').addEventListener('click',async()=>{
   try{
-  // OPTIMIZED: Generate demo data on first load (lazy initialization)
+  // OPTIMIZED: Lazy-load demo module then generate demo data
+  if(typeof generateDemo==='undefined'||typeof generateDemo!=='function')await window._loadDemoData();
   if(typeof demo==='undefined'||!demo)demo=generateDemo();
   // Split demo data into 2 accounts for multi-account view
   // ext() helper: extract arrays from wrapper objects (checks 'value' + named keys)
@@ -27224,8 +27225,10 @@ function closeIacModal(){
   _iacOutput='';
 }
 
-function generateIacPreview(){
+async function generateIacPreview(){
   const ctx=_rlCtx;
+  // Lazy-load IaC generator module if needed
+  if(!window.AppModules.IacGenerator&&window._loadIacGenerator)await window._loadIacGenerator();
   if(!ctx||!ctx.vpcs||!ctx.vpcs.length){
     document.getElementById('iacPreview').innerHTML='<div class="iac-empty">No data loaded. Render a map first.</div>';
     return;
@@ -27418,7 +27421,8 @@ document.addEventListener('keydown',function(e){
 // Or run all: window._runAllEdgeCaseTests()
 
 // --- Demo Data: Snapshot History Generator ---
-window.generateDemoSnapshots = function(){
+window.generateDemoSnapshots = async function(){
+  if(typeof generateDemo!=='function')await window._loadDemoData();
   const d = generateDemo();
   const fieldMap = {in_vnets:'vnets',in_subnets:'subnets',in_udrs:'udrs',in_nsgs:'nsgs',
     in_nats:'nats',in_vms:'vms',in_albs:'albs',in_pvteps:'pvteps',
@@ -27464,7 +27468,8 @@ window.generateDemoSnapshots = function(){
 };
 
 // --- Demo Data: Annotations ---
-window._demoAnnotations = (function(){
+window._demoAnnotations = (async function(){
+  if(typeof generateDemo!=='function')await window._loadDemoData();
   const d = generateDemo();
   const vnets = (d.vnets&&d.vnets.value)||[];
   const subnets = (d.subnets&&d.subnets.value)||[];
@@ -27496,8 +27501,9 @@ window._demoAnnotations = (function(){
 window._edgeCaseTests = window._edgeCaseTests || {};
 
 // ==================== Feature 4: Multi-Account ====================
-window._edgeCaseTests.multiAccount = function(){
+window._edgeCaseTests.multiAccount = async function(){
   const results = [];
+  if(typeof generateDemo!=='function')await window._loadDemoData();
   const d = generateDemo();
   const T = (name, fn) => { try { const r = fn(); results.push({name, pass:r.pass, detail:r.detail}); } catch(e){ results.push({name, pass:false, detail:'Exception: '+e.message}); }};
 
@@ -27879,10 +27885,11 @@ window._edgeCaseTests.notes = function(){
 };
 
 // ==================== Feature 7: IaC Export ====================
-window._edgeCaseTests.iacExport = function(){
+window._edgeCaseTests.iacExport = async function(){
   const results = [];
   const T = (name, fn) => { try { const r = fn(); results.push({name, pass:r.pass, detail:r.detail}); } catch(e){ results.push({name, pass:false, detail:'Exception: '+e.message}); }};
 
+  if(typeof generateDemo!=='function')await window._loadDemoData();
   const d = generateDemo();
   // Build a minimal rlCtx-like object for generateTerraform / generateArmTemplate
   const ctx = {
@@ -28064,7 +28071,8 @@ function _demoToDiffObj(demoData){
 }
 
 // --- Demo Data: generateDemoBaseline ---
-window.generateDemoBaseline=function(){
+window.generateDemoBaseline=async function(){
+  if(typeof generateDemo!=='function')await window._loadDemoData();
   const d=generateDemo();
   const b=JSON.parse(JSON.stringify(d));
   const bVnets=b.vnets&&b.vnets.value||[];
@@ -28121,8 +28129,9 @@ const _demoFlowScenarios=[
 ];
 
 // --- Feature 1: Diff Edge Case Tests ---
-window._edgeCaseTests.diff=function(){
+window._edgeCaseTests.diff=async function(){
   const results=[];
+  if(typeof generateDemo!=='function')await window._loadDemoData();
   const demoRaw=generateDemo();
   const current=_demoToDiffObj(demoRaw);
   const T=(name,fn)=>{try{const r=fn();results.push({name,pass:r.pass,detail:r.detail})}catch(e){results.push({name,pass:false,detail:'Exception: '+e.message})}};
