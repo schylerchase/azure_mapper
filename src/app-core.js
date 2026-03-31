@@ -23083,7 +23083,7 @@ var _lcActions={
   'lc-multisub':function(){document.getElementById('uploadBtn').click()},
   'lc-budr':function(){if(_rlCtx)openUnifiedDash('budr');else{document.getElementById('uploadBtn').click()}},
   'lc-reports':function(){if(_rlCtx)openUnifiedDash('reports');else{document.getElementById('uploadBtn').click()}},
-  'lc-iac':function(){if(_rlCtx&&typeof openIacModal==='function')openIacModal();else{document.getElementById('uploadBtn').click()}},
+  'lc-iac':function(){if(_rlCtx&&typeof openIacModal==='function')openIacModal('arm');else{document.getElementById('uploadBtn').click()}},
   'lc-governance':function(){if(_rlCtx)openUnifiedDash('classification');else{document.getElementById('uploadBtn').click()}}
 };
 Object.keys(_lcActions).forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',_lcActions[id])});
@@ -27229,7 +27229,8 @@ async function generateIacPreview(){
   const ctx=_rlCtx;
   // Lazy-load IaC generator module if needed
   if(!window.AppModules.IacGenerator&&window._loadIacGenerator)await window._loadIacGenerator();
-  if(!ctx||!ctx.vpcs||!ctx.vpcs.length){
+  const vnetArr=ctx&&(ctx.vnets||ctx.vpcs);
+  if(!ctx||!vnetArr||!vnetArr.length){
     document.getElementById('iacPreview').innerHTML='<div class="iac-empty">No data loaded. Render a map first.</div>';
     return;
   }
