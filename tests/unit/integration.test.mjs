@@ -1,18 +1,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { ext } from '../../src/modules/utils.js';
 import { _normalizeAzureResources } from '../../src/modules/normalization.js';
 
 const EXPORT_DIR = join(import.meta.dirname, '../../azure-export-00b800a2-140e-4a89-94f9-ed6aab746a51-20260330-105511');
+const HAS_EXPORT_DATA = existsSync(join(EXPORT_DIR, 'vnets.json'));
 
 function loadAndParse(filename) {
   const raw = readFileSync(join(EXPORT_DIR, filename), 'utf8');
   return ext(JSON.parse(raw), ['value']);
 }
 
-describe('Integration: Azure export normalization (R1.6)', () => {
+describe('Integration: Azure export normalization (R1.6)', { skip: !HAS_EXPORT_DATA && 'azure-export folder not present (CI)' }, () => {
   it('normalizes VNets with VpcId and CidrBlock', () => {
     const vnets = loadAndParse('vnets.json');
     const d = { vpcs: vnets };
