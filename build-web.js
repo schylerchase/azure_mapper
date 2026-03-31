@@ -25,10 +25,14 @@ function copyDir(src, dest) {
 if (fs.existsSync(OUT)) fs.rmSync(OUT, { recursive: true });
 mkdirp(OUT);
 
-// Copy built bundles
+// Copy built bundles (including lazy-loaded modules)
 mkdirp(path.join(OUT, 'dist'));
 fs.copyFileSync('dist/app.bundle.js', path.join(OUT, 'dist/app.bundle.js'));
 fs.copyFileSync('dist/app-core.js', path.join(OUT, 'dist/app-core.js'));
+if (fs.existsSync('dist/demo-data.bundle.js'))
+  fs.copyFileSync('dist/demo-data.bundle.js', path.join(OUT, 'dist/demo-data.bundle.js'));
+if (fs.existsSync('dist/iac-generator.bundle.js'))
+  fs.copyFileSync('dist/iac-generator.bundle.js', path.join(OUT, 'dist/iac-generator.bundle.js'));
 
 // Copy static assets
 fs.copyFileSync('index.html', path.join(OUT, 'index.html'));
