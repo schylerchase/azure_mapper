@@ -62,7 +62,7 @@ Plans:
 - [ ] 04-02-PLAN.md -- Consolidate compliance engine NSG multi-pass + defer compliance to requestIdleCallback
 
 ## Phase 5: Release Preparation
-**Goal:** Version bump, changelog, packaging, deployment
+**Goal:** Version bump to 2.0.0, changelog, packaging, and deployment
 - Version bump and changelog generation
 - Electron packaging (macOS + Windows)
 - Auto-update configuration
@@ -71,3 +71,8 @@ Plans:
 
 **Requirements:** R4.1-R4.6
 **Estimate:** 1 session
+**Plans:** 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md -- Version bump to 2.0.0, CHANGELOG.md generation, Vercel lazy bundle fix + cache headers
+- [ ] 05-02-PLAN.md -- Electron packaging with lazy bundles, auto-update verification, R4.6 demo data validation
