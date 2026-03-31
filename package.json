@@ -39,6 +39,8 @@
       "libs/**",
       "dist/app.bundle.js",
       "dist/app-core.js",
+      "dist/demo-data.bundle.js",
+      "dist/iac-generator.bundle.js",
       "src/styles/**",
       "src/data/**",
       "logo.png",
