@@ -3,6 +3,15 @@ dist/*.map
 dist/meta.json
 dist/demo-data.bundle.js
 dist/iac-generator.bundle.js
+dist/mac-arm64/
+dist/mac/
+dist/win-unpacked/
+dist/linux-unpacked/
+dist/builder-debug.yml
+dist/*.blockmap
+dist/latest-mac.yml
+dist/latest.yml
+dist/latest-linux.yml
 out/
 *.dmg
 *.zip
@@ -18,3 +27,9 @@ delete-me/
 test-results/
 public/
 .vercel
+
+.planning/
+
+.claude/
+
+.playwright-mcp/
