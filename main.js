@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');
 const { buildScanArgs, parseOutputDir, mapFolderFiles } = require('./main-utils');
+const { version } = require('./package.json');
 
 let mainWindow;
 
@@ -99,7 +100,7 @@ function buildMenu() {
                         dialog.showMessageBox(mainWindow, {
                             type: 'info',
                             title: 'About',
-                            message: 'Azure Network Mapper v1.0.0',
+                            message: `Azure Network Mapper v${version}`,
                             detail: 'Visualize, analyze, and export Azure network topologies.'
                         });
                     }
