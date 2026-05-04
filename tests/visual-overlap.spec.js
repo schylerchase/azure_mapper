@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 const {
   loadDemo, captureErrors,
-  getBoundingBoxes, findOverlaps, getTextBounds, isContainedIn,
+  getBoundingBoxes, boxesOverlap, findOverlaps, getTextBounds, isContainedIn,
 } = require('./helpers');
 
 // SVG topology visual regression: detect overlapping elements, colliding text,
@@ -105,6 +105,27 @@ test.describe('SVG Topology — No Overlaps', () => {
     expect(overlaps, formatOverlaps('Gateway circle', overlaps)).toHaveLength(0);
   });
 
+  test('NAT gateway nodes use NAT coloring', async ({ page }) => {
+    const natNodes = await page.evaluate(() => {
+      return Array.from(document.querySelectorAll('.gw-node')).map((g, index) => {
+        const text = g.querySelector('.gw-label')?.textContent?.trim() || '';
+        const circle = g.querySelector('circle');
+        const label = g.querySelector('.gw-label');
+        return {
+          index,
+          text,
+          stroke: circle?.getAttribute('stroke') || '',
+          fill: label?.getAttribute('fill') || '',
+        };
+      }).filter(n => n.text === 'NAT');
+    });
+    expect(natNodes.length).toBeGreaterThan(0);
+    for (const node of natNodes) {
+      expect(node.stroke, `NAT gateway ${node.index} circle stroke`).toBe('var(--nat-color)');
+      expect(node.fill, `NAT gateway ${node.index} text fill`).toBe('var(--nat-color)');
+    }
+  });
+
   test('shared gateway labels do not overlap each other', async ({ page }) => {
     const boxes = await getBoundingBoxes(page, '.gw-node .gw-label-bg');
     if (boxes.length < 2) return;
@@ -194,6 +215,29 @@ test.describe('SVG Topology — No Overlaps', () => {
       }
     }
     expect(overlaps, 'Peering labels overlapping VNet rects').toHaveLength(0);
+  });
+
+  test('peering labels do not overlap gateway or DNS elements', async ({ page }) => {
+    const peeringLabels = await getBoundingBoxes(page, '.peering-label-g rect');
+    const gatewayCircles = await getBoundingBoxes(page, '.gw-node circle');
+    const gatewayLabels = await getBoundingBoxes(page, '.gw-node .gw-label-bg');
+    const dnsSections = await getBoundingBoxes(page, '.dns-section > rect');
+    if (peeringLabels.length === 0 || (gatewayCircles.length === 0 && gatewayLabels.length === 0 && dnsSections.length === 0)) return;
+
+    const overlaps = [];
+    for (const label of peeringLabels) {
+      for (const circle of gatewayCircles) {
+        if (boxesOverlap(label, circle, 2)) overlaps.push({ label, target: circle, kind: 'gateway circle' });
+      }
+      for (const gatewayLabel of gatewayLabels) {
+        if (boxesOverlap(label, gatewayLabel, 1)) overlaps.push({ label, target: gatewayLabel, kind: 'gateway label' });
+      }
+      for (const dnsSection of dnsSections) {
+        if (boxesOverlap(label, dnsSection, 1)) overlaps.push({ label, target: dnsSection, kind: 'DNS section' });
+      }
+    }
+
+    expect(overlaps, formatCrossOverlaps('Peering label', overlaps)).toHaveLength(0);
   });
 
   // ── Region labels ─────────────────────────────────────────────
@@ -298,5 +342,12 @@ function formatTextOverlaps(label, overlaps) {
   if (overlaps.length === 0) return '';
   return `${label} text overlaps:\n` + overlaps.map(o =>
     `  "${o.a.text}" ↔ "${o.b.text}"`
+  ).join('\n');
+}
+
+function formatCrossOverlaps(label, overlaps) {
+  if (overlaps.length === 0) return '';
+  return `${label} cross-element overlaps found:\n` + overlaps.map(o =>
+    `  [${o.label.index}] (${o.label.x},${o.label.y} ${o.label.w}x${o.label.h}) overlaps ${o.kind} [${o.target.index}] (${o.target.x},${o.target.y} ${o.target.w}x${o.target.h})`
   ).join('\n');
 }

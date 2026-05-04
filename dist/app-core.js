@@ -9733,6 +9733,31 @@ function _renderMapInner(){
   const laneSpacing = 28;
   const stubLen = 15;
   const peerStagger = 20;
+  const peeringOccupied = [];
+  const addPeeringOccupied = (r) => peeringOccupied.push({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 });
+  const peeringRectsOverlap = (a, b) => !(a.x + a.w < b.x || b.x + b.w < a.x || a.y + a.h < b.y || b.y + b.h < a.y);
+  const placePeeringLane = (midX, baseY, labelW, direction) => {
+    const step = direction === 'down' ? laneSpacing : -laneSpacing;
+    let y = baseY;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const candidate = { x: midX - labelW / 2, y: y - 9, w: labelW, h: 18 };
+      if (!peeringOccupied.some(o => peeringRectsOverlap(candidate, o))) return y;
+      y += step;
+    }
+    return y;
+  };
+  gwP.forEach((pos, id) => {
+    if (vpceIds.has(id)) return;
+    addPeeringOccupied({ x: pos.x - GR, y: pos.y - GR, w: GR * 2, h: GR * 2 });
+    const gw = pos.gw;
+    const nm = gwNames[gw.id];
+    const lblTxt = nm && nm !== gw.id ? nm : sid(gw.id);
+    const tw = lblTxt.length * 6.2 + 16;
+    addPeeringOccupied({ x: pos.x - tw / 2, y: pos.y + GR + 14 - 9, w: tw, h: 15 });
+  });
+  if (zones.length > 0) {
+    addPeeringOccupied({ x: 60, y: routingBottomY + 40, w: Math.max(320, allVpcRight - 60), h: 120 });
+  }
 
   // Per-VPC exit counters for above (inner) and below (outer) stubs
   const vpcAboveExit = {}, vpcBelowExit = {};
@@ -9747,7 +9772,9 @@ function _renderMapInner(){
     const aR = vpcAboveExit[rightVpc.vpc.VpcId] = (vpcAboveExit[rightVpc.vpc.VpcId] || 0) + 1;
     const fwdLeftX = leftVpc.x + leftVpc.w - stubLen - (aL - 1) * peerStagger;
     const fwdRightX = rightVpc.x + stubLen + (aR - 1) * peerStagger;
-    const fwdY = globalMinY - 40 - i * laneSpacing;
+    const fwdMidX = (fwdLeftX + fwdRightX) / 2;
+    const pw = pn.length * 5.5 + 20;
+    const fwdY = placePeeringLane(fwdMidX, globalMinY - 40 - i * laneSpacing, pw, 'up');
     const fwdD = `M${fwdLeftX},${leftVpc.y} L${fwdLeftX},${fwdY} L${fwdRightX},${fwdY} L${fwdRightX},${rightVpc.y}`;
 
     peeringG.append('path')
@@ -9756,8 +9783,6 @@ function _renderMapInner(){
       .attr('stroke', 'var(--pcx-color)');
 
     // Forward label
-    const fwdMidX = (fwdLeftX + fwdRightX) / 2;
-    const pw = pn.length * 5.5 + 20;
     const fwdLg = lnL.append('g').attr('class', 'peering-label-g');
     fwdLg.append('rect')
       .attr('x', fwdMidX - pw / 2).attr('y', fwdY - 9)
@@ -9767,13 +9792,15 @@ function _renderMapInner(){
       .attr('x', fwdMidX).attr('y', fwdY + 4)
       .attr('text-anchor', 'middle').attr('font-family', 'Segoe UI,system-ui,sans-serif')
       .style('font-size', 'calc(9px * var(--txt-scale,1))').attr('fill', '#fb923c').text(pn);
+    addPeeringOccupied({ x: fwdMidX - pw / 2, y: fwdY - 9, w: pw, h: 18 });
 
     // --- Inverse arc: BELOW VPCs, outer edge stubs (facing away) ---
     const bL = vpcBelowExit[leftVpc.vpc.VpcId] = (vpcBelowExit[leftVpc.vpc.VpcId] || 0) + 1;
     const bR = vpcBelowExit[rightVpc.vpc.VpcId] = (vpcBelowExit[rightVpc.vpc.VpcId] || 0) + 1;
     const invLeftX = leftVpc.x + stubLen + (bL - 1) * peerStagger;
     const invRightX = rightVpc.x + rightVpc.w - stubLen - (bR - 1) * peerStagger;
-    const invY = globalMaxBottom + 40 + i * laneSpacing;
+    const invMidX = (invLeftX + invRightX) / 2;
+    const invY = placePeeringLane(invMidX, globalMaxBottom + 40 + i * laneSpacing, pw, 'up');
     const invD = `M${invLeftX},${leftVpc.y + leftVpc.h} L${invLeftX},${invY} L${invRightX},${invY} L${invRightX},${rightVpc.y + rightVpc.h}`;
 
     peeringG.append('path')
@@ -9782,7 +9809,6 @@ function _renderMapInner(){
       .attr('stroke', 'var(--pcx-color)');
 
     // Inverse label
-    const invMidX = (invLeftX + invRightX) / 2;
     const invLg = lnL.append('g').attr('class', 'peering-label-g');
     invLg.append('rect')
       .attr('x', invMidX - pw / 2).attr('y', invY - 9)
@@ -9792,6 +9818,7 @@ function _renderMapInner(){
       .attr('x', invMidX).attr('y', invY + 4)
       .attr('text-anchor', 'middle').attr('font-family', 'Segoe UI,system-ui,sans-serif')
       .style('font-size', 'calc(9px * var(--txt-scale,1))').attr('fill', '#fb923c').text(pn);
+    addPeeringOccupied({ x: invMidX - pw / 2, y: invY - 9, w: pw, h: 18 });
   });
 
   // VPN marker
@@ -10015,8 +10042,8 @@ function _renderMapInner(){
       const anchor=(!sh&&gwLeft)?'start':'end';
       const rx=anchor==='end'?(lx-lw):lx;
       const textX=rx+lw/2;
-      lg.append('rect').attr('x',rx).attr('y',ly-8).attr('width',lw).attr('height',16).attr('rx',3).attr('class','route-label-bg').attr('fill','var(--panel-bg)').attr('stroke',colH).attr('stroke-width',.5);
-      lg.append('text').attr('x',textX).attr('y',ly+3).attr('text-anchor','middle').attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(8px * var(--txt-scale,1))').attr('font-weight','500').attr('fill',colH).text(lt);
+      lg.append('rect').attr('x',rx).attr('y',ly-9).attr('width',lw).attr('height',18).attr('rx',3).attr('class','route-label-bg').attr('fill','var(--panel-bg)').attr('stroke',colH).attr('stroke-width',1);
+      lg.append('text').attr('x',textX).attr('y',ly+4).attr('text-anchor','middle').attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(9px * var(--txt-scale,1))').attr('font-weight','700').attr('fill',colH).text(lt);
       allLb.push({gid,vid,shared:sh,lx:textX,lw,g:lg});
     }
   });
@@ -10343,6 +10370,43 @@ function _renderMapInner(){
       openGatewayPanel(gw.id,gw.type,{gwNames,igws,nats,vpns,vpces,peerings,rts,subnets,subRT,pubSubs,vpcs,tgwAttachments});
     });
   });
+
+  // Gateway name badges can pack tightly under adjacent shared gateways.
+  // Resolve them as one label family after all gateway nodes have been rendered.
+  {
+    const labels = [];
+    ndL.selectAll('.gw-node').each(function(){
+      const g = d3.select(this);
+      const bg = g.select('.gw-label-bg');
+      const txt = g.select('.gw-name, .gw-id');
+      if(!bg.node()||!txt.node())return;
+      labels.push({
+        rectNode: bg,
+        textNode: txt,
+        x: parseFloat(bg.attr('x')),
+        y: parseFloat(bg.attr('y')),
+        w: parseFloat(bg.attr('width')),
+        h: parseFloat(bg.attr('height')),
+      });
+    });
+    labels.sort((a,b)=>a.y-b.y||a.x-b.x);
+    for(let iter=0;iter<12;iter++){
+      let moved=false;
+      for(let i=0;i<labels.length;i++){
+        for(let j=i+1;j<labels.length;j++){
+          const a=labels[i],b=labels[j];
+          if(!peeringRectsOverlap({x:a.x-2,y:a.y-2,w:a.w+4,h:a.h+4},{x:b.x,y:b.y,w:b.w,h:b.h}))continue;
+          b.y=a.y+a.h+4;
+          moved=true;
+        }
+      }
+      if(!moved)break;
+    }
+    labels.forEach(l=>{
+      l.rectNode.attr('y',l.y);
+      l.textNode.attr('y',l.y+9);
+    });
+  }
 
   // internet node - positioned at top-left
   if(iGwList.length){
@@ -11398,13 +11462,27 @@ if(_isElectron){
   function _openScanModal(){document.getElementById('scanAzureBtn').click()}
   document.getElementById('scanCancel').addEventListener('click',()=>{document.getElementById('scanModal').style.display='none'});
   document.getElementById('scanStart').addEventListener('click',()=>{
-    const profile=document.getElementById('scanProfile').value.trim()||undefined;
-    const region=document.getElementById('scanRegion').value.trim()||undefined;
+    const subscription=document.getElementById('scanProfile').value.trim();
+    const resourceGroup=document.getElementById('scanRegion').value.trim()||undefined;
+    if(!subscription){
+      _showToast('Subscription is required','error');
+      return;
+    }
     document.getElementById('scanForm').style.display='none';
     document.getElementById('scanProgress').style.display='block';
     const log=document.getElementById('scanLog');
     log.textContent='Starting scan...\n';
-    window.electronAPI.scanAzure({profile,region});
+    window.electronAPI.scanAzure({subscription,resourceGroup}).then(result=>{
+      if(result&&!result.success&&result.error){
+        const log=document.getElementById('scanLog');
+        log.textContent+='\\nERROR: '+result.error+'\\n';
+        log.style.color='#ef4444';
+      }
+    }).catch(e=>{
+      const log=document.getElementById('scanLog');
+      log.textContent+='\\nERROR: '+e.message+'\\n';
+      log.style.color='#ef4444';
+    });
   });
   document.getElementById('scanAbort').addEventListener('click',()=>{
     window.electronAPI.abortScan();

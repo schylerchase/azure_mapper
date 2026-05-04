@@ -175,28 +175,38 @@ var AppBundle = (() => {
     return lower === "fw" || lower === "bastion" || lower === "vpn" || lower === "nat" || lower === "microsoft.network/azurefirewalls" || lower === "microsoft.network/bastionhosts" || lower === "microsoft.network/virtualnetworkgateways" || lower === "microsoft.network/natgateways";
   }
   function gcv(t) {
+    const key = String(t || "").toLowerCase();
     return {
       fw: "var(--fw-color)",
+      igw: "var(--igw-color)",
       bastion: "var(--bastion-color)",
       nat: "var(--nat-color)",
       vpn: "var(--vpn-color)",
+      vgw: "var(--vgw-color)",
       appgw: "var(--appgw-color)",
       pe: "var(--pe-color)",
+      vpce: "var(--vpce-color)",
       vwan: "var(--vwan-color)",
+      tgw: "var(--tgw-color)",
       peer: "var(--peer-color)"
-    }[t] || "var(--text-muted)";
+    }[key] || "var(--text-muted)";
   }
   function gch(t) {
+    const key = String(t || "").toLowerCase();
     return {
       fw: "#ef4444",
+      igw: "#10b981",
       bastion: "#10b981",
       nat: "#f59e0b",
       vpn: "#3b82f6",
+      vgw: "#ef4444",
       appgw: "#8b5cf6",
       pe: "#a78bfa",
+      vpce: "#a78bfa",
       vwan: "#ec4899",
+      tgw: "#ec4899",
       peer: "#fb923c"
-    }[t] || "#4a5e80";
+    }[key] || "#4a5e80";
   }
   function gv(id) {
     return (document.getElementById(id) || {}).value || "";
@@ -482,10 +492,10 @@ var AppBundle = (() => {
 
   // src/modules/budr-engine.js
   function _getClassificationData() {
-    return window._classificationData || [];
+    return typeof window !== "undefined" ? window._classificationData || [] : [];
   }
   function _runClassificationEngine(ctx) {
-    if (typeof window.runClassificationEngine === "function") window.runClassificationEngine(ctx);
+    if (typeof window !== "undefined" && typeof window.runClassificationEngine === "function") window.runClassificationEngine(ctx);
   }
   var _BUDR_STRATEGY = { hot: "Hot", warm: "Warm", pilot: "Pilot Light", cold: "Cold" };
   var _BUDR_STRATEGY_ORDER = { hot: 0, warm: 1, pilot: 2, cold: 3 };

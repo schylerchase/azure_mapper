@@ -43,7 +43,7 @@ document.addEventListener('DOMContentLoaded',_initThemeBtn);
   <div class="sidebar-header">
     <div class="brand-row">
       <div class="brand-icon"><img src="logo.png" alt="Logo" style="width:28px;height:28px;object-fit:contain"></div>
-      <div class="brand-text"><h1>Azure Network Mapper <span class="brand-ver">v2.7.1</span></h1><p>Azure Network Topology Visualizer</p></div>
+      <div class="brand-text"><h1>Azure Network Mapper <span class="brand-ver">v1.2.0</span></h1><p>Azure Network Topology Visualizer</p></div>
     </div>
     <div style="margin-top:6px;margin-bottom:4px">
       <label style="font-family:'Segoe UI',system-ui,sans-serif;font-size:8px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:3px">Cloud Environment</label>
@@ -302,8 +302,8 @@ document.addEventListener('DOMContentLoaded',_initThemeBtn);
     <div style="background:#111827;border:1px solid var(--border);border-radius:12px;padding:28px;width:420px;max-height:80vh;overflow:auto;font-family:'Segoe UI',system-ui,sans-serif">
       <h3 style="margin:0 0 16px;color:#f59e0b;font-size:14px">Scan Azure Subscription</h3>
       <div id="scanForm">
-        <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px">Azure Subscription (blank = default)</label>
-        <input id="scanProfile" style="width:100%;box-sizing:border-box;padding:6px 10px;background:#0b1120;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:12px;margin-bottom:12px" placeholder="default">
+        <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px">Azure Subscription</label>
+        <input id="scanProfile" style="width:100%;box-sizing:border-box;padding:6px 10px;background:#0b1120;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:12px;margin-bottom:12px" placeholder="subscription name or ID">
         <label style="font-size:11px;color:var(--text-secondary);display:block;margin-bottom:4px">Resource Group (blank = all)</label>
         <input id="scanRegion" style="width:100%;box-sizing:border-box;padding:6px 10px;background:#0b1120;border:1px solid var(--border);border-radius:6px;color:var(--text-primary);font-family:inherit;font-size:12px;margin-bottom:16px" placeholder="my-resource-group">
         <div style="display:flex;gap:8px;justify-content:flex-end">
@@ -575,7 +575,12 @@ document.addEventListener('DOMContentLoaded',_initThemeBtn);
 </div>
 <!-- #endregion HTML MAIN CONTENT -->
 <script src="dist/app-core.js?v=83a231a9"></script>
-<script defer src="/_vercel/insights/script.js"></script>
-<script defer src="/_vercel/speed-insights/script.js"></script>
+<script>
+if(location.protocol==='https:'&&location.hostname!=='localhost'){
+  ['/_vercel/insights/script.js','/_vercel/speed-insights/script.js'].forEach(function(src){
+    var s=document.createElement('script');s.defer=true;s.src=src;document.body.appendChild(s);
+  });
+}
+</script>
 </body>
 </html>

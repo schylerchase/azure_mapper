@@ -7,8 +7,12 @@
 // of index.html and have not been extracted to a module yet. During this
 // transition period we access them via window globals. Once the governance
 // module is extracted, replace these with proper imports.
-function _getClassificationData() { return window._classificationData || []; }
-function _runClassificationEngine(ctx) { if (typeof window.runClassificationEngine === 'function') window.runClassificationEngine(ctx); }
+function _getClassificationData() {
+  return typeof window !== 'undefined' ? (window._classificationData || []) : [];
+}
+function _runClassificationEngine(ctx) {
+  if (typeof window !== 'undefined' && typeof window.runClassificationEngine === 'function') window.runClassificationEngine(ctx);
+}
 
 // === BUDR: BACKUP, UPTIME, DISASTER RECOVERY ===
 const _BUDR_STRATEGY={hot:'Hot',warm:'Warm',pilot:'Pilot Light',cold:'Cold'};

@@ -1,8 +1,11 @@
 const {
     SAFE_INPUT,
+    MAX_IPC_TEXT_BYTES,
     validateInput,
+    validateTextPayload,
     buildScanArgs,
     parseOutputDir,
+    resolveOutputDir,
     mapFolderFiles
 } = require('./main-utils');
 
@@ -100,9 +103,29 @@ describe('validateInput', () => {
     });
 
     test('rejects whitespace-only strings', () => {
-        // Spaces-only passes regex but would cause confusing downstream errors
-        // Currently allowed by regex -- documenting this edge case
-        expect(validateInput('   ')).toBe(true); // intentionally true: regex allows spaces
+        expect(validateInput('   ')).toBe(false);
+    });
+});
+
+// ============================================================
+// validateTextPayload
+// ============================================================
+
+describe('validateTextPayload', () => {
+    test('accepts strings under the limit', () => {
+        expect(validateTextPayload('hello', 'test')).toBe('hello');
+    });
+
+    test('rejects non-strings', () => {
+        expect(() => validateTextPayload(Buffer.from('x'), 'test')).toThrow('expected string');
+    });
+
+    test('rejects strings over the configured limit', () => {
+        expect(() => validateTextPayload('abcd', 'test', 3)).toThrow('exceeds');
+    });
+
+    test('default limit is 50 MB', () => {
+        expect(MAX_IPC_TEXT_BYTES).toBe(50 * 1024 * 1024);
     });
 });
 
@@ -158,6 +181,11 @@ describe('buildScanArgs', () => {
         const args = buildScanArgs(scriptPath, 'Visual Studio Enterprise (MPN)');
         expect(args[2]).toBe('Visual Studio Enterprise (MPN)');
     });
+
+    test('trims subscription and resource group values', () => {
+        const args = buildScanArgs(scriptPath, ' my-sub ', ' rg-prod ');
+        expect(args).toEqual([scriptPath, '-s', 'my-sub', '-g', 'rg-prod']);
+    });
 });
 
 // ============================================================
@@ -206,6 +234,33 @@ describe('parseOutputDir', () => {
     test('handles trailing newlines in fallback', () => {
         const stdout = 'some-dir\n\n\n';
         expect(parseOutputDir(stdout)).toBe('some-dir');
+    });
+});
+
+// ============================================================
+// resolveOutputDir
+// ============================================================
+
+describe('resolveOutputDir', () => {
+    const baseDir = process.platform === 'win32' ? 'C:\\app' : '/app';
+
+    test('resolves relative output directory under base', () => {
+        expect(resolveOutputDir(baseDir, 'azure-export-sub-20260101')).toBe(
+            require('path').resolve(baseDir, 'azure-export-sub-20260101')
+        );
+    });
+
+    test('rejects absolute output directory', () => {
+        const absolute = process.platform === 'win32' ? 'C:\\tmp\\export' : '/tmp/export';
+        expect(() => resolveOutputDir(baseDir, absolute)).toThrow('absolute paths');
+    });
+
+    test('rejects traversal outside base', () => {
+        expect(() => resolveOutputDir(baseDir, '../outside')).toThrow('traversal');
+    });
+
+    test('rejects missing output directory', () => {
+        expect(() => resolveOutputDir(baseDir, '')).toThrow('not reported');
     });
 });
 
@@ -309,15 +364,51 @@ describe('preload.js API shape', () => {
         expect(content).not.toMatch(/ipcRenderer\s*[,\n]/);
     });
 
-    test('cleans up listeners before registering new ones', () => {
+    test('listener APIs return targeted unsubscribe functions', () => {
         const fs = require('fs');
         const path = require('path');
         const content = fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf8');
-        // Every on* method should call removeAllListeners to prevent accumulation
-        expect(content).toContain('removeAllListeners');
-        const onCount = (content.match(/ipcRenderer\.on\(/g) || []).length;
-        const removeCount = (content.match(/removeAllListeners\(/g) || []).length;
-        expect(removeCount).toBe(onCount);
+        expect(content).not.toContain('removeAllListeners');
+        expect(content).toContain('removeListener(channel, listener)');
+        expect(content).toContain('return () => ipcRenderer.removeListener(channel, listener)');
+    });
+
+    test('BrowserWindow uses Electron sandbox and denies permission prompts by default', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const content = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+
+        expect(content).toContain('sandbox: true');
+        expect(content).toContain('setPermissionRequestHandler');
+        expect(content).toContain('callback(false)');
+    });
+
+    test('all preload invoke/send channels have matching main process handlers', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const preload = fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf8');
+        const main = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+
+        const invoked = [...preload.matchAll(/ipcRenderer\.invoke\('([^']+)'/g)].map(m => m[1]);
+        const sent = [...preload.matchAll(/ipcRenderer\.send\('([^']+)'/g)].map(m => m[1]);
+        const handled = new Set([...main.matchAll(/ipcMain\.handle\('([^']+)'/g)].map(m => m[1]));
+        const listened = new Set([...main.matchAll(/ipcMain\.on\('([^']+)'/g)].map(m => m[1]));
+
+        expect(invoked.filter(channel => !handled.has(channel))).toEqual([]);
+        expect(sent.filter(channel => !listened.has(channel))).toEqual([]);
+    });
+
+    test('all preload listener channels are sent by main process', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const preload = fs.readFileSync(path.join(__dirname, 'preload.js'), 'utf8');
+        const main = fs.readFileSync(path.join(__dirname, 'main.js'), 'utf8');
+
+        const rendererListeners = [...preload.matchAll(/ipcRenderer\.on\('([^']+)'/g)].map(m => m[1]);
+        const mainSends = new Set([...main.matchAll(/webContents\.send\('([^']+)'/g)].map(m => m[1]));
+        const missing = rendererListeners.filter(channel => !mainSends.has(channel));
+
+        expect(missing).toEqual([]);
     });
 });
 

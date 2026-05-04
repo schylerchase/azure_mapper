@@ -1118,6 +1118,31 @@ function _renderMapInner(){
 
   const globalMinY = Math.min(...vL.map(v => v.y));
   const laneSpacing = 28;
+  const peeringOccupied = [];
+  const addPeeringOccupied = (r) => peeringOccupied.push({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 });
+  const placePeeringLane = (midX, baseY, labelW, direction) => {
+    const step = direction === 'down' ? laneSpacing : -laneSpacing;
+    let y = baseY;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const candidate = { x: midX - labelW / 2, y: y - 9, w: labelW, h: 18 };
+      if (!peeringOccupied.some(o => _rectsOverlap(candidate, o, 0))) return y;
+      y += step;
+    }
+    return y;
+  };
+  gwP.forEach((pos, id) => {
+    if (peIds.has(id)) return;
+    addPeeringOccupied({ x: pos.x - GR, y: pos.y - GR, w: GR * 2, h: GR * 2 });
+    const gw = pos.gw;
+    const nm = gwNames[gw.id];
+    const lblTxt = nm && nm !== gw.id ? nm : sid(gw.id);
+    const truncGwLbl = lblTxt.length > 20 ? lblTxt.slice(0, 19) + '\u2026' : lblTxt;
+    const tw = truncGwLbl.length * 6.2 + 16;
+    addPeeringOccupied({ x: pos.x - tw / 2, y: pos.y + GR + 14 - 9, w: tw, h: 15 });
+  });
+  if (dnsZones.length > 0) {
+    addPeeringOccupied({ x: 60, y: routingBottomY + 40, w: Math.max(320, allVnetRight - 60), h: 120 });
+  }
 
   activePeerings.forEach((p, idx) => {
     const { peering, leftVnet, rightVnet } = p;
@@ -1125,8 +1150,6 @@ function _renderMapInner(){
 
     // Each peering gets its own Y lane above VNets
     // Shortest spans closest to VNets, longest furthest away
-    const y = globalMinY - 40 - idx * laneSpacing;
-
     const stubLen = 15;
 
     // Exit points on VNet tops
@@ -1135,6 +1158,11 @@ function _renderMapInner(){
     const leftVnetTopY = leftVnet.y;
     const rightVnetTopY = rightVnet.y;
 
+    // Label at midpoint of horizontal segment
+    const midX = (leftExitX + rightExitX) / 2;
+    const pw = pn.length * 5.5 + 20;
+    const y = placePeeringLane(midX, globalMinY - 40 - idx * laneSpacing, pw, 'up');
+
     // Complete path: down from left VNet, across, down to right VNet
     const d = `M${leftExitX},${leftVnetTopY} L${leftExitX},${y} L${rightExitX},${y} L${rightExitX},${rightVnetTopY}`;
     
@@ -1142,10 +1170,7 @@ function _renderMapInner(){
       .attr('class', 'peering-line animated')
       .attr('d', d)
       .attr('stroke', 'var(--pcx-color)');
-    
-    // Label at midpoint of horizontal segment
-    const midX = (leftExitX + rightExitX) / 2;
-    const pw = pn.length * 5.5 + 20;
+
     const pg = lnL.append('g').attr('class','peering-label-g');
     pg.append('rect')
       .attr('x', midX - pw / 2).attr('y', y - 9)
@@ -1155,6 +1180,7 @@ function _renderMapInner(){
       .attr('x', midX).attr('y', y + 4)
       .attr('text-anchor', 'middle').attr('font-family','Segoe UI,system-ui,sans-serif')
       .style('font-size','calc(9px * var(--txt-scale,1))').attr('fill', '#fb923c').text(pn);
+    addPeeringOccupied({ x: midX - pw / 2, y: y - 9, w: pw, h: 18 });
   });
 
   // VPN marker
@@ -1393,8 +1419,8 @@ function _renderMapInner(){
       const anchor=(!sh&&gwLeft)?'start':'end';
       const rx=anchor==='end'?(lx-lw):lx;
       const textX=rx+lw/2;
-      lg.append('rect').attr('x',rx).attr('y',ly-8).attr('width',lw).attr('height',16).attr('rx',3).attr('class','route-label-bg').attr('fill','var(--panel-bg)').attr('stroke',colH).attr('stroke-width',.5);
-      lg.append('text').attr('x',textX).attr('y',ly+3).attr('text-anchor','middle').attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(8px * var(--txt-scale,1))').attr('font-weight','500').attr('fill',colH).text(lt);
+      lg.append('rect').attr('x',rx).attr('y',ly-9).attr('width',lw).attr('height',18).attr('rx',3).attr('class','route-label-bg').attr('fill','var(--panel-bg)').attr('stroke',colH).attr('stroke-width',1);
+      lg.append('text').attr('x',textX).attr('y',ly+4).attr('text-anchor','middle').attr('font-family','Segoe UI,system-ui,sans-serif').style('font-size','calc(9px * var(--txt-scale,1))').attr('font-weight','700').attr('fill',colH).text(lt);
       allLb.push({gid,vid,shared:sh,lx:textX,lw,g:lg,baseY:ly});
     }
   });

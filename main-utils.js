@@ -5,9 +5,12 @@
 
 'use strict';
 
+const path = require('path');
+
 // Allows: alphanumeric, hyphens, underscores, dots, spaces (not newlines), slashes, parentheses
 // Blocks: semicolons, backticks, pipes, $, &, |, newlines, and other shell metacharacters
 const SAFE_INPUT = /^[a-zA-Z0-9\-_. /()]+$/;
+const MAX_IPC_TEXT_BYTES = 50 * 1024 * 1024;
 
 /**
  * Validates a user-supplied string is safe for use in shell arguments.
@@ -15,8 +18,20 @@ const SAFE_INPUT = /^[a-zA-Z0-9\-_. /()]+$/;
  * @returns {boolean} true if safe, false otherwise
  */
 function validateInput(str) {
-    if (typeof str !== 'string' || str.length === 0 || str.length > 256) return false;
-    return SAFE_INPUT.test(str);
+    if (typeof str !== 'string') return false;
+    const trimmed = str.trim();
+    if (trimmed.length === 0 || trimmed.length > 256) return false;
+    return SAFE_INPUT.test(trimmed);
+}
+
+function validateTextPayload(value, label = 'payload', maxBytes = MAX_IPC_TEXT_BYTES) {
+    if (typeof value !== 'string') {
+        throw new Error(`Invalid ${label}: expected string`);
+    }
+    if (Buffer.byteLength(value, 'utf8') > maxBytes) {
+        throw new Error(`Invalid ${label}: exceeds ${(maxBytes / 1024 / 1024).toFixed(0)} MB limit`);
+    }
+    return value;
 }
 
 /**
@@ -31,15 +46,17 @@ function buildScanArgs(scriptPath, subscription, resourceGroup) {
     if (!subscription || typeof subscription !== 'string') {
         throw new Error('Subscription is required');
     }
-    if (!validateInput(subscription)) {
+    const safeSubscription = subscription.trim();
+    if (!validateInput(safeSubscription)) {
         throw new Error('Invalid subscription: contains unsafe characters');
     }
-    const args = [scriptPath, '-s', subscription];
+    const args = [scriptPath, '-s', safeSubscription];
     if (resourceGroup) {
-        if (!validateInput(resourceGroup)) {
+        const safeResourceGroup = resourceGroup.trim();
+        if (!validateInput(safeResourceGroup)) {
             throw new Error('Invalid resource group: contains unsafe characters');
         }
-        args.push('-g', resourceGroup);
+        args.push('-g', safeResourceGroup);
     }
     return args;
 }
@@ -69,6 +86,22 @@ function parseOutputDir(stdout) {
     return null;
 }
 
+function resolveOutputDir(baseDir, outputDir) {
+    if (!outputDir || typeof outputDir !== 'string') {
+        throw new Error('Output directory was not reported by scan script');
+    }
+    if (path.isAbsolute(outputDir)) {
+        throw new Error('Invalid output directory: absolute paths are not allowed');
+    }
+    const resolvedBase = path.resolve(baseDir);
+    const resolvedOutput = path.resolve(resolvedBase, outputDir);
+    const prefix = resolvedBase.endsWith(path.sep) ? resolvedBase : resolvedBase + path.sep;
+    if (resolvedOutput !== resolvedBase && !resolvedOutput.startsWith(prefix)) {
+        throw new Error('Invalid output directory: traversal detected');
+    }
+    return resolvedOutput;
+}
+
 /**
  * Maps a folder's JSON files to a {basename: content} object.
  * @param {string[]} fileList - Array of filenames in the folder
@@ -88,8 +121,11 @@ function mapFolderFiles(fileList, readFileFn) {
 
 module.exports = {
     SAFE_INPUT,
+    MAX_IPC_TEXT_BYTES,
     validateInput,
+    validateTextPayload,
     buildScanArgs,
     parseOutputDir,
+    resolveOutputDir,
     mapFolderFiles
 };

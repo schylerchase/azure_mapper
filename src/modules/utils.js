@@ -157,16 +157,21 @@ export function isShared(t) {
  * @returns {string} CSS variable reference
  */
 export function gcv(t) {
+  const key = String(t || '').toLowerCase();
   return {
     fw:      'var(--fw-color)',
+    igw:     'var(--igw-color)',
     bastion: 'var(--bastion-color)',
     nat:     'var(--nat-color)',
     vpn:     'var(--vpn-color)',
+    vgw:     'var(--vgw-color)',
     appgw:   'var(--appgw-color)',
     pe:      'var(--pe-color)',
+    vpce:    'var(--vpce-color)',
     vwan:    'var(--vwan-color)',
+    tgw:     'var(--tgw-color)',
     peer:    'var(--peer-color)'
-  }[t] || 'var(--text-muted)';
+  }[key] || 'var(--text-muted)';
 }
 
 /**
@@ -175,16 +180,21 @@ export function gcv(t) {
  * @returns {string} Hex color string
  */
 export function gch(t) {
+  const key = String(t || '').toLowerCase();
   return {
     fw:      '#ef4444',
+    igw:     '#10b981',
     bastion: '#10b981',
     nat:     '#f59e0b',
     vpn:     '#3b82f6',
+    vgw:     '#ef4444',
     appgw:   '#8b5cf6',
     pe:      '#a78bfa',
+    vpce:    '#a78bfa',
     vwan:    '#ec4899',
+    tgw:     '#ec4899',
     peer:    '#fb923c'
-  }[t] || '#4a5e80';
+  }[key] || '#4a5e80';
 }
 
 /**

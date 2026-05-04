@@ -99,6 +99,7 @@
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
+      "<rootDir>/Azure Mapper/",
       "\\.spec\\.js$",
       "\\.spec\\.ts$"
     ],

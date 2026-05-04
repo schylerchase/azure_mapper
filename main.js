@@ -1,11 +1,54 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const vm = require('vm');
 const { spawn } = require('child_process');
-const { buildScanArgs, parseOutputDir, mapFolderFiles } = require('./main-utils');
-const { version } = require('./package.json');
+const {
+    MAX_IPC_TEXT_BYTES,
+    buildScanArgs,
+    parseOutputDir,
+    resolveOutputDir,
+    validateTextPayload
+} = require('./main-utils');
+const pkg = require('./package.json');
 
 let mainWindow;
+let currentScanProc = null;
+let autoUpdaterRef = null;
+let updateHandlersRegistered = false;
+
+const MAX_EXPORT_BYTES = 100 * 1024 * 1024;
+
+function fail(error) {
+    return { success: false, error };
+}
+
+function byteLength(data) {
+    if (typeof data === 'string') return Buffer.byteLength(data, 'utf8');
+    if (Buffer.isBuffer(data)) return data.length;
+    if (data instanceof Uint8Array) return data.byteLength;
+    return null;
+}
+
+function readJsonFolder(folder) {
+    const files = fs.readdirSync(folder);
+    let totalBytes = 0;
+    const data = {};
+    for (const file of files) {
+        if (!file.endsWith('.json')) continue;
+        const fullPath = path.join(folder, file);
+        const stat = fs.statSync(fullPath);
+        if (!stat.isFile()) continue;
+        totalBytes += stat.size;
+        if (totalBytes > MAX_IPC_TEXT_BYTES) {
+            throw new Error('Import folder exceeds 50 MB JSON limit');
+        }
+        const content = fs.readFileSync(fullPath, 'utf8');
+        JSON.parse(content);
+        data[file.replace(/\.json$/, '')] = content;
+    }
+    return data;
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -18,7 +61,8 @@ function createWindow() {
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            sandbox: true
         }
     });
 
@@ -100,7 +144,7 @@ function buildMenu() {
                         dialog.showMessageBox(mainWindow, {
                             type: 'info',
                             title: 'About',
-                            message: `Azure Network Mapper v${version}`,
+                            message: `Azure Network Mapper v${pkg.version}`,
                             detail: 'Visualize, analyze, and export Azure network topologies.'
                         });
                     }
@@ -148,8 +192,7 @@ async function importExportFolder() {
     if (!canceled && filePaths.length > 0) {
         try {
             const folder = filePaths[0];
-            const files = fs.readdirSync(folder);
-            const data = mapFolderFiles(files, f => fs.readFileSync(path.join(folder, f), 'utf8'));
+            const data = readJsonFolder(folder);
             mainWindow.webContents.send('import:folder', data);
         } catch (err) {
             dialog.showErrorBox('Import Failed', err.message);
@@ -169,22 +212,32 @@ ipcMain.handle('azure:check-cli', async () => {
     });
 });
 
-ipcMain.handle('azure:scan', async (event, { subscription, resourceGroup }) => {
+ipcMain.handle('azure:scan', async (event, payload = {}) => {
+    const { subscription, resourceGroup } = payload;
+    if (currentScanProc) {
+        const error = 'A scan is already running';
+        mainWindow?.webContents.send('scan:error', error);
+        return fail(error);
+    }
     const scriptPath = path.join(__dirname, 'export-azure-data.sh');
     if (!fs.existsSync(scriptPath)) {
-        return { success: false, error: 'export-azure-data.sh not found' };
+        const error = 'export-azure-data.sh not found';
+        mainWindow?.webContents.send('scan:error', error);
+        return fail(error);
     }
 
     let args;
     try {
         args = buildScanArgs(scriptPath, subscription, resourceGroup);
     } catch (err) {
-        return { success: false, error: err.message };
+        mainWindow?.webContents.send('scan:error', err.message);
+        return fail(err.message);
     }
 
     return new Promise((resolve) => {
         // No shell: true -- args are passed directly to bash, preventing shell injection
-        const proc = spawn('bash', args);
+        const proc = spawn('bash', args, { cwd: __dirname });
+        currentScanProc = proc;
         let stdout = '', stderr = '';
         proc.stdout.on('data', d => {
             stdout += d.toString();
@@ -192,34 +245,69 @@ ipcMain.handle('azure:scan', async (event, { subscription, resourceGroup }) => {
         });
         proc.stderr.on('data', d => stderr += d.toString());
         proc.on('close', code => {
+            if (currentScanProc === proc) currentScanProc = null;
             if (code === 0) {
                 const outDir = parseOutputDir(stdout);
-                resolve({ success: true, outputDir: outDir });
+                let files = null;
+                if (outDir) {
+                    try {
+                        const resolvedOutDir = resolveOutputDir(__dirname, outDir);
+                        files = readJsonFolder(resolvedOutDir);
+                    } catch (err) {
+                        const payload = { code, outDir, error: `Scan completed, but output import failed: ${err.message}` };
+                        mainWindow.webContents.send('scan:error', payload.error);
+                        resolve(fail(payload.error));
+                        return;
+                    }
+                }
+                const payload = { code, outDir, outputDir: outDir, files };
+                mainWindow.webContents.send('scan:complete', payload);
+                resolve({ success: true, ...payload });
             } else {
-                resolve({ success: false, error: stderr || 'Scan failed' });
+                const error = stderr || `Scan failed with exit code ${code}`;
+                mainWindow.webContents.send('scan:error', error);
+                resolve(fail(error));
             }
         });
-        proc.on('error', err => resolve({ success: false, error: err.message }));
+        proc.on('error', err => {
+            if (currentScanProc === proc) currentScanProc = null;
+            mainWindow.webContents.send('scan:error', err.message);
+            resolve(fail(err.message));
+        });
     });
 });
 
-ipcMain.handle('file:save', async (event, { filePath, data }) => {
+ipcMain.on('azure:abort-scan', () => {
+    if (!currentScanProc) return;
+    const proc = currentScanProc;
+    currentScanProc = null;
+    proc.kill();
+    mainWindow?.webContents.send('scan:error', 'Scan aborted');
+});
+
+ipcMain.handle('file:save', async (event, payload = {}) => {
+    const { filePath, data } = payload;
     if (!filePath || !filePath.endsWith('.azuremap')) {
-        return { success: false, error: 'Invalid file path: must end with .azuremap' };
+        return fail('Invalid file path: must end with .azuremap');
+    }
+    try {
+        validateTextPayload(data, 'project data');
+    } catch (err) {
+        return fail(err.message);
     }
     // Resolve and reject paths with traversal segments
     const resolved = path.resolve(filePath);
     if (resolved !== path.normalize(filePath) && resolved !== filePath) {
-        return { success: false, error: 'Invalid file path: traversal detected' };
+        return fail('Invalid file path: traversal detected');
     }
     if (resolved.includes('..')) {
-        return { success: false, error: 'Invalid file path: traversal detected' };
+        return fail('Invalid file path: traversal detected');
     }
     try {
         fs.writeFileSync(resolved, data, 'utf8');
         return { success: true };
     } catch (err) {
-        return { success: false, error: err.message };
+        return fail(err.message);
     }
 });
 
@@ -239,6 +327,8 @@ ipcMain.handle('dialog:openFile', async () => {
         properties: ['openFile']
     });
     if (!canceled && filePaths.length > 0) {
+        const stat = fs.statSync(filePaths[0]);
+        if (stat.size > MAX_IPC_TEXT_BYTES) throw new Error('Project file exceeds 50 MB limit');
         return fs.readFileSync(filePaths[0], 'utf8');
     }
     return null;
@@ -250,17 +340,16 @@ ipcMain.handle('dialog:openFolder', async () => {
         properties: ['openDirectory']
     });
     if (!canceled && filePaths.length > 0) {
-        const folder = filePaths[0];
-        const folderName = path.basename(folder);
-        const files = fs.readdirSync(folder);
-        const data = mapFolderFiles(files, f => fs.readFileSync(path.join(folder, f), 'utf8'));
-        data._folderName = folderName;
-        return data;
+        return readJsonFolder(filePaths[0]);
     }
     return null;
 });
 
-ipcMain.handle('file:export', async (event, { data, name, filters }) => {
+ipcMain.handle('file:export', async (event, payload = {}) => {
+    const { data, name, filters } = payload;
+    const len = byteLength(data);
+    if (len == null) return null;
+    if (len > MAX_EXPORT_BYTES) throw new Error('Export exceeds 100 MB limit');
     const safeName = path.basename(name || 'export');
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: 'Export',
@@ -278,25 +367,101 @@ ipcMain.handle('file:export', async (event, { data, name, filters }) => {
     return null;
 });
 
+ipcMain.handle('file:exportBUDRXlsx', async (event, jsonStr) => {
+    try {
+        validateTextPayload(jsonStr, 'BUDR export data');
+        const data = JSON.parse(jsonStr);
+        const xlsxPath = path.join(__dirname, 'libs', 'xlsx.bundle.min.js');
+        const sandbox = {};
+        vm.createContext(sandbox);
+        vm.runInContext(fs.readFileSync(xlsxPath, 'utf8'), sandbox, { filename: xlsxPath });
+        const XLSX = sandbox.XLSX;
+        if (!XLSX?.utils?.book_new) throw new Error('SheetJS bundle did not load');
+
+        const wb = XLSX.utils.book_new();
+        const summaryRows = Object.entries(data.summary || {}).map(([key, value]) => [key, value]);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([['Metric', 'Value'], ...summaryRows]), 'Summary');
+
+        const assessments = (data.assessments || []).map(a => ({
+            Type: a.type || '',
+            Resource: a.id || '',
+            Name: a.name || '',
+            Tier: a.profile?.tier || '',
+            RTO: a.profile?.rto || '',
+            RPO: a.profile?.rpo || '',
+            Signals: a.signals ? Object.entries(a.signals).map(([k, v]) => `${k}=${v}`).join('; ') : ''
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(assessments), 'Assessments');
+
+        const findings = (data.findings || []).map(f => ({
+            Severity: f.severity || '',
+            Control: f.control || f.id || '',
+            Resource: f.resource || '',
+            Message: f.message || f.description || '',
+            Framework: f.framework || ''
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(findings), 'Findings');
+
+        const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+            title: 'Export BUDR XLSX',
+            defaultPath: 'budr-assessment.xlsx',
+            filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+        });
+        if (canceled || !filePath) return null;
+        const out = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+        fs.writeFileSync(filePath, out);
+        return { path: filePath };
+    } catch (err) {
+        return { error: err.message };
+    }
+});
+
 // ── Auto-Update ───────────────────────────────────────────────────
 
 function checkForUpdates() {
     try {
         const { autoUpdater } = require('electron-updater');
+        autoUpdaterRef = autoUpdater;
         autoUpdater.autoDownload = false;
+        if (updateHandlersRegistered) return;
+        updateHandlersRegistered = true;
         autoUpdater.on('update-available', (info) => {
             mainWindow?.webContents.send('update:available', {
                 version: info.version,
+                currentVersion: pkg.version,
                 releaseNotes: info.releaseNotes
             });
+        });
+        autoUpdater.on('download-progress', (info) => {
+            mainWindow?.webContents.send('update:downloadProgress', info);
+        });
+        autoUpdater.on('update-downloaded', () => {
+            mainWindow?.webContents.send('update:downloaded');
+        });
+        autoUpdater.on('error', (err) => {
+            mainWindow?.webContents.send('update:error', err.message);
         });
         autoUpdater.checkForUpdates().catch(() => {});
     } catch {}
 }
 
+ipcMain.on('update:download', () => {
+    autoUpdaterRef?.downloadUpdate().catch(err => {
+        mainWindow?.webContents.send('update:error', err.message);
+    });
+});
+
+ipcMain.on('update:install', () => {
+    autoUpdaterRef?.quitAndInstall();
+});
+
 // ── App Lifecycle ─────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+    session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+        callback(false);
+    });
+
     // Set dock icon on macOS
     if (process.platform === 'darwin' && app.dock) {
         app.dock.setIcon(path.join(__dirname, 'icon.png'));

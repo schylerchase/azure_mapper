@@ -1,4 +1,5 @@
 node_modules/
+dist/
 dist/*.map
 dist/meta.json
 dist/demo-data.bundle.js
@@ -33,3 +34,5 @@ public/
 .claude/
 
 .playwright-mcp/
+Azure Mapper/
+nul
