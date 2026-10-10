@@ -17,9 +17,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // File operations
     saveFile: (data, name) => ipcRenderer.invoke('file:save', { filePath: name, data }),
-    saveAs: () => ipcRenderer.invoke('dialog:saveAs'),
+    saveAs: (name) => ipcRenderer.invoke('dialog:saveAs', name),
     openFile: () => ipcRenderer.invoke('dialog:openFile'),
     openFolder: () => ipcRenderer.invoke('dialog:openFolder'),
+    readExportScript: (name) => ipcRenderer.invoke('file:read-export-script', name),
     exportFile: (data, name, filters) => ipcRenderer.invoke('file:export', { data, name, filters }),
     exportBUDRXlsx: (jsonStr) => ipcRenderer.invoke('file:exportBUDRXlsx', jsonStr),
 

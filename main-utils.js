@@ -102,6 +102,13 @@ function resolveOutputDir(baseDir, outputDir) {
     return resolvedOutput;
 }
 
+function scanPaths({ isPackaged, resourcesPath, appDir, userDataDir }) {
+    return {
+        scriptPath: path.join(isPackaged ? resourcesPath : appDir, 'export-azure-data.sh'),
+        cwd: path.join(userDataDir, 'azure-scans')
+    };
+}
+
 /**
  * Maps a folder's JSON files to a {basename: content} object.
  * @param {string[]} fileList - Array of filenames in the folder
@@ -127,5 +134,6 @@ module.exports = {
     buildScanArgs,
     parseOutputDir,
     resolveOutputDir,
+    scanPaths,
     mapFolderFiles
 };

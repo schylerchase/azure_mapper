@@ -145,6 +145,8 @@
   .stat-chip.accent-blue{border-color:rgba(59,130,246,.3);background:rgba(59,130,246,.08)}
   .stat-chip b{color:var(--text-primary);font-weight:600;margin-right:3px}
   .dock-toolbar{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);z-index:7;display:none;align-items:stretch;background:var(--overlay-bg);border:1px solid var(--hover-bg-strong);border-radius:14px;backdrop-filter:blur(16px);padding:5px 6px 18px;gap:2px;box-shadow:0 8px 32px var(--shadow-color),0 0 0 1px rgba(255,255,255,.04) inset}
+  .sidebar:not(.collapsed)~.main .dock-toolbar{left:calc(360px + (100vw - 360px)/2);max-width:calc(100vw - 384px);overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  .sidebar:not(.collapsed)~.main .dock-toolbar::-webkit-scrollbar{display:none}
   .dock-group{display:flex;align-items:center;gap:3px;padding:0 6px;position:relative}
   .dock-group:not(:last-child)::after{content:'';position:absolute;right:0;top:50%;transform:translateY(-50%);width:1px;height:22px;background:rgba(255,255,255,.15)}
   .dock-label{position:absolute;bottom:-14px;left:50%;transform:translateX(-50%);font-family:"Segoe UI",system-ui,sans-serif;font-size:8px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-muted);white-space:nowrap;pointer-events:none}
@@ -1312,6 +1314,7 @@
     .sidebar.collapsed{transform:translateX(-300px)}
     .sidebar-toggle{transform:translateX(296px)}
     .sidebar.collapsed~.sidebar-toggle{transform:translateX(0)}
+    .sidebar:not(.collapsed)~.main .dock-toolbar{left:calc(300px + (100vw - 300px)/2);max-width:calc(100vw - 324px)}
     .detail-panel{width:360px}
     .stats-bar{padding:6px 12px}
     .main:has(.detail-panel.open) .export-bar{right:372px}

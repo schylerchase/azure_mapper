@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Azure Network Mapper - Data Export Script
-# Usage: ./export-azure-data.sh -s <subscription> [-g <resource-group>] [-l <location>] [-c <cloud>] [-t <tenant-id>] [--lighthouse]
+# Usage: ./export-azure-data.sh [-s <subscription>] [-g <resource-group>] [-l|-r <location>] [-o <output>] [-a] [-P <subscriptions>]
 #
 # Exports Azure resource data as JSON files for import into the mapper.
 # Supports: Commercial, GCC, GCC High, DoD cloud environments.
@@ -14,6 +14,10 @@ LOC=""
 CLOUD=""
 TENANT=""
 LIGHTHOUSE=false
+ALL_LOCATIONS=false
+PROFILES=""
+OUTDIR_OVERRIDE=""
+SKIP_GLOBAL=false
 EXPORTED=0
 EMPTY=0
 SKIPPED=0
@@ -21,12 +25,15 @@ EXPORT_LOG="["
 
 usage() {
   cat >&2 <<EOF
-Usage: $0 -s <subscription> [-g <resource-group>] [-l <location>] [-c <cloud>] [-t <tenant-id>] [--lighthouse]
+Usage: $0 [-s <subscription>] [-g <resource-group>] [-l|-r <location>] [-o <output>] [-a] [-P <subscriptions>]
 
 Options:
-  -s  Subscription name or ID (required)
+  -s  Subscription name or ID (default: current subscription)
   -g  Resource group filter
-  -l  Location/region filter (case-insensitive)
+  -l, -r  Location/region filter (case-insensitive; includes global evidence)
+  -o  Output directory
+  -a  Export each populated location to its own subfolder
+  -P  Comma-separated subscription names or IDs
   -c  Cloud environment: commercial, gcc, gcc-high, dod
   -t  Tenant ID (for cross-tenant / Lighthouse access)
   --lighthouse  Enable Lighthouse delegated access mode
@@ -40,6 +47,11 @@ ARGS=()
 while [[ $# -gt 0 ]]; do
   case $1 in
     --lighthouse) LIGHTHOUSE=true; shift ;;
+    --all-locations|-a) ALL_LOCATIONS=true; shift ;;
+    --skip-global) SKIP_GLOBAL=true; shift ;;
+    --subscriptions|-P)
+      if [[ $# -lt 2 || "$2" == -* ]]; then echo "ERROR: subscriptions requires a value" >&2; exit 1; fi
+      PROFILES="$2"; shift 2 ;;
     --cloud)
       if [[ $# -lt 2 || "$2" == -* ]]; then
         echo "ERROR: --cloud requires a value" >&2; exit 1
@@ -62,22 +74,18 @@ else
   set --
 fi
 
-while getopts "s:g:l:c:t:h" opt; do
+while getopts "s:g:l:r:o:c:t:h" opt; do
   case $opt in
     s) SUB="$OPTARG" ;;
     g) RG="$OPTARG" ;;
-    l) LOC="$OPTARG" ;;
+    l|r) LOC="$OPTARG" ;;
+    o) OUTDIR_OVERRIDE="$OPTARG" ;;
     c) CLOUD="$OPTARG" ;;
     t) TENANT="$OPTARG" ;;
     h) usage ;;
     *) usage ;;
   esac
 done
-
-if [ -z "$SUB" ]; then
-  echo "ERROR: Subscription (-s) is required" >&2
-  usage
-fi
 
 # --- Dependency checks ---
 
@@ -130,6 +138,40 @@ if ! az account show --only-show-errors &>/dev/null; then
   exit 1
 fi
 
+if [ -z "$SUB" ] && [ -z "$PROFILES" ]; then
+  SUB=$(az account show --query id -o tsv --only-show-errors)
+fi
+
+# Sweeps reuse this same collector so region filtering and child-resource commands agree.
+if [ -n "$PROFILES" ] || [ "$ALL_LOCATIONS" = true ]; then
+  ROOT_OUT="${OUTDIR_OVERRIDE:-azure-export-multi-$(date +%Y%m%d-%H%M%S)}"
+  IFS=',' read -r -a SUB_LIST <<< "${PROFILES:-$SUB}"
+  for sub in "${SUB_LIST[@]}"; do
+    sub=$(printf '%s' "$sub" | xargs)
+    sub_safe=$(printf '%s' "$sub" | tr ' /:' '---')
+    sub_out="$ROOT_OUT/$sub_safe"
+    if [ "$ALL_LOCATIONS" = true ]; then
+      locations=$(az resource list --subscription "$sub" --query "[?location!='global'].location" -o tsv --only-show-errors | sort -u)
+      first=true
+      for loc in $locations; do
+        child_args=(-s "$sub" -l "$loc" -o "$sub_out/$loc")
+        [ -n "$RG" ] && child_args+=(-g "$RG")
+        [ "$first" = false ] && child_args+=(--skip-global)
+        bash "$0" "${child_args[@]}"
+        first=false
+      done
+      if [ "$first" = true ]; then bash "$0" -s "$sub" -o "$sub_out"; fi
+    else
+      child_args=(-s "$sub" -o "$sub_out")
+      [ -n "$LOC" ] && child_args+=(-l "$LOC")
+      [ -n "$RG" ] && child_args+=(-g "$RG")
+      bash "$0" "${child_args[@]}"
+    fi
+  done
+  echo "Output directory: $ROOT_OUT"
+  exit 0
+fi
+
 # --- Set subscription ---
 
 echo "Setting subscription to: $SUB"
@@ -143,7 +185,7 @@ az account set --subscription "$SUB" --only-show-errors || {
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 SUB_SAFE=$(echo "$SUB" | tr ' /:' '---')
-OUTDIR="azure-export-${SUB_SAFE}-${TIMESTAMP}"
+OUTDIR="${OUTDIR_OVERRIDE:-azure-export-${SUB_SAFE}-${TIMESTAMP}}"
 ERRLOG="$OUTDIR/.export-errors.log"
 mkdir -p "$OUTDIR"
 echo "Output directory: $OUTDIR"
@@ -164,17 +206,19 @@ fi
 # --- Helper: log entry for export log ---
 
 log_entry() {
-  local label="$1" file="$2" status="$3"
-  shift 3
-  local extra=""
-  if [ "$#" -ge 1 ]; then extra=",\"bytes\":$1"; fi
-  if [ "$#" -ge 2 ]; then extra="$extra,\"items\":$2"; fi
-  if [ "$#" -ge 3 ]; then
-    local escaped
-    escaped=$(echo "$3" | sed 's/"/\\"/g' | head -c 120)
-    extra="$extra,\"detail\":\"$escaped\""
-  fi
-  EXPORT_LOG="${EXPORT_LOG}{\"label\":\"$label\",\"file\":\"$file\",\"status\":\"$status\"${extra}},"
+  local entry
+  entry=$(python3 -c '
+import json, sys
+args = sys.argv[1:]
+entry = dict(zip(("label", "file", "status"), args[:3]))
+for key, value in zip(("bytes", "items"), args[3:5]):
+    if value.isdigit():
+        entry[key] = int(value)
+if len(args) > 5:
+    entry["detail"] = args[5][:120]
+print(json.dumps(entry))
+' "$@")
+  EXPORT_LOG="${EXPORT_LOG}${entry},"
 }
 
 # --- Helper: export az command output with error capture, empty detection, and location filter ---
@@ -190,17 +234,18 @@ run_cmd() {
 
   if "$@" > "$tmpfile" 2>"$errfile"; then
     # Apply location filter if specified (case-insensitive)
-    if [ -n "$LOC" ]; then
+    if [ -n "$LOC" ] || [ "$SKIP_GLOBAL" = true ]; then
       python3 -c "
 import json, sys
 with open(sys.argv[1]) as f:
     data = json.load(f)
 loc = sys.argv[2].lower()
+include_global = sys.argv[4] != 'true'
 if isinstance(data, list):
-    data = [r for r in data if r.get('location', '').lower() == loc]
+    data = [r for r in data if (include_global if str(r.get('location') or '').lower() in ('', 'global') else not loc or str(r.get('location')).lower() == loc)]
 with open(sys.argv[3], 'w') as f:
     json.dump(data, f, indent=2)
-" "$tmpfile" "$LOC" "$OUTDIR/$outfile" 2>/dev/null || mv "$tmpfile" "$OUTDIR/$outfile"
+" "$tmpfile" "$LOC" "$OUTDIR/$outfile" "$SKIP_GLOBAL" 2>/dev/null || mv "$tmpfile" "$OUTDIR/$outfile"
     else
       mv "$tmpfile" "$OUTDIR/$outfile"
     fi
@@ -267,12 +312,18 @@ iterate_export() {
 
   while IFS=$'\t' read -r iname irg; do
     [ -z "$iname" ] && continue
-    # Build command by replacing placeholders
-    local cmd_str="$*"
-    cmd_str="${cmd_str//__NAME__/$iname}"
-    cmd_str="${cmd_str//__RG__/$irg}"
+    irg="${irg%$'\r'}"
+    # Replace complete placeholder arguments without reinterpreting names as shell code.
+    local cmd_args=() arg
+    for arg in "$@"; do
+      case "$arg" in
+        __NAME__) cmd_args+=("$iname") ;;
+        __RG__) cmd_args+=("$irg") ;;
+        *) cmd_args+=("$arg") ;;
+      esac
+    done
     local result
-    result=$(eval "$cmd_str" 2>/dev/null || echo "[]")
+    result=$("${cmd_args[@]}" 2>/dev/null || echo "[]")
     merged=$(merge_json "$merged" "$result" 2>/dev/null || echo "$merged")
     item_count=$((item_count + 1))
   done < <(echo "$list_json" | python3 -c "
@@ -331,7 +382,7 @@ run_cmd "DDoS Protection Plans" "ddos-protection.json" az network ddos-protectio
 # Subnets (per VNet — requires iterating)
 VNET_JSON=$(cat "$OUTDIR/vnets.json" 2>/dev/null || echo "[]")
 iterate_export "Subnets" "subnets.json" "$VNET_JSON" \
-  "az network vnet subnet list --vnet-name __NAME__ -g __RG__ ${COMMON[*]} -o json"
+  az network vnet subnet list --vnet-name __NAME__ -g __RG__ "${COMMON[@]}" -o json
 
 echo ""
 echo "== Gateways ====================================="
@@ -362,7 +413,7 @@ echo "== Connectivity ================================="
 
 # VNet Peerings (per VNet)
 iterate_export "VNet Peerings" "peerings.json" "$VNET_JSON" \
-  "az network vnet peering list --vnet-name __NAME__ -g __RG__ ${COMMON[*]} -o json"
+  az network vnet peering list --vnet-name __NAME__ -g __RG__ "${COMMON[@]}" -o json
 
 run_cmd "VPN Connections" "vpn-connections.json" az network vpn-connection list "${COMMON_RG[@]}" -o json
 run_cmd "vWANs" "vwans.json" az network vwan list "${COMMON_RG[@]}" -o json
@@ -426,7 +477,7 @@ fi
 
 # Private DNS Zone VNet Links (iterate private zones)
 iterate_export "Private DNS Zone Links" "private-dns-links.json" "$PDNS_ZONE_JSON" \
-  "az network private-dns link vnet list --zone-name __NAME__ -g __RG__ ${COMMON[*]} -o json"
+  az network private-dns link vnet list --zone-name __NAME__ -g __RG__ "${COMMON[@]}" -o json
 
 echo ""
 echo "== Security & Edge =============================="
@@ -441,7 +492,7 @@ run_cmd "SQL Servers" "sql-servers.json" az sql server list "${COMMON_RG[@]}" -o
 # SQL Databases (per server)
 SQL_SERVER_JSON=$(cat "$OUTDIR/sql-servers.json" 2>/dev/null || echo "[]")
 iterate_export "SQL Databases" "sql-databases.json" "$SQL_SERVER_JSON" \
-  "az sql db list -s __NAME__ -g __RG__ ${COMMON[*]} -o json"
+  az sql db list -s __NAME__ -g __RG__ "${COMMON[@]}" -o json
 
 run_cmd "Redis Caches" "redis-caches.json" az redis list "${COMMON_RG[@]}" -o json
 run_cmd "Cosmos DB Accounts" "cosmos-accounts.json" az cosmosdb list "${COMMON_RG[@]}" -o json

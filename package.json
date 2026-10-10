@@ -29,12 +29,14 @@
   "build": {
     "appId": "com.schylerchase.azure-network-mapper",
     "productName": "Azure Network Mapper",
+    "extraResources": ["export-azure-data.sh"],
     "files": [
       "index.html",
       "main.js",
       "main-utils.js",
       "preload.js",
       "export-azure-data.sh",
+      "export-azure-data.ps1",
       "routing.js",
       "libs/**",
       "dist/app.bundle.js",

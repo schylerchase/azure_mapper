@@ -12,38 +12,79 @@ function _normTags(r){
 // Shared Azure normalization: maps Azure-native properties to internal format.
 // Called from both _renderMapInner (textarea parse) and _buildRlCtxFromData (multi-view).
 function _normalizeAzureResources(d){
-  var allArrays=[d.vpcs,d.subnets,d.rts,d.sgs,d.enis,d.nats,d.vpces,d.instances,d.albs,d.tgs,d.peerings,d.vpns,d.volumes,d.snapshots,d.s3bk,d.zones,d.wafAcls,d.rdsInstances,d.ecsServices,d.lambdaFns,d.ecacheClusters,d.redshiftClusters,d.tgwAttachments,d.cfDistributions];
+  var allArrays=[d.vpcs,d.subnets,d.rts,d.sgs,d.enis,d.igws,d.nats,d.vpces,d.instances,d.albs,d.tgs,d.peerings,d.vpns,d.volumes,d.snapshots,d.s3bk,d.zones,d.wafAcls,d.rdsInstances,d.ecsServices,d.lambdaFns,d.ecacheClusters,d.redshiftClusters,d.tgwAttachments,d.cfDistributions];
   allArrays.forEach(function(arr){if(arr)arr.forEach(function(r){
     _normTags(r);
+    if(r.properties&&r.properties!==r)Object.keys(r.properties).forEach(function(k){if(!(k in r))r[k]=r.properties[k]});
     // Azure CLI flattens properties to top level; renderer expects properties.* wrapper.
-    // Create self-reference so r.properties.routes === r.routes, etc.
-    if(r&&!r.properties)r.properties=r;
+    // Keep the compatibility view out of JSON so normalized resources remain serializable.
+    if(r&&!r.properties)Object.defineProperty(r,'properties',{value:r,writable:true,configurable:true});
     // Also add self-ref to nested arrays (ipConfigurations, securityRules, routes, etc.)
     // so nic.properties.ipConfigurations[0].properties.subnet.id resolves correctly
     ['ipConfigurations','securityRules','defaultSecurityRules','routes','frontendIPConfigurations',
      'gatewayIPConfigurations','backendPools','originGroups','backends','origins',
      'privateLinkServiceConnections','privateEndpointConnections','agentPoolProfiles',
      'virtualNetworkLinks','loadBalancingRules'].forEach(function(k){
-      if(r[k]&&Array.isArray(r[k]))r[k].forEach(function(item){if(item&&typeof item==='object'&&!item.properties)item.properties=item});
+      if(r[k]&&Array.isArray(r[k]))r[k].forEach(function(item){if(item&&typeof item==='object'&&!item.properties)Object.defineProperty(item,'properties',{value:item,writable:true,configurable:true})});
     });
   })});
   // Property mappings
   if(d.vpcs)d.vpcs.forEach(function(v){if(!v.VpcId)v.VpcId=v.id||'';if(!v.CidrBlock)v.CidrBlock=(v.addressSpace&&v.addressSpace.addressPrefixes&&v.addressSpace.addressPrefixes[0])||''});
-  if(d.subnets)d.subnets.forEach(function(s){if(!s.SubnetId)s.SubnetId=s.id||'';if(!s.VpcId)s.VpcId=(s.id||'').split('/subnets/')[0]||'';if(!s.CidrBlock)s.CidrBlock=s.addressPrefix||''});
-  if(d.rts)d.rts.forEach(function(r){if(!r.RouteTableId)r.RouteTableId=r.id||'';if(!r.VpcId){var subs=r.subnets||[];if(subs[0]&&subs[0].id)r.VpcId=subs[0].id.split('/subnets/')[0]||''}if(!r.Routes&&r.routes)r.Routes=r.routes.map(function(rt){return{DestinationCidrBlock:rt.addressPrefix||'',GatewayId:rt.nextHopType||'',State:'active',_azRoute:rt}})});
+  if(d.subnets)d.subnets.forEach(function(s){if(!s.SubnetId)s.SubnetId=s.id||'';if(!s.VpcId)s.VpcId=(s.id||'').split('/subnets/')[0]||'';if(!s.CidrBlock)s.CidrBlock=s.addressPrefix||(s.addressPrefixes||[])[0]||''});
+  if(d.rts)d.rts.forEach(function(r){
+    if(!r.RouteTableId)r.RouteTableId=r.id||'';
+    var associationIds=(r.subnets||[]).map(function(s){return s.id}).filter(Boolean);
+    (d.subnets||[]).forEach(function(s){var p=s.properties||s;if(p.routeTable&&String(p.routeTable.id).toLowerCase()===String(r.RouteTableId).toLowerCase())associationIds.push(s.SubnetId||s.id)});
+    var associations=r.Associations||[];
+    associationIds.forEach(function(id){if(!associations.some(function(a){return String(a.SubnetId).toLowerCase()===id.toLowerCase()}))associations.push({SubnetId:id})});
+    r.Associations=associations;
+    if(!r.VpcId){var first=associations.find(function(a){return a.SubnetId});if(first)r.VpcId=first.SubnetId.split('/subnets/')[0]||''}
+    if(!r.Routes&&r.routes)r.Routes=r.routes.map(function(rt){var p=rt.properties||rt;return{DestinationCidrBlock:p.addressPrefix||'',GatewayId:p.nextHopType||'',State:'active',_azRoute:rt}});
+  });
   if(d.sgs)d.sgs.forEach(function(s){if(!s.GroupId)s.GroupId=s.id||'';if(!s.GroupName)s.GroupName=s.name||'';if(!s.VpcId&&s.subnets&&s.subnets[0]&&s.subnets[0].id)s.VpcId=s.subnets[0].id.split('/subnets/')[0]||'';if(!s.IpPermissions&&(s.securityRules||s.defaultSecurityRules)){var allRules=[].concat(s.securityRules||[]).concat(s.defaultSecurityRules||[]);s.IpPermissions=allRules.filter(function(r){return(r.direction||'').toLowerCase()==='inbound'}).map(function(r){return{IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,IpRanges:[{CidrIp:r.sourceAddressPrefix||'*'}],_azRule:r}});s.IpPermissionsEgress=allRules.filter(function(r){return(r.direction||'').toLowerCase()==='outbound'}).map(function(r){return{IpProtocol:(r.protocol||'*').toLowerCase(),FromPort:r.destinationPortRange==='*'?0:parseInt(r.destinationPortRange)||0,ToPort:r.destinationPortRange==='*'?65535:parseInt((r.destinationPortRange||'').split('-').pop())||0,IpRanges:[{CidrIp:r.destinationAddressPrefix||'*'}],_azRule:r}})}});
   if(d.enis)d.enis.forEach(function(e){if(!e.NetworkInterfaceId)e.NetworkInterfaceId=e.id||'';if(!e.SubnetId&&e.ipConfigurations&&e.ipConfigurations[0]&&e.ipConfigurations[0].subnet)e.SubnetId=e.ipConfigurations[0].subnet.id||'';if(!e.VpcId&&e.SubnetId)e.VpcId=(e.SubnetId||'').split('/subnets/')[0]||''});
+  if(d.igws)d.igws.forEach(function(f){
+    if(!f.InternetGatewayId)f.InternetGatewayId=f.id||'';
+    var config=(f.ipConfigurations||[])[0]||{};var p=config.properties||config;
+    if(!f.SubnetId)f.SubnetId=(p.subnet||{}).id||'';
+    if(!f.VpcId&&f.SubnetId)f.VpcId=f.SubnetId.split('/subnets/')[0];
+    if(!f.Attachments&&f.VpcId)f.Attachments=[{VpcId:f.VpcId}];
+  });
   if(d.nats)d.nats.forEach(function(n){if(!n.NatGatewayId)n.NatGatewayId=n.id||'';if(!n.SubnetId&&n.subnets&&n.subnets[0])n.SubnetId=n.subnets[0].id||'';if(!n.VpcId&&n.SubnetId)n.VpcId=(n.SubnetId||'').split('/subnets/')[0]||''});
   if(d.vpces)d.vpces.forEach(function(v){if(!v.VpcEndpointId)v.VpcEndpointId=v.id||'';if(!v.ServiceName&&v.privateLinkServiceConnections&&v.privateLinkServiceConnections[0]){var plc=v.privateLinkServiceConnections[0];v.ServiceName=(plc.groupIds&&plc.groupIds[0])||plc.privateLinkServiceId||''}if(!v.SubnetId&&v.subnet)v.SubnetId=v.subnet.id||'';if(!v.VpcId&&v.SubnetId)v.VpcId=(v.SubnetId||'').split('/subnets/')[0]||''});
-  if(d.instances)d.instances.forEach(function(i){if(!i.InstanceId)i.InstanceId=i.id||'';if(!i.InstanceType&&i.hardwareProfile)i.InstanceType=i.hardwareProfile.vmSize||'';if(!i.SubnetId&&i.networkProfile&&i.networkProfile.networkInterfaces&&i.networkProfile.networkInterfaces[0])i._nicId=i.networkProfile.networkInterfaces[0].id||''});
+  if(d.instances)d.instances.forEach(function(i){
+    if(!i.InstanceId)i.InstanceId=i.id||'';
+    if(!i.InstanceType&&i.hardwareProfile)i.InstanceType=i.hardwareProfile.vmSize||'';
+    var refs=i.networkProfile&&i.networkProfile.networkInterfaces||[];
+    var ref=refs.find(function(n){return n.primary||(n.properties&&n.properties.primary)})||refs[0];
+    if(ref)i._nicId=ref.id||'';
+    var nic=(d.enis||[]).find(function(n){return (n.id||n.NetworkInterfaceId||'').toLowerCase()===(i._nicId||'').toLowerCase()});
+    if(nic){
+      var configs=nic.ipConfigurations||[];
+      var config=configs.find(function(c){return (c.properties||c).primary})||configs[0];
+      var p=config&&(config.properties||config)||{};
+      if(!i.SubnetId)i.SubnetId=(p.subnet||{}).id||nic.SubnetId||'';
+      if(!i.VpcId&&i.SubnetId)i.VpcId=i.SubnetId.split('/subnets/')[0];
+      if(!i.PrivateIpAddress)i.PrivateIpAddress=p.privateIPAddress||'';
+      if(!i.SecurityGroups&&nic.networkSecurityGroup)i.SecurityGroups=[{GroupId:nic.networkSecurityGroup.id}];
+      i._asgIds=(p.applicationSecurityGroups||[]).map(function(g){return g.id});
+      i.hasPublicIp=!!p.publicIPAddress;
+    }
+  });
   if(d.albs)d.albs.forEach(function(a){if(!a.LoadBalancerArn)a.LoadBalancerArn=a.id||'';if(!a.LoadBalancerName)a.LoadBalancerName=a.name||'';if(!a.AvailabilityZones&&a.frontendIPConfigurations)a.AvailabilityZones=a.frontendIPConfigurations.filter(function(f){return f.subnet}).map(function(f){return{SubnetId:f.subnet.id||''}})});
   if(d.tgs)d.tgs.forEach(function(t){if(!t.TargetGroupArn)t.TargetGroupArn=t.id||'';if(!t.TargetGroupName)t.TargetGroupName=t.name||'';if(!t.LoadBalancerArns&&t.loadBalancingRules)t.LoadBalancerArns=t.loadBalancingRules.map(function(r){return(r.id||'').split('/loadBalancingRules/')[0]}).filter(Boolean)});
-  if(d.peerings)d.peerings.forEach(function(p){if(!p.VpcPeeringConnectionId)p.VpcPeeringConnectionId=p.id||'';if(!p.RequesterVpcInfo&&p.localVirtualNetwork)p.RequesterVpcInfo={VpcId:p.localVirtualNetwork.id||'',CidrBlock:p.localAddressSpace&&p.localAddressSpace.addressPrefixes&&p.localAddressSpace.addressPrefixes[0]||''};if(!p.AccepterVpcInfo&&p.remoteVirtualNetwork)p.AccepterVpcInfo={VpcId:p.remoteVirtualNetwork.id||'',CidrBlock:p.remoteAddressSpace&&p.remoteAddressSpace.addressPrefixes&&p.remoteAddressSpace.addressPrefixes[0]||''};if(!p.Status&&p.peeringState)p.Status={Code:p.peeringState}});
+  if(d.peerings)d.peerings.forEach(function(p){
+    if(!p.VpcPeeringConnectionId)p.VpcPeeringConnectionId=p.id||'';
+    var localId=(p.localVirtualNetwork||{}).id||p.localVnetId||(p.id||'').match(/^(.*)\/virtualNetworkPeerings\//i)?.[1]||'';
+    if(!p.RequesterVpcInfo&&localId)p.RequesterVpcInfo={VpcId:localId,CidrBlock:(p.localAddressSpace||{}).addressPrefixes?.[0]||''};
+    if(!p.AccepterVpcInfo&&p.remoteVirtualNetwork)p.AccepterVpcInfo={VpcId:p.remoteVirtualNetwork.id||'',CidrBlock:(p.remoteAddressSpace||{}).addressPrefixes?.[0]||''};
+    if(!p.Status&&p.peeringState)p.Status={Code:p.peeringState};
+  });
   if(d.vpns)d.vpns.forEach(function(v){if(!v.VpnGatewayId)v.VpnGatewayId=v.virtualNetworkGateway1&&v.virtualNetworkGateway1.id||v.id||'';if(!v.State)v.State=v.connectionStatus||v.provisioningState||''});
   if(d.volumes)d.volumes.forEach(function(v){if(!v.VolumeId)v.VolumeId=v.id||'';if(!v.Size&&v.diskSizeGb)v.Size=v.diskSizeGb;if(!v.VolumeType&&v.sku)v.VolumeType=v.sku.name||'';if(!v.State)v.State=v.diskState||v.provisioningState||'';if(!v.Attachments&&v.managedBy)v.Attachments=[{InstanceId:v.managedBy}]});
   if(d.snapshots)d.snapshots.forEach(function(s){if(!s.SnapshotId)s.SnapshotId=s.id||'';if(!s.VolumeId&&s.creationData)s.VolumeId=s.creationData.sourceResourceId||'';if(!s.VolumeSize&&s.diskSizeGb)s.VolumeSize=s.diskSizeGb;if(!s.State)s.State=s.provisioningState||''});
   if(d.s3bk)d.s3bk.forEach(function(s){if(!s.Name)s.Name=s.name||''});
-  if(d.zones)d.zones.forEach(function(z){if(!z.Id)z.Id=z.id||'';if(!z.Config)z.Config={PrivateZone:z.zoneType==='Private'}});
+  if(d.zones)d.zones.forEach(function(z){if(!z.Id)z.Id=z.id||'';if(!z.Name)z.Name=z.name||z.Id||'';if(!z.Config)z.Config={PrivateZone:z.zoneType==='Private'}});
   if(d.wafAcls)d.wafAcls.forEach(function(w){if(!w.ResourceArns&&w.applicationGateways)w.ResourceArns=w.applicationGateways.map(function(a){return a.id||''})});
   if(d.rdsInstances)d.rdsInstances.forEach(function(r){if(!r.DBInstanceIdentifier)r.DBInstanceIdentifier=r.name||'';if(!r.DBInstanceClass&&r.sku)r.DBInstanceClass=r.sku.tier||r.sku.name||'';if(!r.Engine)r.Engine=r.version||r.kind||'SQL'});
   if(d.ecsServices)d.ecsServices.forEach(function(c){if(!c.serviceName)c.serviceName=c.name||'';if(!c.serviceArn)c.serviceArn=c.id||''});
@@ -52,6 +93,22 @@ function _normalizeAzureResources(d){
   if(d.redshiftClusters)d.redshiftClusters.forEach(function(c){if(!c.ClusterIdentifier)c.ClusterIdentifier=c.name||'';if(!c.NumberOfNodes&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NumberOfNodes=c.agentPoolProfiles[0].count||1;if(!c.NodeType&&c.agentPoolProfiles&&c.agentPoolProfiles[0])c.NodeType=c.agentPoolProfiles[0].vmSize||'';if(!c.ClusterStatus)c.ClusterStatus=c.provisioningState||''});
   if(d.tgwAttachments)d.tgwAttachments.forEach(function(t){if(!t.TransitGatewayId)t.TransitGatewayId=t.id||'';if(!t.State)t.State=t.provisioningState||''});
   if(d.cfDistributions)d.cfDistributions.forEach(function(c){if(!c.Id)c.Id=c.id||'';if(!c.DomainName&&c.frontendEndpoints&&c.frontendEndpoints[0])c.DomainName=c.frontendEndpoints[0].hostName||c.frontendEndpoints[0].name||''});
+  // Bind compatibility references to imported ARM identities without rewriting native IDs.
+  function importedId(id, rows, key){
+    if(!id)return id;
+    var match=(rows||[]).find(function(row){return String(row[key]||row.id||'').toLowerCase()===String(id).toLowerCase()});
+    return match?(match[key]||match.id):id;
+  }
+  allArrays.forEach(function(rows){(rows||[]).forEach(function(row){
+    if(row.VpcId)row.VpcId=importedId(row.VpcId,d.vpcs,'VpcId');
+    if(row.SubnetId)row.SubnetId=importedId(row.SubnetId,d.subnets,'SubnetId');
+  })});
+  (d.instances||[]).forEach(function(instance){
+    var subnet=(d.subnets||[]).find(function(s){return s.SubnetId===instance.SubnetId});
+    if(subnet)instance.VpcId=subnet.VpcId;
+    (instance.SecurityGroups||[]).forEach(function(group){group.GroupId=importedId(group.GroupId,d.sgs,'GroupId')});
+  });
+  (d.rts||[]).forEach(function(table){(table.Associations||[]).forEach(function(a){a.SubnetId=importedId(a.SubnetId,d.subnets,'SubnetId')})});
 }
 
 // filename-to-input mapping
@@ -81,6 +138,7 @@ const fileMap=[
   {id:'in_containers',patterns:['container','containers','aci','containerinstance']},
   {id:'in_funcapps',patterns:['functionapp','func','function-app','funcapp']},
   {id:'in_elasticache',patterns:['redis','redis-cache','rediscache']},
+  {id:'in_synapse',patterns:['synapse','synapse-workspace','synapseworkspace','synapse-workspaces']},
   {id:'in_aks',patterns:['aks','kubernetes','k8s']},
   {id:'in_tgwatt',patterns:['vwan','virtual-wan','virtualwan']},
   {id:'in_cf',patterns:['frontdoor','front-door','afd','front_door']},
@@ -192,6 +250,7 @@ function matchFile(fname, content){
     if(_hasKey('frontendEndpoints')&&_hasKey('backendPools'))return 'in_cf';
     if(_hasKey('hostNames')&&_hasKey('functionAppConfig'))return 'in_funcapps';
     if(_hasKey('redisConfiguration'))return 'in_elasticache';
+    if(_hasKey('Microsoft.Synapse/workspaces')||(_hasKey('connectivityEndpoints')&&_hasKey('managedVirtualNetwork')))return 'in_synapse';
     if(_hasKey('agentPoolProfiles')&&_hasKey('kubernetesVersion'))return 'in_aks';
     if(_hasKey('containers')&&_hasKey('osType')&&!_hasKey('agentPoolProfiles'))return 'in_containers';
     if(_hasKey('roleDefinitionId')&&_hasKey('principalId'))return 'in_rbac';

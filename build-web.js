@@ -38,6 +38,9 @@ if (fs.existsSync('dist/iac-generator.bundle.js'))
 fs.copyFileSync('index.html', path.join(OUT, 'index.html'));
 fs.copyFileSync('logo.png', path.join(OUT, 'logo.png'));
 fs.copyFileSync('icon.png', path.join(OUT, 'icon.png'));
+for (const script of ['export-azure-data.sh', 'export-azure-data.ps1']) {
+  fs.copyFileSync(script, path.join(OUT, script));
+}
 
 // Copy libs
 copyDir('libs', path.join(OUT, 'libs'));

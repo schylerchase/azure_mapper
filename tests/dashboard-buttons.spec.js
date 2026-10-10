@@ -9,6 +9,7 @@ test.describe('Dock Button Dashboard Navigation (R2.2)', () => {
   const dockButtons = [
     { name: 'Compliance', selector: '#compDashBtn', contentCheck: /finding|check|compliance/i },
     { name: 'BUDR', selector: '#budrBtn', contentCheck: /tier|backup|recovery/i },
+    { name: 'Firewall', selector: '#firewallBtn', contentCheck: /firewall|nsg|route|resources/i },
     { name: 'Inventory', selector: '#inventoryBtn', contentCheck: /resource|subnet|vm/i },
     { name: 'Governance', selector: '#govBtn', contentCheck: /rule|class|govern/i },
     { name: 'Reports', selector: '#reportsBtn', contentCheck: /report|module|export/i },

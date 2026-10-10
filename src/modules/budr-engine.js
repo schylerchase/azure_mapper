@@ -2,16 +2,10 @@
 // Evaluates backup coverage, HA configuration, and DR readiness for Azure resources
 // Extracted from index.html for modularization
 
-// --- Transitional window references ---
-// _classificationData and runClassificationEngine live in the governance region
-// of index.html and have not been extracted to a module yet. During this
-// transition period we access them via window globals. Once the governance
-// module is extracted, replace these with proper imports.
-function _getClassificationData() {
-  return typeof window !== 'undefined' ? (window._classificationData || []) : [];
-}
-function _runClassificationEngine(ctx) {
-  if (typeof window !== 'undefined' && typeof window.runClassificationEngine === 'function') window.runClassificationEngine(ctx);
+// --- Classification integration ---
+// GovernanceClassification is loaded from the app-core plain-script runtime.
+function _ensureBudrClassification(ctx) {
+  return typeof GovernanceClassification !== 'undefined' ? GovernanceClassification.ensure(ctx) : [];
 }
 
 // === BUDR: BACKUP, UPTIME, DISASTER RECOVERY ===
@@ -27,20 +21,25 @@ const _BUDR_RTO_RPO={
   sql_zone_redundant:{rto:'~5 min',rpo:'~1 min',tier:'protected',strategy:'warm'},
   sql_single_backup:{rto:'~30 min',rpo:'~24 hr',tier:'partial',strategy:'pilot'},
   sql_no_backup:{rto:'~8 hr',rpo:'total loss',tier:'at_risk',strategy:'cold'},
+  sql_unknown:{rto:'Unknown',rpo:'Unknown',tier:'unknown',strategy:'unknown'},
   vm_vmss:{rto:'~3 min',rpo:'0 (stateless)',tier:'protected',strategy:'warm'},
   vm_disk_snap:{rto:'~15 min',rpo:'~7 days',tier:'partial',strategy:'pilot'},
   vm_standalone:{rto:'~8 hr',rpo:'total loss',tier:'at_risk',strategy:'cold'},
   container_multi:{rto:'~1 min',rpo:'0 (stateless)',tier:'protected',strategy:'hot'},
   container_single:{rto:'~5 min',rpo:'0 (stateless)',tier:'partial',strategy:'warm'},
+  container_unknown:{rto:'Unknown',rpo:'Unknown',tier:'unknown',strategy:'unknown'},
   function_app:{rto:'0 (managed)',rpo:'0 (stateless)',tier:'protected',strategy:'hot'},
   redis_zone_redundant:{rto:'~2 min',rpo:'~seconds',tier:'protected',strategy:'warm'},
   redis_single:{rto:'~15 min',rpo:'~7 days',tier:'partial',strategy:'pilot'},
   redis_no_snap:{rto:'~15 min',rpo:'total loss',tier:'at_risk',strategy:'cold'},
+  redis_unknown:{rto:'Unknown',rpo:'Unknown',tier:'unknown',strategy:'unknown'},
   synapse_snap:{rto:'~30 min',rpo:'~8 hr',tier:'partial',strategy:'pilot'},
   synapse_multi:{rto:'~15 min',rpo:'~5 min',tier:'protected',strategy:'warm'},
   synapse_none:{rto:'~8 hr',rpo:'total loss',tier:'at_risk',strategy:'cold'},
+  synapse_unknown:{rto:'Unknown',rpo:'Unknown',tier:'unknown',strategy:'unknown'},
   agw_zone_redundant:{rto:'0 (managed)',rpo:'N/A',tier:'protected',strategy:'hot'},
   agw_single_zone:{rto:'~5 min',rpo:'N/A',tier:'partial',strategy:'warm'},
+  agw_unknown:{rto:'Unknown',rpo:'Unknown',tier:'unknown',strategy:'unknown'},
   storage_grs:{rto:'0 (managed)',rpo:'0 (geo-replicated)',tier:'protected',strategy:'hot'},
   storage_ra_grs:{rto:'0 (managed)',rpo:'0 (read-access geo)',tier:'protected',strategy:'hot'},
   storage_lrs:{rto:'0 (managed)',rpo:'total loss on region failure',tier:'at_risk',strategy:'cold'},
@@ -112,21 +111,29 @@ function runBUDRChecks(ctx){
   (ctx.sqlServers||[]).forEach(sql=>{
     const id=sql.id;const name=gn(sql);
     const hasZoneRedundant=!!(sql.properties&&sql.properties.zoneRedundant);
-    const backupDays=(sql.properties&&sql.properties.backupRetentionDays)||0;
-    const hasBackup=backupDays>0;
+    const retention=sql.properties&&sql.properties.backupRetentionDays;
+    const backupKnown=retention!==undefined&&retention!==null&&retention!==''&&Number.isFinite(Number(retention));
+    const backupDays=backupKnown?Number(retention):null;
+    const hasBackup=backupKnown?backupDays>0:null;
     const geoRedundant=(sql.properties&&sql.properties.geoRedundantBackup)==='Enabled';
     const encrypted=!!(sql.properties&&sql.properties.storageEncrypted);
     let profile;
-    if(hasZoneRedundant&&hasBackup){profile=_BUDR_RTO_RPO.sql_zone_redundant}
+    if(!backupKnown){
+      profile=_BUDR_RTO_RPO.sql_unknown;
+      if(!ctx.assessmentGaps)ctx.assessmentGaps={};
+      ctx.assessmentGaps.sqlBackupRetention='SQL database backup retention not collected';
+    }
+    else if(hasZoneRedundant&&hasBackup){profile=_BUDR_RTO_RPO.sql_zone_redundant}
     else if(hasBackup){profile=_BUDR_RTO_RPO.sql_single_backup;
       f.push({severity:'MEDIUM',control:'BUDR-HA-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server not zone-redundant: single point of failure',remediation:'Enable zone-redundant deployment for automatic failover'})}
     else{profile=_BUDR_RTO_RPO.sql_no_backup;
       f.push({severity:'CRITICAL',control:'BUDR-BAK-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server has no automated backups (retention=0)',remediation:'Set backupRetentionDays to at least 7'})}
     if(!hasZoneRedundant&&hasBackup)
       f.push({severity:'HIGH',control:'BUDR-DR-1',framework:'BUDR',resource:id,resourceName:name,message:'SQL Server single-zone with backups only: extended RTO on zone failure',remediation:'Enable zone-redundant deployment or configure geo-replication'});
-    assessments.push({type:'SQL Server',id,name,profile,signals:{ZoneRedundant:hasZoneRedundant,Backup:hasBackup,BackupDays:backupDays,Encrypted:encrypted,GeoRedundant:geoRedundant}});
+    assessments.push({type:'SQL Server',id,name,profile,signals:{ZoneRedundant:hasZoneRedundant,Backup:backupKnown?hasBackup:'Unknown',BackupDays:backupKnown?backupDays:'Unknown',Encrypted:encrypted,GeoRedundant:geoRedundant}});
   });
   // VMs (Azure Virtual Machines)
+  const snapByDisk=ctx.snapByDisk||ctx.snapByVol||{};
   const vmssInstIds=new Set();
   // Detect VMSS membership from tags
   (ctx.vms||[]).forEach(vm=>{
@@ -142,9 +149,9 @@ function runBUDRChecks(ctx){
       .map(d=>d.managedDisk&&d.managedDisk.id).filter(Boolean);
     const osDiskId=vm.properties&&vm.properties.storageProfile&&vm.properties.storageProfile.osDisk&&vm.properties.storageProfile.osDisk.managedDisk&&vm.properties.storageProfile.osDisk.managedDisk.id;
     if(osDiskId)attachedDisks.push(osDiskId);
-    const hasSnaps=attachedDisks.some(did=>{const s=(ctx.snapByDisk||{})[did];return s&&s.length>0});
+    const hasSnaps=attachedDisks.some(did=>{const s=snapByDisk[did];return s&&s.length>0});
     let newestSnap=null;
-    attachedDisks.forEach(did=>{const ss=(ctx.snapByDisk||{})[did]||[];ss.forEach(s=>{
+    attachedDisks.forEach(did=>{const ss=snapByDisk[did]||[];ss.forEach(s=>{
       const d=new Date(s.properties&&s.properties.timeCreated||0);if(!newestSnap||d>newestSnap)newestSnap=d;
     })});
     const snapAgeDays=newestSnap?Math.floor((Date.now()-newestSnap.getTime())/(864e5)):null;
@@ -164,13 +171,10 @@ function runBUDRChecks(ctx){
   // Container Instances
   (ctx.containerInstances||[]).forEach(ci=>{
     const id=ci.id;const name=gn(ci);
-    const replicas=(ci.properties&&ci.properties.containers||[]).length;
-    const multi=replicas>1;
-    let profile;
-    if(multi){profile=_BUDR_RTO_RPO.container_multi}
-    else{profile=_BUDR_RTO_RPO.container_single;
-      f.push({severity:'LOW',control:'BUDR-HA-3',framework:'BUDR',resource:id,resourceName:name,message:'Container instance has only '+replicas+' container(s): no redundancy',remediation:'Deploy multiple container instances across availability zones'})}
-    assessments.push({type:'Container Instance',id,name,profile,signals:{Containers:replicas,MultiContainer:multi}});
+    const props=ci.properties||ci;
+    if(!ctx.assessmentGaps)ctx.assessmentGaps={};
+    ctx.assessmentGaps.containerGroupRecovery='Independent container groups, failover, and persistent-state protection not collected';
+    assessments.push({type:'Container Instance',id,name,profile:_BUDR_RTO_RPO.container_unknown,signals:{ContainerCount:Array.isArray(props.containers)?props.containers.length:'Unknown',IndependentGroups:'Unknown',DR:'Unknown'}});
   });
   // Function Apps (inherently resilient)
   (ctx.functionApps||[]).forEach(fn=>{
@@ -179,39 +183,49 @@ function runBUDRChecks(ctx){
   // Redis Caches
   (ctx.redisCaches||[]).forEach(rc=>{
     const id=rc.id;const name=gn(rc);
-    const replicas=(rc.properties&&rc.properties.replicasPerMaster)||0;
-    const hasSnap=!!(rc.properties&&(rc.properties.rdbBackupEnabled||rc.properties.aofBackupEnabled));
-    const zoneRedundant=!!(rc.properties&&rc.properties.replicasPerPrimary>0);
+    const props=rc.properties||rc;
+    const replicas=props.replicasPerMaster||0;
+    const boolean=value=>typeof value==='boolean'?value:typeof value==='string'&&/^(true|false)$/i.test(value.trim())?value.trim().toLowerCase()==='true':null;
+    const rdb=boolean(props.redisConfiguration?.['rdb-backup-enabled']??props.rdbBackupEnabled);
+    const aof=boolean(props.redisConfiguration?.['aof-backup-enabled']??props.aofBackupEnabled);
+    const hasSnap=rdb===true||aof===true?true:rdb===false&&aof===false?false:null;
+    if(hasSnap===null){
+      if(!ctx.assessmentGaps)ctx.assessmentGaps={};
+      ctx.assessmentGaps.redisPersistence='Redis RDB/AOF persistence settings not collected';
+    }
+    const zoneRedundant=props.replicasPerPrimary>0;
     let profile;
     if(zoneRedundant||replicas>0){profile=_BUDR_RTO_RPO.redis_zone_redundant}
     else if(hasSnap){profile=_BUDR_RTO_RPO.redis_single;
       f.push({severity:'MEDIUM',control:'BUDR-HA-4',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node: failover requires manual intervention',remediation:'Add replicas or enable zone-redundant configuration for automatic failover'})}
-    else{profile=_BUDR_RTO_RPO.redis_no_snap;
+    else if(hasSnap===false){profile=_BUDR_RTO_RPO.redis_no_snap;
       f.push({severity:'HIGH',control:'BUDR-BAK-3',framework:'BUDR',resource:id,resourceName:name,message:'Redis Cache single node with no persistence: data loss risk',remediation:'Enable RDB/AOF persistence and add read replicas'})}
-    assessments.push({type:'Redis Cache',id,name,profile,signals:{Replicas:replicas,Snapshots:hasSnap,ZoneRedundant:zoneRedundant}});
+    else{profile=_BUDR_RTO_RPO.redis_unknown}
+    assessments.push({type:'Redis Cache',id,name,profile,signals:{Replicas:replicas,Snapshots:hasSnap===null?'Unknown':hasSnap,ZoneRedundant:zoneRedundant}});
   });
   // Synapse Workspaces
   (ctx.synapseWorkspaces||[]).forEach(sw=>{
     const id=sw.id;const name=gn(sw);
-    const hasSnap=!!(sw.properties&&sw.properties.managedResourceGroupName);
-    const multiZone=!!(sw.properties&&(sw.properties.managedVirtualNetworkSettings||sw.properties.workspaceRepositoryConfiguration));
-    let profile;
-    if(multiZone&&hasSnap){profile=_BUDR_RTO_RPO.synapse_multi}
-    else if(hasSnap){profile=_BUDR_RTO_RPO.synapse_snap;
-      f.push({severity:'MEDIUM',control:'BUDR-HA-5',framework:'BUDR',resource:id,resourceName:name,message:'Synapse Workspace without zone-redundant compute: no compute redundancy',remediation:'Enable zone-redundant SQL pools for HA'})}
-    else{profile=_BUDR_RTO_RPO.synapse_none;
-      f.push({severity:'HIGH',control:'BUDR-BAK-4',framework:'BUDR',resource:id,resourceName:name,message:'Synapse Workspace with no backup configuration: data loss risk',remediation:'Configure automated backups with adequate retention'})}
-    assessments.push({type:'Synapse Workspace',id,name,profile,signals:{Snapshots:hasSnap,MultiZone:multiZone}});
+    if(!ctx.assessmentGaps)ctx.assessmentGaps={};
+    ctx.assessmentGaps.synapseProtection='Synapse SQL pool backup, restore-point, and replication evidence not collected';
+    assessments.push({type:'Synapse Workspace',id,name,profile:_BUDR_RTO_RPO.synapse_unknown,signals:{Backup:'Unknown',DR:'Unknown'}});
   });
   // App Gateways
   (ctx.appGateways||[]).forEach(agw=>{
     const id=agw.id;const name=gn(agw);
     const zones=(agw.zones||[]).length;
+    const sku=agw.properties?.sku||agw.sku||{};
+    const isV2=/^(Standard_v2|WAF_v2)$/i.test(sku.tier||sku.name||'');
     let profile;
     if(zones>=2){profile=_BUDR_RTO_RPO.agw_zone_redundant}
+    else if(isV2&&zones===0){
+      profile=_BUDR_RTO_RPO.agw_unknown;
+      if(!ctx.assessmentGaps)ctx.assessmentGaps={};
+      ctx.assessmentGaps.appGatewayZones='Application Gateway v2 regional zone support not collected; omitted zones can use the regional default';
+    }
     else{profile=_BUDR_RTO_RPO.agw_single_zone;
       f.push({severity:'MEDIUM',control:'BUDR-HA-6',framework:'BUDR',resource:id,resourceName:name,message:'App Gateway in single zone only: no failover',remediation:'Deploy across 2+ availability zones'})}
-    assessments.push({type:'App Gateway',id,name,profile,signals:{ZoneCount:zones}});
+    assessments.push({type:'App Gateway',id,name,profile,signals:{ZoneCount:isV2&&zones===0?'Unknown':zones}});
   });
   // Managed Disks (standalone: not already counted via VM)
   (ctx.disks||[]).forEach(disk=>{
@@ -266,11 +280,7 @@ function runBUDRChecks(ctx){
 }
 function _enrichBudrWithClassification(ctx,findings){
   // Run classification if not already done
-  // NOTE: _classificationData and runClassificationEngine are from the governance
-  // region (not yet extracted). Access via window globals during transition.
-  var classData = _getClassificationData();
-  if(!classData.length&&ctx) _runClassificationEngine(ctx);
-  classData = _getClassificationData();
+  var classData = _ensureBudrClassification(ctx);
   // Build lookup by resource id/name (type-qualified keys take priority to avoid cross-type collisions)
   var classMap={};var classMapTyped={};
   classData.forEach(function(c){classMap[c.id]=c;classMap[c.name]=c;classMapTyped[c.type+'|'+c.id]=c;classMapTyped[c.type+'|'+c.name]=c});

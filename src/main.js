@@ -5,19 +5,20 @@
 // Core utilities
 import { SEV_ORDER, FW_LABELS, EOL_RUNTIMES, EFFORT_LABELS, EFFORT_TIME, PRIORITY_META, TIER_META, PRIORITY_ORDER, PRIORITY_KEYS, MUTE_KEY, NOTES_KEY, SNAP_KEY, SAVE_KEY, MAX_SNAPSHOTS, SAVE_INTERVAL, NOTE_CATEGORIES } from './modules/constants.js';
 import { safeParse, ext, esc, gn, sid, clsGw, isShared, gcv, gch, gv, parseResourceId, getTenantFromResource } from './modules/utils.js';
-import { showToast, closeAllDashboards, toggleClass, setVisible, getEl, qs, qsa } from './modules/dom-helpers.js';
+import { showToast, toggleClass, setVisible, getEl, qs, qsa } from './modules/dom-helpers.js';
 import { _prefs, loadPrefs, savePrefs } from './modules/prefs.js';
+import { publishLegacyAppModules, ensureLegacyComplianceFindings, installLazyBundleLoaders } from './modules/app-compatibility-publisher.js';
 
 // Cloud environment management
 import { CLOUDS, getCloudEnv, setCloudEnv, getCloudConfig, getComplianceFrameworks, isServiceAvailable, getPortalUrl, detectCloudFromEndpoint } from './modules/cloud-env.js';
 
 // Feature engines
-// Note: demo-data and iac-generator are lazy-loaded via window._loadDemoData / window._loadIacGenerator
+// Note: demo-data and iac-generator are lazy-loaded by app-compatibility-publisher.js.
 import { ipToInt, intToIp, parseCIDR, cidrToString, splitCIDR, cidrContains, cidrOverlap, ipInCIDR } from './modules/cidr-engine.js';
 import { runComplianceChecks, invalidateComplianceCache } from './modules/compliance-engine.js';
 
 // Network rules (Azure NSG + UDR evaluation)
-import { evaluateNsgRules, evaluateNsgPath, evaluateRoute, protocolMatch, portMatch, addressMatch, classifySubnet } from './modules/network-rules.js';
+import { evaluateNsgRules, evaluateNsgPath, evaluateRoute, protocolMatch, portMatch, addressMatch, classifySubnet, hasExplicitOutbound } from './modules/network-rules.js';
 
 // Shared state (cross-cutting globals used by 5+ regions)
 import * as State from './modules/state.js';
@@ -52,40 +53,21 @@ import {
   parseRBACData, getRBACForScope
 } from './modules/iam-engine.js';
 
-// Timeline & Annotations (state + pure logic — DOM rendering remains inline)
-import * as Timeline from './modules/timeline.js';
-
-// Phase 3: Feature Engines
-// Design mode (validation, apply functions, CLI generation — DOM forms remain inline)
-import * as DesignMode from './modules/design-mode.js';
-
 // Flow tracing (trace engine, network position — DOM/SVG rendering remains inline)
 import * as FlowTracing from './modules/flow-tracing.js';
 
 // Flow analysis (traffic flow discovery — dashboard rendering remains inline)
 import * as FlowAnalysis from './modules/flow-analysis.js';
 
-// Firewall editor (NSG rule CRUD, validation, CLI — DOM editor remains inline)
-import * as FirewallEditor from './modules/firewall-editor.js';
-
 // Multi-tenant (context building, merging, Lighthouse — DOM panels remain inline)
 import * as MultiTenant from './modules/multi-tenant.js';
 
-// Phase 4: Dashboards & Reports
-// Compliance view (scoring, grouping, muting — DOM rendering remains inline)
-import * as ComplianceView from './modules/compliance-view.js';
-
-// Unified dashboard (state + filter — DOM orchestration remains inline)
-import * as UnifiedDashboard from './modules/unified-dashboard.js';
-
-// Governance & Inventory (classification, inventory, RBAC permissions — DOM rendering remains inline)
-import * as Governance from './modules/governance.js';
-
 // Phase 5: Core
-// Export utilities (VSDX layout, XML builders, downloadBlob — DOM export handlers remain inline)
+// Export utilities (VSDX layout and XML builders; DOM export handlers remain inline)
 import * as ExportUtils from './modules/export-utils.js';
+import './modules/export-utils-compatibility.js';
 
-// IaC generator: lazy-loaded via window._loadIacGenerator() — not in initial bundle
+// IaC generator: lazy-loaded by app-compatibility-publisher.js — not in initial bundle
 
 // Normalization utilities (extracted from app-core.js for unit testability)
 import { _normalizeAzureResources, _normTags, matchFile, fileMap, _friendlyFolderLabel } from './modules/normalization.js';
@@ -94,8 +76,7 @@ import { _normalizeAzureResources, _normTags, matchFile, fileMap, _friendlyFolde
 // They have top-level DOM event listeners and are loaded via separate <script type="module"> tags
 // in index.html (after DOM is ready).
 
-// Export to global scope for backward compatibility with inline code
-window.AppModules = {
+const appModules = {
   // Constants (clean + underscore-prefixed aliases for inline code)
   SEV_ORDER, FW_LABELS, EOL_RUNTIMES, EFFORT_LABELS, EFFORT_TIME,
   PRIORITY_META, TIER_META, PRIORITY_ORDER, PRIORITY_KEYS,
@@ -112,7 +93,7 @@ window.AppModules = {
   isServiceAvailable, getPortalUrl, detectCloudFromEndpoint,
 
   // DOM helpers
-  showToast, closeAllDashboards, toggleClass, setVisible, getEl, qs, qsa,
+  showToast, toggleClass, setVisible, getEl, qs, qsa,
 
   // Prefs
   _prefs, loadPrefs, savePrefs,
@@ -124,7 +105,7 @@ window.AppModules = {
   runComplianceChecks, invalidateComplianceCache,
 
   // Network rules (Azure NSG + UDR)
-  evaluateNsgRules, evaluateNsgPath, evaluateRoute,
+  evaluateNsgRules, evaluateNsgPath, evaluateRoute, hasExplicitOutbound,
   protocolMatch, portMatch, addressMatch, classifySubnet,
 
   // Shared state
@@ -152,24 +133,14 @@ window.AppModules = {
   classifyPermission, getScopeLevel,
   parseRBACData, getRBACForScope,
 
-  // Timeline & Annotations
-  Timeline,
-
   // Phase 3: Feature Engines
-  DesignMode,
   FlowTracing,
   FlowAnalysis,
-  FirewallEditor,
   MultiTenant,
-
-  // Phase 4: Dashboards & Reports
-  ComplianceView,
-  UnifiedDashboard,
-  Governance,
 
   // Phase 5: Core
   ExportUtils,
-  // IacGenerator: lazy-loaded via window._loadIacGenerator() — not in AppModules at startup
+  // IacGenerator: lazy-loaded by app-compatibility-publisher.js — not in AppModules at startup
 
   // Note: diff-engine and report-builder loaded via separate script tags (DOM-dependent)
 
@@ -177,49 +148,8 @@ window.AppModules = {
   _normalizeAzureResources, _normTags, matchFile, fileMap, _friendlyFolderLabel,
 };
 
-// Make functions available globally (transitional - will remove once all code is modularized)
-Object.assign(window, window.AppModules);
-
-// Initialize _complianceFindings on window so inline code can reference it before first run
-if (!window._complianceFindings) window._complianceFindings = [];
-
-// Lazy loader: demo-data.bundle.js — loaded on first Demo button click
-// Resolves to the generateDemo function after the bundle script executes
-window._loadDemoData = function() {
-  return new Promise(function(resolve) {
-    if (window.generateDemo) return resolve(window.generateDemo);
-    var s = document.createElement('script');
-    s.src = 'dist/demo-data.bundle.js';
-    s.onload = function() {
-      window.generateDemo = window.DemoDataModule && window.DemoDataModule.generateDemo;
-      resolve(window.generateDemo);
-    };
-    s.onerror = function() {
-      console.error('Failed to load demo-data.bundle.js');
-      resolve(null);
-    };
-    document.head.appendChild(s);
-  });
-};
-
-// Lazy loader: iac-generator.bundle.js — loaded on first IaC modal open
-// Resolves to the IacGeneratorModule namespace after the bundle script executes
-window._loadIacGenerator = function() {
-  return new Promise(function(resolve) {
-    if (window.IacGeneratorModule) return resolve(window.IacGeneratorModule);
-    var s = document.createElement('script');
-    s.src = 'dist/iac-generator.bundle.js';
-    s.onload = function() {
-      window.IacGenerator = window.IacGeneratorModule;
-      if (window.AppModules) window.AppModules.IacGenerator = window.IacGeneratorModule;
-      resolve(window.IacGeneratorModule);
-    };
-    s.onerror = function() {
-      console.error('Failed to load iac-generator.bundle.js');
-      resolve(null);
-    };
-    document.head.appendChild(s);
-  });
-};
+publishLegacyAppModules(appModules);
+ensureLegacyComplianceFindings();
+installLazyBundleLoaders();
 
 console.log('Azure Network Mapper modules loaded');
