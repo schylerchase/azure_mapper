@@ -49,6 +49,26 @@ test.describe('JSON File Upload -> Map Render (R2.1)', () => {
 
 });
 
+test.describe('Project File Save', () => {
+  test('browser save uses the project file access adapter', async ({ page }) => {
+    await loadDemo(page);
+    await page.evaluate(() => {
+      window.electronAPI = null;
+      window.__savedProject = null;
+      window.AppDownloads.saveBlob = async function(blob, name) {
+        window.__savedProject = { name, type: blob.type, size: blob.size };
+      };
+    });
+
+    await page.evaluate(() => saveProject());
+    await expect.poll(() => page.evaluate(() => window.__savedProject)).toMatchObject({
+      name: /.+\.azuremap$/,
+      type: 'application/json',
+    });
+    await expect.poll(() => page.evaluate(() => window.__savedProject.size)).toBeGreaterThan(0);
+  });
+});
+
 test.describe('Demo Data Renders Clean (R2.3)', () => {
 
   test('demo data loads and renders without any console errors', async ({ page }) => {

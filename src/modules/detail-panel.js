@@ -1,724 +1,993 @@
-// Resource detail panel and spotlight system
-// Displays detailed information for selected resources
-// Extracted from index.html for modularization
-//
-// TODO: _zoomAndShowDetail, _closeSpotlight, _openResourceSpotlight, _gatherResourceInfo
-// are duplicated in search.js. Consolidate into a single module and import from there.
-// The typeColors map also differs slightly between the two files.
-
-// === ZOOM TO RESOURCE AND OPEN DETAIL PANEL ===
-function _zoomAndShowDetail(rid){
-  if(!rid||rid==='Multiple') return;
-  _zoomToElement(rid);
-  var type=_resolveResourceType(rid);
-  if(type){
-    setTimeout(function(){_openDetailForSearch(type,rid)},400);
-  }
+// #region UI UTILITIES & DETAIL PANELS
+function positionTooltip(event,tt){
+  const r=_getMain().getBoundingClientRect();
+  let tx=event.clientX-r.left+16,ty=event.clientY-r.top-10;
+  const ttW=tt.offsetWidth||420,ttH=tt.offsetHeight||200;
+  if(tx+ttW>r.width) tx=event.clientX-r.left-ttW-10;
+  if(ty+ttH>r.height) ty=r.height-ttH-8;
+  if(tx<4) tx=4;
+  if(ty<4) ty=4;
+  tt.style.left=tx+'px';tt.style.top=ty+'px';
 }
 
-// === RESOURCE SPOTLIGHT (animated zoom window) ===
-var _spotlightActive=false;
-function _closeSpotlight(){
-  _spotlightActive=false;
-  var card=document.getElementById('spotlightCard');
-  var backdrop=document.getElementById('spotlightBackdrop');
-  if(card){card.style.opacity='0';card.style.transform='translateY(20px) scale(.95)';setTimeout(function(){card.remove()},300)}
-  if(backdrop){backdrop.classList.remove('active');setTimeout(function(){backdrop.remove()},400)}
-  _mapG&&_mapG.selectAll('.spotlight-ring').remove();
-}
-function _openResourceSpotlight(rid){
-  if(!rid||!_rlCtx)return;
-  _closeSpotlight();
-  _spotlightActive=true;
-  // Find the SVG element
-  var el=_mapG.node().querySelector('[data-vnet-id="'+rid+'"],[data-subnet-id="'+rid+'"],[data-gwid="'+rid+'"],[data-id="'+rid+'"]');
-  if(!el)return;
-  var bb=el.getBBox();
-  var cx=bb.x+bb.width/2,cy=bb.y+bb.height/2;
-  var svgW=_mapSvg.node().clientWidth,svgH=_mapSvg.node().clientHeight;
-  // Animated zoom - tighter zoom than normal
-  var scale=Math.min(svgW/(bb.width+300),svgH/(bb.height+300),3.5);
-  _mapSvg.transition().duration(900).ease(d3.easeCubicInOut)
-    .call(_mapZoom.transform,d3.zoomIdentity.translate(svgW/2-cx*scale,svgH/2-cy*scale).scale(scale));
-  // Add animated ring around resource in SVG
-  _mapG.selectAll('.spotlight-ring').remove();
-  var pad=12;
-  var ring=_mapG.append('rect').attr('class','spotlight-ring')
-    .attr('x',bb.x-pad).attr('y',bb.y-pad)
-    .attr('width',bb.width+pad*2).attr('height',bb.height+pad*2)
-    .attr('rx',8).attr('ry',8)
-    .attr('fill','none').attr('stroke','#22d3ee').attr('stroke-width',2.5)
-    .attr('stroke-dasharray','6,3').attr('opacity',0).attr('pointer-events','none')
-    .style('animation','spotlightRingPulse 2s ease-in-out infinite');
-  ring.transition().duration(500).delay(400).attr('opacity',1);
-  // Gather resource info
-  var info=_gatherResourceInfo(rid);
-  if(!info)return;
-  // Create backdrop
-  var backdrop=document.createElement('div');
-  backdrop.id='spotlightBackdrop';
-  backdrop.className='spotlight-backdrop';
-  backdrop.addEventListener('click',_closeSpotlight);
-  document.body.appendChild(backdrop);
-  requestAnimationFrame(function(){backdrop.classList.add('active')});
-  // Build the card
-  var card=document.createElement('div');
-  card.id='spotlightCard';
-  card.className='spotlight-card';
-  var typeColors={VM:'#f97316',SQL:'#a78bfa','Function App':'#10b981',LB:'#3b82f6',ContainerService:'#06b6d4',Redis:'#ef4444',Synapse:'#ec4899',Subnet:'#22d3ee',VNet:'#60a5fa',NSG:'#f59e0b',FW:'#10b981',NAT:'#f97316',VGW:'#8b5cf6',PE:'#06b6d4',VHUB:'#6366f1'};
-  var tc=typeColors[info.type]||'#22d3ee';
-  // Header
-  var h='<div class="spotlight-header">';
-  h+='<button class="spotlight-close" onclick="_closeSpotlight()">&times;</button>';
-  h+='<span class="sl-type-badge" style="background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44">'+_escHtml(info.type)+'</span>';
-  h+='<h3>'+_escHtml(info.name)+'</h3>';
-  h+='<span class="sl-id" title="Click to copy" onclick="navigator.clipboard&&navigator.clipboard.writeText(\''+_escHtml(rid)+'\')">'+_escHtml(rid)+'</span>';
-  h+='</div>';
-  // Body
-  h+='<div class="spotlight-body">';
-  // Details section
-  if(info.details&&info.details.length){
-    h+='<div class="spotlight-section"><div class="spotlight-section-title">Details</div>';
-    h+='<dl class="spotlight-kv">';
-    info.details.forEach(function(d){h+='<dt>'+_escHtml(d[0])+'</dt><dd>'+_escHtml(d[1])+'</dd>'});
-    h+='</dl></div>';
-  }
-  // Compliance findings
-  if(info.findings&&info.findings.length){
-    h+='<div class="spotlight-section"><div class="spotlight-section-title">Compliance ('+info.findings.length+')</div>';
-    info.findings.slice(0,5).forEach(function(f){
-      var sc={CRITICAL:'#ef4444',HIGH:'#f97316',MEDIUM:'#eab308',LOW:'#3b82f6'}[f.severity]||'#64748b';
-      h+='<div style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:calc(10px * var(--txt-scale,1) * var(--dp-txt-scale,1))">';
-      h+='<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:'+sc+';flex-shrink:0"></span>';
-      h+='<span style="color:'+sc+';font-weight:600;width:55px;flex-shrink:0">'+_escHtml(f.severity)+'</span>';
-      h+='<span style="color:var(--text-secondary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+_escHtml(f.message)+'</span>';
-      h+='</div>';
-    });
-    if(info.findings.length>5) h+='<div style="font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1));color:var(--text-muted);padding-top:4px">+'+(info.findings.length-5)+' more findings</div>';
-    h+='</div>';
-  }
-  // Related resources
-  if(info.related&&info.related.length){
-    h+='<div class="spotlight-section"><div class="spotlight-section-title">Related Resources</div>';
-    h+='<div class="spotlight-nearby">';
-    info.related.forEach(function(r){
-      var rc=typeColors[r.type]||'#64748b';
-      h+='<div class="spotlight-nearby-item" data-spotlight-rid="'+_escHtml(r.id)+'">';
-      h+='<span class="sn-badge" style="background:'+rc+'"></span>';
-      h+='<span class="sn-name">'+_escHtml(r.name)+'</span>';
-      h+='<span class="sn-type">'+_escHtml(r.type)+'</span>';
-      h+='</div>';
-    });
-    h+='</div></div>';
-  }
-  // Nearby resources
-  if(info.nearby&&info.nearby.length){
-    h+='<div class="spotlight-section"><div class="spotlight-section-title">Nearby Resources</div>';
-    h+='<div class="spotlight-nearby">';
-    info.nearby.forEach(function(r){
-      var rc=typeColors[r.type]||'#64748b';
-      h+='<div class="spotlight-nearby-item" data-spotlight-rid="'+_escHtml(r.id)+'">';
-      h+='<span class="sn-badge" style="background:'+rc+'"></span>';
-      h+='<span class="sn-name">'+_escHtml(r.name)+'</span>';
-      h+='<span class="sn-type">'+_escHtml(r.type)+'</span>';
-      h+='</div>';
-    });
-    h+='</div></div>';
-  }
-  h+='</div>';
-  // Actions
-  h+='<div class="spotlight-actions">';
-  h+='<button class="primary" data-spotlight-detail="'+_escHtml(rid)+'">Full Details</button>';
-  h+='<button data-spotlight-deps="'+_escHtml(rid)+'">Dependencies</button>';
-  h+='</div>';
-  card.innerHTML=h;
-  document.body.appendChild(card);
-  // Wire events
-  card.querySelectorAll('[data-spotlight-rid]').forEach(function(el){
-    el.addEventListener('click',function(){
-      var nrid=this.dataset.spotlightRid;
-      _openResourceSpotlight(nrid);
-    });
-  });
-  card.querySelector('[data-spotlight-detail]').addEventListener('click',function(){
-    var drid=this.dataset.spotlightDetail;
-    _closeSpotlight();
-    var type=_resolveResourceType(drid);
-    if(type) _openDetailForSearch(type,drid);
-  });
-  var depsBtn=card.querySelector('[data-spotlight-deps]');
-  if(depsBtn) depsBtn.addEventListener('click',function(){
-    var drid=this.dataset.spotlightDeps;
-    _closeSpotlight();
-    if(typeof showDependencies==='function') showDependencies(drid);
-  });
+function copyText(text){
+  navigator.clipboard.writeText(text).then(()=>{
+    const toast=document.getElementById('copyToast');
+    toast.classList.add('show');
+    setTimeout(()=>toast.classList.remove('show'),1200);
+  }).catch(()=>{});
 }
 
-// Helper: extract VNet ID from an ARM subnet ID
-// e.g. /subscriptions/.../virtualNetworks/myVnet/subnets/mySub → extract VNet ID
-function _vnetIdFromSubnetId(subnetArmId){
-  if(!subnetArmId||!_rlCtx)return '';
-  // Walk up the ARM path: find the virtualNetworks segment
-  var parts=(subnetArmId||'').split('/');
-  var vnIdx=parts.indexOf('virtualNetworks');
-  if(vnIdx!==-1&&vnIdx+1<parts.length){
-    // Reconstruct VNet ARM ID
-    return parts.slice(0,vnIdx+2).join('/');
-  }
-  return '';
+
+let _lastRlType=null;
+let _navStack=[]; // navigation stack for detail panel back button
+let _fwDpBodyHandler=null;
+
+var DetailTraceSelection=(function(){
+  var current=null;
+  return {
+    set:function(value){ current=value||null; },
+    clear:function(){ current=null; },
+    get:function(){ return current; }
+  };
+})();
+
+function resetDetailNavigation(){
+  _lastRlType=null;
+  _navStack=[];
 }
 
-// Helper: get private IP from VM's NIC config
-function _vmPrivateIp(inst){
-  var nicConfigs=inst.properties&&inst.properties.networkProfile&&inst.properties.networkProfile.networkInterfaces;
-  if(!nicConfigs||!nicConfigs.length)return '';
-  // Look up the NIC in _rlCtx.nics if available
-  var nicRef=nicConfigs[0];
-  var nicId=nicRef.id||'';
-  if(_rlCtx.nics){
-    var nic=(_rlCtx.nics||[]).find(function(n){return n.id===nicId});
-    if(nic&&nic.properties&&nic.properties.ipConfigurations){
-      var ipCfg=nic.properties.ipConfigurations[0];
-      return ipCfg&&ipCfg.properties&&ipCfg.properties.privateIPAddress||'';
-    }
-  }
-  return '';
+function detailRuntimeContext(){
+  return AppRenderContext.createRenderContext().rlCtx;
 }
 
-// Helper: get public IP from VM's NIC config
-function _vmPublicIp(inst){
-  var nicConfigs=inst.properties&&inst.properties.networkProfile&&inst.properties.networkProfile.networkInterfaces;
-  if(!nicConfigs||!nicConfigs.length)return '';
-  var nicRef=nicConfigs[0];
-  var nicId=nicRef.id||'';
-  if(_rlCtx.nics){
-    var nic=(_rlCtx.nics||[]).find(function(n){return n.id===nicId});
-    if(nic&&nic.properties&&nic.properties.ipConfigurations){
-      var ipCfg=nic.properties.ipConfigurations[0];
-      var pubIpRef=ipCfg&&ipCfg.properties&&ipCfg.properties.publicIPAddress;
-      if(pubIpRef&&pubIpRef.id&&_rlCtx.publicIps){
-        var pip=(_rlCtx.publicIps||[]).find(function(p){return p.id===pubIpRef.id});
-        return pip&&pip.properties&&pip.properties.ipAddress||'';
-      }
-    }
-  }
-  return '';
+function detailSubnetLookup(ctx){
+  return {
+    pubSubs:ctx.pubSubs,
+    subRT:ctx.subRT,
+    subNacl:ctx.subNacl,
+    instBySub:ctx.instBySub,
+    eniBySub:ctx.eniBySub,
+    albBySub:ctx.albBySub,
+    nsgByVnet:ctx.nsgByVnet,
+    volByInst:ctx.volByInst,
+    enis:ctx.nics,
+    snapByVol:ctx.snapByVol,
+    tgByAlb:ctx.tgByAlb,
+    wafByAlb:ctx.wafByAlb,
+    rdsBySub:ctx.rdsBySub,
+    ecsBySub:ctx.ecsBySub,
+    lambdaBySub:ctx.lambdaBySub,
+    ecacheByVpc:ctx.ecacheByVpc,
+    redshiftByVpc:ctx.redshiftByVpc,
+    cfByAlb:ctx.cfByAlb,
+    storageBySub:ctx.storageBySub
+  };
 }
 
-// Helper: get subnet ID from VM's NIC config
-function _vmSubnetId(inst){
-  var nicConfigs=inst.properties&&inst.properties.networkProfile&&inst.properties.networkProfile.networkInterfaces;
-  if(!nicConfigs||!nicConfigs.length)return '';
-  var nicRef=nicConfigs[0];
-  var nicId=nicRef.id||'';
-  if(_rlCtx.nics){
-    var nic=(_rlCtx.nics||[]).find(function(n){return n.id===nicId});
-    if(nic&&nic.properties&&nic.properties.ipConfigurations){
-      var ipCfg=nic.properties.ipConfigurations[0];
-      return ipCfg&&ipCfg.properties&&ipCfg.properties.subnet&&ipCfg.properties.subnet.id||'';
-    }
-  }
-  return '';
+function detailGatewayLookup(ctx){
+  return {
+    gwNames,
+    igws:ctx.firewalls,
+    nats:ctx.natGateways,
+    vpns:ctx.vpns,
+    vpces:ctx.privateEndpoints,
+    peerings:ctx.peerings,
+    rts:ctx.udrs,
+    subnets:ctx.subnets,
+    subRT:ctx.subRT,
+    pubSubs:ctx.pubSubs,
+    vpcs:ctx.vnets,
+    tgwAttachments:ctx.vhubs||[]
+  };
 }
 
-// Helper: get NSG IDs from VM's NIC config
-function _vmNsgIds(inst){
-  var result=[];
-  var nicConfigs=inst.properties&&inst.properties.networkProfile&&inst.properties.networkProfile.networkInterfaces;
-  if(!nicConfigs||!nicConfigs.length)return result;
-  if(_rlCtx.nics){
-    nicConfigs.forEach(function(nicRef){
-      var nic=(_rlCtx.nics||[]).find(function(n){return n.id===nicRef.id});
-      if(nic&&nic.properties&&nic.properties.networkSecurityGroup){
-        result.push(nic.properties.networkSecurityGroup.id);
-      }
-    });
-  }
-  return result;
+// Shared detail panel builder for both layouts
+function routeTgtHtml(tgtId){
+  if(!tgtId||tgtId==='local')return '<span class="p">local</span>';
+  const nm=gwNames[tgtId];
+  const label=nm?(nm+' ('+tgtId+')'):(tgtId);
+  const gwType=clsGw(tgtId);
+  if(tgtId.startsWith('nat-'))return '<span class="p dp-link" data-gwid="'+tgtId+'" data-gwtype="NAT" style="cursor:pointer;color:var(--nat-color)">'+label+'</span>';
+  if(tgtId.startsWith('tgw-'))return '<span class="p dp-link" data-gwid="'+tgtId+'" data-gwtype="TGW" style="cursor:pointer;color:var(--tgw-color)">'+label+'</span>';
+  if(tgtId.startsWith('igw-'))return '<span class="p dp-link" data-gwid="'+tgtId+'" data-gwtype="IGW" style="cursor:pointer;color:var(--igw-color)">'+label+'</span>';
+  if(tgtId.startsWith('vgw-'))return '<span class="p dp-link" data-gwid="'+tgtId+'" data-gwtype="VGW" style="cursor:pointer;color:var(--vgw-color)">'+label+'</span>';
+  if(tgtId.startsWith('vpce-'))return '<span class="p dp-link" data-gwid="'+tgtId+'" data-gwtype="VPCE" style="cursor:pointer;color:var(--vpce-color)">'+label+'</span>';
+  if(tgtId.startsWith('pcx-'))return '<span class="p dp-link" data-gwid="'+tgtId+'" data-gwtype="PCX" style="cursor:pointer;color:var(--pcx-color)">'+label+'</span>';
+  return '<span class="p">'+tgtId+'</span>';
 }
-
-// Helper: get image reference string from VM
-function _vmImageRef(inst){
-  var imgRef=inst.properties&&inst.properties.storageProfile&&inst.properties.storageProfile.imageReference;
-  if(!imgRef)return '—';
-  if(imgRef.exactVersion)return imgRef.publisher+'/'+imgRef.offer+'/'+imgRef.sku+'/'+imgRef.exactVersion;
-  if(imgRef.publisher)return imgRef.publisher+'/'+imgRef.offer+'/'+imgRef.sku;
-  return imgRef.id||'—';
-}
-
-// Helper: derive VNet ID for an NSG by checking subnet associations or resource group
-function _nsgVnetId(sg){
-  if(sg.properties&&sg.properties.subnets&&sg.properties.subnets.length){
-    return _vnetIdFromSubnetId(sg.properties.subnets[0].id);
-  }
-  return '';
-}
-
-// Helper: calculate available IPs from CIDR (Azure reserves 5)
-function _availableIpsFromCidr(cidr){
-  if(!cidr)return 0;
-  var parts=cidr.split('/');
-  if(parts.length!==2)return 0;
-  var prefix=parseInt(parts[1],10);
-  if(isNaN(prefix)||prefix>30)return 0;
-  return Math.pow(2,32-prefix)-5;
-}
-
-function _gatherResourceInfo(rid){
-  if(!_rlCtx) return null;
-  var info={id:rid,name:rid,type:'Unknown',details:[],findings:[],related:[],nearby:[]};
-  var gn2=function(obj,fallback){return obj&&obj.name||obj&&obj.tags&&obj.tags.Name||fallback};
-  // Determine type and gather details
-  var inst=(_rlCtx.vms||[]).find(function(i){return i.id===rid||i.name===rid});
-  if(inst){
-    info.type='VM';info.name=gn2(inst,rid);
-    var vmSubnet=_vmSubnetId(inst);
-    var vmVnet=_vnetIdFromSubnetId(vmSubnet);
-    var vmSize=inst.properties&&inst.properties.hardwareProfile&&inst.properties.hardwareProfile.vmSize||'—';
-    var vmState=inst.properties&&inst.properties.provisioningState||'—';
-    info.details=[['Size',vmSize],['State',vmState],['Private IP',_vmPrivateIp(inst)||'—'],['Public IP',_vmPublicIp(inst)||'—'],['Location',inst.zones&&inst.zones[0]?inst.location+' (zone '+inst.zones[0]+')':inst.location||'—'],['Subnet',vmSubnet||'—'],['VNet',vmVnet||'—']];
-    // Related: NSGs, subnet, VNet
-    _vmNsgIds(inst).forEach(function(nsgId){
-      var nsg=(_rlCtx.nsgs||[]).find(function(s){return s.id===nsgId});
-      info.related.push({id:nsgId,name:nsg&&nsg.name||nsgId,type:'NSG'});
-    });
-    if(vmSubnet){var sub=(_rlCtx.subnets||[]).find(function(s){return s.id===vmSubnet});if(sub) info.related.push({id:sub.id,name:gn2(sub,sub.id),type:'Subnet'})}
-    // Nearby: other VMs in same subnet
-    (_rlCtx.vms||[]).filter(function(i){return _vmSubnetId(i)===vmSubnet&&i.id!==rid}).slice(0,6).forEach(function(i){info.nearby.push({id:i.id,name:gn2(i,i.id),type:'VM'})});
-    // Also add SQL servers in same VNet
-    (_rlCtx.sqlServers||[]).forEach(function(db){
-      if(db.properties&&db.properties.virtualNetworkRules){
-        var matchesVnet=db.properties.virtualNetworkRules.some(function(r){return _vnetIdFromSubnetId(r.properties&&r.properties.virtualNetworkSubnetId)===vmVnet});
-        if(matchesVnet) info.nearby.push({id:db.id||db.name,name:db.name,type:'SQL'});
-      }
-    });
-  } else if((_rlCtx.subnets||[]).find(function(s){return s.id===rid||s.name===rid})){
-    var sub=(_rlCtx.subnets||[]).find(function(s){return s.id===rid||s.name===rid});
-    info.type='Subnet';info.name=gn2(sub,rid);
-    var subVnetId=_vnetIdFromSubnetId(sub.id);
-    var isPub=_rlCtx.pubSubs&&_rlCtx.pubSubs.has(sub.id);
-    var cidr=sub.properties&&sub.properties.addressPrefix||'—';
-    info.details=[['CIDR',cidr],['Type',isPub?'Public':'Private'],['VNet',subVnetId||'—'],['Available IPs',''+_availableIpsFromCidr(cidr)],['Location',sub.location||'—']];
-    // Nearby: resources in this subnet
-    (_rlCtx.vms||[]).filter(function(i){return _vmSubnetId(i)===sub.id}).slice(0,8).forEach(function(i){info.nearby.push({id:i.id,name:gn2(i,i.id),type:'VM'})});
-    // Related: VNet
-    if(subVnetId) info.related.push({id:subVnetId,name:subVnetId,type:'VNet'});
-  } else if((_rlCtx.vnets||[]).find(function(v){return v.id===rid||v.name===rid})){
-    var vnet=(_rlCtx.vnets||[]).find(function(v){return v.id===rid||v.name===rid});
-    info.type='VNet';info.name=gn2(vnet,rid);
-    var vnetSubs=(_rlCtx.subnets||[]).filter(function(s){return _vnetIdFromSubnetId(s.id)===vnet.id});
-    var vnetCidr=vnet.properties&&vnet.properties.addressSpace&&vnet.properties.addressSpace.addressPrefixes&&vnet.properties.addressSpace.addressPrefixes[0]||'—';
-    var vnetState=vnet.properties&&vnet.properties.provisioningState||'—';
-    info.details=[['CIDR',vnetCidr],['State',vnetState],['Subnets',''+vnetSubs.length],['VMs',''+(_rlCtx.vms||[]).filter(function(i){return vnetSubs.some(function(s){return s.id===_vmSubnetId(i)})}).length]];
-    vnetSubs.slice(0,8).forEach(function(s){info.nearby.push({id:s.id,name:gn2(s,s.id),type:'Subnet'})});
-  } else if((_rlCtx.nsgs||[]).find(function(s){return s.id===rid||s.name===rid})){
-    var sg=(_rlCtx.nsgs||[]).find(function(s){return s.id===rid||s.name===rid});
-    info.type='NSG';info.name=sg.name||rid;
-    var sgVnetId=_nsgVnetId(sg);
-    var inRules=sg.properties&&sg.properties.securityRules?sg.properties.securityRules.filter(function(r){return r.properties&&r.properties.direction==='Inbound'}):[];
-    var outRules=sg.properties&&sg.properties.securityRules?sg.properties.securityRules.filter(function(r){return r.properties&&r.properties.direction==='Outbound'}):[];
-    info.details=[['NSG ID',rid],['Description',sg.properties&&sg.properties.description||'—'],['VNet',sgVnetId||'—'],['Inbound Rules',''+inRules.length],['Outbound Rules',''+outRules.length]];
-    if(sgVnetId) info.related.push({id:sgVnetId,name:sgVnetId,type:'VNet'});
-    // VMs using this NSG
-    (_rlCtx.vms||[]).filter(function(i){return _vmNsgIds(i).indexOf(sg.id)!==-1}).slice(0,6).forEach(function(i){info.nearby.push({id:i.id,name:gn2(i,i.id),type:'VM'})});
-  } else if((_rlCtx.natGateways||[]).find(function(g){return g.id===rid||g.name===rid})){
-    var nat=(_rlCtx.natGateways||[]).find(function(g){return g.id===rid||g.name===rid});
-    info.type='NAT';info.name=gn2(nat,rid);
-    var natSubnet=nat.properties&&nat.properties.subnets&&nat.properties.subnets[0]&&nat.properties.subnets[0].id||'';
-    var natVnet=_vnetIdFromSubnetId(natSubnet);
-    var natState=nat.properties&&nat.properties.provisioningState||'—';
-    info.details=[['Gateway ID',rid],['State',natState],['Subnet',natSubnet||'—'],['VNet',natVnet||'—']];
-    if(natVnet) info.related.push({id:natVnet,name:natVnet,type:'VNet'});
-    if(natSubnet) info.related.push({id:natSubnet,name:natSubnet,type:'Subnet'});
-  } else {
-    // Try SQL, Function App, etc. by name lookup
-    var sql=(_rlCtx.sqlServers||[]).find(function(d){return d.name===rid||d.id===rid});
-    if(sql){
-      info.type='SQL';info.name=sql.name;
-      var sqlState=sql.properties&&sql.properties.state||'—';
-      var sqlVersion=sql.properties&&sql.properties.version||'—';
-      var sqlFqdn=sql.properties&&sql.properties.fullyQualifiedDomainName||'—';
-      info.details=[['Server Name',sql.name],['State',sqlState],['Version',sqlVersion],['FQDN',sqlFqdn],['Location',sql.location||'—']];
-    } else {
-      var pe=(_rlCtx.privateEndpoints||[]).find(function(p){return p.id===rid||p.name===rid});
-      if(pe){
-        info.type='PE';info.name=pe.name||rid;
-        var peProps=pe.properties||pe._azure&&pe._azure.properties||{};
-        var peConn=peProps.privateLinkServiceConnections&&peProps.privateLinkServiceConnections[0];
-        var peConnProps=peConn&&peConn.properties||{};
-        var peTarget=peConnProps.privateLinkServiceId||'—';
-        var peGroupIds=(peConnProps.groupIds||[]).join(', ')||'—';
-        var peState=peConnProps.privateLinkServiceConnectionState&&peConnProps.privateLinkServiceConnectionState.status||'—';
-        var peSubId=peProps.subnet&&peProps.subnet.id||'';
-        var peVnetId=_vnetIdFromSubnetId(peSubId);
-        var peDns=peProps.customDnsConfigs&&peProps.customDnsConfigs[0];
-        var peFqdn=peDns&&peDns.fqdn||'—';
-        var peIp=peDns&&peDns.ipAddresses&&peDns.ipAddresses[0]||'—';
-        info.details=[['Target Service',peTarget.split('/').pop()],['Group IDs',peGroupIds],['State',peState],['Private IP',peIp],['FQDN',peFqdn],['Subnet',peSubId?peSubId.split('/').pop():'—'],['VNet',peVnetId?peVnetId.split('/').pop():'—'],['Location',pe.location||'—']];
-        if(peSubId) info.related.push({id:peSubId,name:peSubId.split('/').pop(),type:'Subnet'});
-        if(peVnetId) info.related.push({id:peVnetId,name:peVnetId.split('/').pop(),type:'VNet'});
-      } else {
-        var func=(_rlCtx.functionApps||[]).find(function(f){return f.name===rid||f.id===rid});
-        if(func){
-          info.type='Function App';info.name=func.name;
-          var fnState=func.properties&&func.properties.state||'—';
-          var fnKind=func.kind||'—';
-          var fnUrl=func.properties&&func.properties.defaultHostName||'—';
-          info.details=[['Name',func.name],['Kind',fnKind],['State',fnState],['URL',fnUrl],['Location',func.location||'—']];
-          var funcVnetId=func.properties&&func.properties.virtualNetworkSubnetId;
-          if(funcVnetId){
-            var fnVnet=_vnetIdFromSubnetId(funcVnetId);
-            if(fnVnet) info.related.push({id:fnVnet,name:fnVnet,type:'VNet'});
-          }
-        } else {
-          return null;
-        }
-      }
-    }
-  }
-  // Gather compliance findings for this resource
-  (_complianceFindings||[]).forEach(function(f){
-    if(f.resource===rid&&!_isMuted(f)) info.findings.push(f);
-  });
-  return info;
-}
-
-// Wire back button handler for detail panel
-function _wireDpBackButton(){
-  const dp=document.getElementById('detailPanel');
-  const backEl=document.getElementById('dpBack');
-  if(backEl){backEl.addEventListener('click',()=>{
-    const prev=_navStack.pop();
-    if(prev&&prev.fn) prev.fn();
-    else dp.classList.remove('open');
-  })}
-}
-// Build back button HTML if nav stack has entries
-function _dpBackBtnHtml(){
-  return _navStack.length>0?'<span id="dpBack" style="cursor:pointer;color:var(--accent-blue);font-size:calc(10px * var(--txt-scale,1) * var(--dp-txt-scale,1));font-family:Segoe UI,system-ui,sans-serif;margin-right:8px" title="Back">&lt; Back</span>':'';
-}
-// Type badge colors for detail panel headers
-var _dpTypeColors={VM:'#f97316',SQL:'#a78bfa','Function App':'#10b981',VNet:'#60a5fa',NSG:'#f59e0b',PE:'#a78bfa'};
-function _dpTypeBadge(type){
-  var tc=_dpTypeColors[type]||'#22d3ee';
-  return '<span style="display:inline-block;font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1));font-weight:600;padding:2px 8px;border-radius:4px;margin-right:8px;background:'+tc+'22;color:'+tc+';border:1px solid '+tc+'44;vertical-align:middle">'+esc(type)+'</span>';
-}
-
-// === SEARCH -> DETAIL PANEL DISPATCH ===
-// NOTE: innerHTML usage here renders pre-escaped content via esc() and _escHtml(): no raw user input
-var _dpSkipPush=false;
-function _openDetailForSearch(type,id){
-  if(!_rlCtx) return;
+function openSubnetPanel(sub,vpcId,lk){
   const dp=document.getElementById('detailPanel');
   const dpTitle=document.getElementById('dpTitle');
   const dpSub=document.getElementById('dpSub');
   const dpBody=document.getElementById('dpBody');
-
-  // If panel is already open, push current state for back navigation
-  if(!_dpSkipPush&&dp.classList.contains('open')&&dpBody.textContent){
-    const prevType=dp.dataset.dpType;const prevId=dp.dataset.dpId;
-    if(prevType&&prevId){
-      _navStack.push({fn:()=>{ _dpSkipPush=true;_openDetailForSearch(prevType,prevId);_dpSkipPush=false; }});
-    }
+  const isPub=lk.pubSubs.has(sub.SubnetId);
+  // push current resource list state if coming from one
+  if(_lastRlType){
+    const savedType=_lastRlType;
+    _navStack.push({fn:()=>openResourceList(savedType,false)});
   }
-  dp.dataset.dpType=type;dp.dataset.dpId=id;
-  _lastRlType=null;
-
-  if(type==='Subnet'){
-    const sub=(_rlCtx.subnets||[]).find(s=>s.id===id||s.name===id);
-    if(sub){
-      var subVnetId=_vnetIdFromSubnetId(sub.id);
-      openSubnetPanel(sub,subVnetId,{pubSubs:_rlCtx.pubSubs,subRT:_rlCtx.subRT,subNacl:_rlCtx.subNacl,instBySub:_rlCtx.instBySub,eniBySub:_rlCtx.eniBySub,albBySub:_rlCtx.albBySub,nsgByVnet:_rlCtx.nsgByVnet,volByInst:_rlCtx.volByInst,nics:_rlCtx.nics,snapByVol:_rlCtx.snapByVol,tgByAlb:_rlCtx.tgByAlb,wafByAlb:_rlCtx.wafByAlb,rdsBySub:_rlCtx.rdsBySub,ecsBySub:_rlCtx.ecsBySub,lambdaBySub:_rlCtx.lambdaBySub,ecacheByVpc:_rlCtx.ecacheByVpc,redshiftByVpc:_rlCtx.redshiftByVpc,cfByAlb:_rlCtx.cfByAlb});
-      return;
-    }
-  }
-  if(type==='FW'||type==='NAT'||type==='VGW'||type==='PE'||type==='Private Endpoint'||type==='VHUB'){
-    const gwType=(type==='Private Endpoint')?'PE':type;
-    openGatewayPanel(id,gwType,{gwNames:gwNames,firewalls:_rlCtx.firewalls,natGateways:_rlCtx.natGateways,vpns:_rlCtx.vpns,vpces:_rlCtx.privateEndpoints,privateEndpoints:_rlCtx.privateEndpoints,peerings:_rlCtx.peerings,udrs:_rlCtx.udrs,subnets:_rlCtx.subnets,subRT:_rlCtx.subRT,pubSubs:_rlCtx.pubSubs,vnets:_rlCtx.vnets,vhubs:_rlCtx.vhubs||[],vhubConnections:_rlCtx.vhubConnections||[]});
-    return;
-  }
-
-  // Generic detail panel for VNet, VM, SQL, Function App, NSG, Note
-  const backBtn=_dpBackBtnHtml();
+  const backBtn=_navStack.length>0?'<span id="dpBack" style="cursor:pointer;color:var(--accent-blue);font-size:calc(10px * var(--txt-scale) * var(--dp-txt-scale));font-family:Segoe UI,system-ui,sans-serif;margin-right:8px" title="Back">&lt; Back</span>':'';
+  dpTitle.innerHTML=backBtn+esc(gn(sub,sub.SubnetId))+' <span class="dp-badge '+(isPub?'pub':'prv')+'">'+(isPub?'PUBLIC':'PRIVATE')+'</span>';
+  // IP capacity calculation
+  const subPrefix=parseInt((sub.CidrBlock||'').split('/')[1],10);
+  const totalIps=isNaN(subPrefix)?0:Math.pow(2,32-subPrefix);
+  const usableIps=Math.max(0,totalIps-5);
+  const eniCount=(lk.eniBySub[sub.SubnetId]||[]).length;
+  const usedIps=eniCount;
+  const ipCapHtml=usableIps>0?(' | <span style="color:'+(usedIps>=usableIps?'#dc2626':usedIps>usableIps*0.8?'var(--accent-orange)':'var(--accent-green)')+'">'+usedIps+'/'+usableIps+' IPs used</span>'):'';
+  dpSub.innerHTML='<span class="copyable" data-copy="'+esc(sub.SubnetId)+'">'+esc(sub.SubnetId)+'</span> | '+esc(sub.CidrBlock)+' | '+esc(sub.AvailabilityZone||'N/A')+ipCapHtml;
   let h='';
-  if(type==='VNet'){
-    const vnet=(_rlCtx.vnets||[]).find(v=>v.id===id||v.name===id);
-    if(!vnet) return;
-    const nm=gn(vnet,vnet.id);
-    const subs=(_rlCtx.subnets||[]).filter(s=>_vnetIdFromSubnetId(s.id)===vnet.id);
-    const pubCount=subs.filter(s=>_rlCtx.pubSubs&&_rlCtx.pubSubs.has(s.id)).length;
-    const gws=[];
-    (_rlCtx.firewalls||[]).forEach(g=>{if(_vnetIdFromSubnetId(g.properties&&g.properties.ipConfigurations&&g.properties.ipConfigurations[0]&&g.properties.ipConfigurations[0].properties&&g.properties.ipConfigurations[0].properties.subnet&&g.properties.ipConfigurations[0].properties.subnet.id)===vnet.id)gws.push({type:'FW',id:g.id,name:gn(g,g.id)})});
-    (_rlCtx.natGateways||[]).forEach(g=>{var natSub=g.properties&&g.properties.subnets&&g.properties.subnets[0]&&g.properties.subnets[0].id||'';if(_vnetIdFromSubnetId(natSub)===vnet.id)gws.push({type:'NAT',id:g.id,name:gn(g,g.id)})});
-    const nsgs=(_rlCtx.nsgs||[]).filter(s=>_nsgVnetId(s)===vnet.id);
-    const vms=(_rlCtx.vms||[]).filter(i=>subs.some(s=>s.id===_vmSubnetId(i)));
-    const vnetCidr=vnet.properties&&vnet.properties.addressSpace&&vnet.properties.addressSpace.addressPrefixes&&vnet.properties.addressSpace.addressPrefixes[0]||'';
-    const vnetState=vnet.properties&&vnet.properties.provisioningState||'—';
-    dpTitle.innerHTML=backBtn+_dpTypeBadge('VNet')+_escHtml(nm);
-    dpSub.innerHTML='<span class="copyable" data-copy="'+esc(id)+'">'+esc(id)+'</span> &middot; '+esc(vnetCidr);
-    h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Overview</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">';
-    h+='<table class="dp-kv"><tr><td>CIDR</td><td>'+esc(vnetCidr||'—')+'</td></tr>';
-    h+='<tr><td>Subnets</td><td>'+subs.length+' ('+pubCount+' public, '+(subs.length-pubCount)+' private)</td></tr>';
-    h+='<tr><td>Gateways</td><td>'+gws.length+'</td></tr>';
-    h+='<tr><td>Network Security Groups</td><td>'+nsgs.length+'</td></tr>';
-    h+='<tr><td>VMs</td><td>'+vms.length+'</td></tr>';
-    h+='<tr><td>State</td><td>'+esc(vnetState)+'</td></tr></table></div></div>';
-    if(subs.length){
-      h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Subnets</span><span><span class="dp-sec-count">'+subs.length+'</span><span class="dp-sec-arr">&#9660;</span></span></div><div class="dp-sec-body">';
-      subs.forEach(s=>{
-        const sn=gn(s,s.id);const isPub=_rlCtx.pubSubs&&_rlCtx.pubSubs.has(s.id);
-        const sCidr=s.properties&&s.properties.addressPrefix||'';
-        h+='<div style="padding:4px 0;cursor:pointer;color:var(--accent-cyan);font-size:calc(11px * var(--dp-txt-scale,1))" onclick="_openDetailForSearch(\'Subnet\',\''+esc(s.id)+'\');_zoomToElement(\''+esc(s.id)+'\')">'+_escHtml(sn)+' <span style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1))">'+(isPub?'PUB':'PRV')+' '+esc(sCidr)+'</span></div>';
-      });
-      h+='</div></div>';
-    }
-    if(gws.length){
-      h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Gateways</span><span><span class="dp-sec-count">'+gws.length+'</span><span class="dp-sec-arr">&#9660;</span></span></div><div class="dp-sec-body">';
-      gws.forEach(g=>{
-        h+='<div style="padding:4px 0;cursor:pointer;color:'+gcv(g.type)+';font-size:calc(11px * var(--dp-txt-scale,1))" onclick="_openDetailForSearch(\''+g.type+'\',\''+esc(g.id)+'\')">'+g.type+': '+_escHtml(g.name)+'</div>';
-      });
-      h+='</div></div>';
-    }
-  } else if(type==='VM'){
-    const inst=(_rlCtx.vms||[]).find(i=>i.id===id||i.name===id);
-    if(!inst) return;
-    const nm=gn(inst,inst.id);
-    const vmSize=inst.properties&&inst.properties.hardwareProfile&&inst.properties.hardwareProfile.vmSize||'—';
-    const stateName=inst.properties&&inst.properties.provisioningState||'—';
-    const stateColor=stateName==='Succeeded'?'var(--accent-green)':stateName==='Failed'?'var(--accent-red)':'var(--text-muted)';
-    const vmSubnet=_vmSubnetId(inst);
-    const vmVnet=_vnetIdFromSubnetId(vmSubnet);
-    dpTitle.innerHTML=backBtn+_dpTypeBadge('VM')+_escHtml(nm);
-    dpSub.innerHTML='<span class="copyable" data-copy="'+esc(id)+'">'+esc(id)+'</span> &middot; '+esc(vmSize);
-    h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Details</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">';
-    h+='<table class="dp-kv">';
-    h+='<tr><td>Size</td><td>'+esc(vmSize)+'</td></tr>';
-    h+='<tr><td>State</td><td><span style="color:'+stateColor+'">'+esc(stateName)+'</span></td></tr>';
-    h+='<tr><td>Location</td><td>'+esc(inst.zones&&inst.zones[0]?inst.location+' (zone '+inst.zones[0]+')':inst.location||'—')+'</td></tr>';
-    h+='<tr><td>Private IP</td><td>'+esc(_vmPrivateIp(inst)||'—')+'</td></tr>';
-    h+='<tr><td>Public IP</td><td>'+esc(_vmPublicIp(inst)||'—')+'</td></tr>';
-    h+='<tr><td>Subnet</td><td><span style="cursor:pointer;color:var(--accent-cyan)" onclick="_openDetailForSearch(\'Subnet\',\''+esc(vmSubnet)+'\');_zoomToElement(\''+esc(vmSubnet)+'\')">'+esc(vmSubnet||'—')+'</span></td></tr>';
-    h+='<tr><td>VNet</td><td><span style="cursor:pointer;color:var(--accent-cyan)" onclick="_openDetailForSearch(\'VNet\',\''+esc(vmVnet)+'\')">'+esc(vmVnet||'—')+'</span></td></tr>';
-    h+='<tr><td>Image</td><td>'+esc(_vmImageRef(inst))+'</td></tr>';
-    h+='</table></div></div>';
-    const nsgIds=_vmNsgIds(inst);
-    if(nsgIds.length){
-      h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Network Security Groups</span><span><span class="dp-sec-count">'+nsgIds.length+'</span><span class="dp-sec-arr">&#9660;</span></span></div><div class="dp-sec-body">';
-      nsgIds.forEach(nsgId=>{
-        const nsg=(_rlCtx.nsgs||[]).find(s=>s.id===nsgId);
-        const nsgName=nsg&&nsg.name||nsgId;
-        h+='<div style="padding:4px 0;cursor:pointer;color:var(--accent-cyan);font-size:calc(11px * var(--dp-txt-scale,1))" onclick="_openDetailForSearch(\'NSG\',\''+esc(nsgId)+'\')">'+esc(nsgName)+' <span style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale,1) * var(--dp-txt-scale,1))">'+esc(nsgId)+'</span></div>';
-      });
-      h+='</div></div>';
-    }
-  } else if(type==='SQL'){
-    const db=(_rlCtx.sqlServers||[]).find(d=>d.name===id||d.id===id);
-    if(!db) return;
-    const sqlState=db.properties&&db.properties.state||'—';
-    const sqlVersion=db.properties&&db.properties.version||'—';
-    const sqlFqdn=db.properties&&db.properties.fullyQualifiedDomainName||'—';
-    dpTitle.innerHTML=backBtn+_dpTypeBadge('SQL')+_escHtml(db.name);
-    dpSub.innerHTML=esc(db.kind||'')+' &middot; '+esc(db.location||'');
-    h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Details</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">';
-    h+='<table class="dp-kv">';
-    h+='<tr><td>Server Name</td><td>'+esc(db.name||'—')+'</td></tr>';
-    h+='<tr><td>State</td><td>'+esc(sqlState)+'</td></tr>';
-    h+='<tr><td>Version</td><td>'+esc(sqlVersion)+'</td></tr>';
-    h+='<tr><td>FQDN</td><td>'+esc(sqlFqdn)+'</td></tr>';
-    h+='<tr><td>Location</td><td>'+esc(db.location||'—')+'</td></tr>';
-    h+='<tr><td>Admin Login</td><td>'+esc(db.properties&&db.properties.administratorLogin||'—')+'</td></tr>';
-    h+='</table></div></div>';
-  } else if(type==='Function App'){
-    const fn=(_rlCtx.functionApps||[]).find(f=>f.name===id||f.id===id);
-    if(!fn) return;
-    const fnState=fn.properties&&fn.properties.state||'—';
-    const fnUrl=fn.properties&&fn.properties.defaultHostName||'—';
-    dpTitle.innerHTML=backBtn+_dpTypeBadge('Function App')+_escHtml(fn.name);
-    dpSub.innerHTML=esc(fn.kind||'')+ ' &middot; '+esc(fn.location||'');
-    h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Details</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">';
-    h+='<table class="dp-kv">';
-    h+='<tr><td>Name</td><td>'+esc(fn.name||'—')+'</td></tr>';
-    h+='<tr><td>Kind</td><td>'+esc(fn.kind||'—')+'</td></tr>';
-    h+='<tr><td>State</td><td>'+esc(fnState)+'</td></tr>';
-    h+='<tr><td>URL</td><td>'+esc(fnUrl)+'</td></tr>';
-    h+='<tr><td>Location</td><td>'+esc(fn.location||'—')+'</td></tr>';
-    const funcVnetSubnet=fn.properties&&fn.properties.virtualNetworkSubnetId;
-    if(funcVnetSubnet){
-      const fnVnet=_vnetIdFromSubnetId(funcVnetSubnet);
-      h+='<tr><td>VNet</td><td><span style="cursor:pointer;color:var(--accent-cyan)" onclick="_openDetailForSearch(\'VNet\',\''+esc(fnVnet)+'\')">'+esc(fnVnet)+'</span></td></tr>';
-      h+='<tr><td>Subnet</td><td><span style="cursor:pointer;color:var(--accent-cyan)" onclick="_openDetailForSearch(\'Subnet\',\''+esc(funcVnetSubnet)+'\');_zoomToElement(\''+esc(funcVnetSubnet)+'\')">'+esc(funcVnetSubnet)+'</span></td></tr>';
-    }
-    h+='</table></div></div>';
-  } else if(type==='NSG'){
-    const sg=(_rlCtx.nsgs||[]).find(s=>s.id===id||s.name===id);
-    if(!sg) return;
-    const sgVnetId=_nsgVnetId(sg);
-    dpTitle.innerHTML=backBtn+_dpTypeBadge('NSG')+_escHtml(sg.name||sg.id);
-    dpSub.innerHTML='<span class="copyable" data-copy="'+esc(id)+'">'+esc(id)+'</span> &middot; '+esc(sgVnetId||'');
-    h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Overview</span><span class="dp-sec-arr">&#9660;</span></div><div class="dp-sec-body">';
-    h+='<table class="dp-kv"><tr><td>Description</td><td>'+esc(sg.properties&&sg.properties.description||'—')+'</td></tr>';
-    h+='<tr><td>VNet</td><td><span style="cursor:pointer;color:var(--accent-cyan)" onclick="_openDetailForSearch(\'VNet\',\''+esc(sgVnetId)+'\')">'+esc(sgVnetId||'—')+'</span></td></tr></table></div></div>';
-    const allRules=sg.properties&&sg.properties.securityRules||[];
-    const inRules=allRules.filter(r=>r.properties&&r.properties.direction==='Inbound');
-    const outRules=allRules.filter(r=>r.properties&&r.properties.direction==='Outbound');
-    if(inRules.length){
-      h+='<div class="dp-section"><div class="dp-sec-hdr" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Inbound Rules</span><span><span class="dp-sec-count">'+inRules.length+'</span><span class="dp-sec-arr">&#9660;</span></span></div><div class="dp-sec-body"><table class="dp-tbl"><tr><th>Priority</th><th>Access</th><th>Proto</th><th>Port</th><th>Source</th><th>Destination</th></tr>';
-      inRules.sort((a,b)=>(a.properties.priority||0)-(b.properties.priority||0)).forEach(r=>{
-        const p=r.properties||{};
-        h+='<tr><td>'+esc(p.priority||'—')+'</td><td>'+esc(p.access||'—')+'</td><td>'+esc(p.protocol||'*')+'</td><td>'+esc(p.destinationPortRange||p.destinationPortRanges&&p.destinationPortRanges.join(',')||'*')+'</td><td>'+esc(p.sourceAddressPrefix||p.sourceAddressPrefixes&&p.sourceAddressPrefixes.join(',')||'*')+'</td><td>'+esc(p.destinationAddressPrefix||'*')+'</td></tr>';
-      });
-      h+='</table></div></div>';
-    }
-    if(outRules.length){
-      h+='<div class="dp-section"><div class="dp-sec-hdr collapsed" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">Outbound Rules</span><span><span class="dp-sec-count">'+outRules.length+'</span><span class="dp-sec-arr">&#9660;</span></span></div><div class="dp-sec-body hidden"><table class="dp-tbl"><tr><th>Priority</th><th>Access</th><th>Proto</th><th>Port</th><th>Source</th><th>Destination</th></tr>';
-      outRules.sort((a,b)=>(a.properties.priority||0)-(b.properties.priority||0)).forEach(r=>{
-        const p=r.properties||{};
-        h+='<tr><td>'+esc(p.priority||'—')+'</td><td>'+esc(p.access||'—')+'</td><td>'+esc(p.protocol||'*')+'</td><td>'+esc(p.destinationPortRange||p.destinationPortRanges&&p.destinationPortRanges.join(',')||'*')+'</td><td>'+esc(p.sourceAddressPrefix||p.sourceAddressPrefixes&&p.sourceAddressPrefixes.join(',')||'*')+'</td><td>'+esc(p.destinationAddressPrefix||'*')+'</td></tr>';
-      });
-      h+='</table></div></div>';
-    }
-  } else if(type==='Note'){
-    // For notes, just zoom: no extra panel
-    return;
-  } else {
-    return; // Unknown type, no panel
+  function sec(title,count,bodyHtml,startOpen){
+    return '<div class="dp-section"><div class="dp-sec-hdr'+(startOpen?'':' collapsed')+'" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">'+title+'</span><span><span class="dp-sec-count">'+count+'</span><span class="dp-sec-arr">&#9660;</span></span></div><div class="dp-sec-body'+(startOpen?'':' hidden')+'">'+bodyHtml+'</div></div>';
   }
+  // IP capacity visual bar
+  if(usableIps>0){
+    const pct=Math.min(100,Math.round(usedIps/usableIps*100));
+    const barCol=pct>=90?'#dc2626':pct>=70?'var(--accent-orange)':'var(--accent-green)';
+    h+='<div style="margin-bottom:8px;padding:6px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:4px;column-span:all">';
+    h+='<div style="display:flex;justify-content:space-between;font-size:calc(8px * var(--txt-scale) * var(--dp-txt-scale));margin-bottom:3px"><span style="color:var(--text-muted)">IP Capacity</span><span style="color:'+barCol+'">'+pct+'% ('+usedIps+' of '+usableIps+' usable)</span></div>';
+    h+='<div style="height:4px;background:var(--bg-tertiary);border-radius:2px;overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+barCol+';border-radius:2px;transition:width .3s"></div></div>';
+    h+='<div style="font-size:calc(7px * var(--txt-scale) * var(--dp-txt-scale));color:var(--text-muted);margin-top:2px">'+totalIps+' total - 5 Azure reserved = '+usableIps+' usable</div>';
+    h+='</div>';
+  }
+  const si=lk.instBySub[sub.SubnetId]||[];
+  const se=lk.eniBySub[sub.SubnetId]||[];
+  const sa=lk.albBySub[sub.SubnetId]||[];
+  const storageLinks=(lk.storageBySub||{})[sub.SubnetId]||[];
+  // Route Table (interactive)
+  const rt=lk.subRT[sub.SubnetId];
+  if(rt){
+    h+=sec('Route Table',(rt.Routes||[]).length+' routes',_fwRenderRtInline(rt, vpcId, lk),true);
+  }
+  // NACLs (interactive)
+  const nc=lk.subNacl[sub.SubnetId];
+  if(nc){
+    h+=sec('NACLs',(nc.Entries||[]).filter(e=>!e.Egress).length+' in / '+(nc.Entries||[]).filter(e=>e.Egress).length+' out',_fwRenderNaclInline(nc, sub),false);
+  }
+  // Virtual Machines
+  if(si.length){
+    let eb='';
+    si.forEach(inst=>{
+      const vols=(lk.volByInst||{})[inst.InstanceId]||[];
+      const totalGB=vols.reduce((a,v)=>a+v.Size,0);
+      const state=inst.State?.Name||'?';
+      const stCls=state==='running'?'running':'stopped';
+      eb+='<div class="dp-row">';
+      eb+='<span class="i">'+gn(inst,inst.InstanceId)+'</span> <span class="dp-badge '+stCls+'">'+state+'</span>';
+      eb+='<div class="dp-props">';
+      eb+='<span class="k">ID</span><span class="v">'+inst.InstanceId+'</span>';
+      eb+='<span class="k">Type</span><span class="v">'+inst.InstanceType+'</span>';
+      if(inst.PrivateIpAddress)eb+='<span class="k">IP</span><span class="v">'+inst.PrivateIpAddress+'</span>';
+      eb+='</div>';
+      if(vols.length){
+        eb+='<div class="dp-sub">';
+        eb+='<div class="dp-sub-title">Storage <span class="dp-sub-count">'+totalGB+'GB &middot; '+vols.length+' vol'+(vols.length>1?'s':'')+'</span></div>';
+        vols.forEach(v=>{
+          const vSnaps=(lk.snapByVol||{})[v.VolumeId]||[];
+          eb+='<div class="dp-sub-item"><span class="s">'+v.VolumeId+'</span> '+v.Size+'GB '+(v.VolumeType||'')+' '+(v.State||'');
+          if(vSnaps.length){
+            eb+=' <span class="k">['+vSnaps.length+' snap'+(vSnaps.length>1?'s':'')+']</span>';
+            const latest=vSnaps.sort((a,b)=>(b.StartTime||'').localeCompare(a.StartTime||''))[0];
+            if(latest)eb+='<br><span class="k" style="margin-left:8px">Latest:</span> '+latest.SnapshotId+' '+(latest.StartTime||'').split('T')[0]+' '+(latest.State||'');
+          }
+          eb+='</div>';
+        });
+        eb+='</div>';
+      }
+      const instEnis=(lk.enis||[]).filter(e=>e.Attachment&&e.Attachment.InstanceId===inst.InstanceId);
+      if(instEnis.length){
+        eb+='<div class="dp-sub">';
+        eb+='<div class="dp-sub-title">NICs <span class="dp-sub-count">'+instEnis.length+'</span></div>';
+        instEnis.forEach(e=>{
+          eb+='<div class="dp-sub-item">'+e.NetworkInterfaceId+' <span style="color:var(--text-muted)">'+(e.PrivateIpAddress||'')+'</span> <span style="color:var(--accent-orange)">'+(e.InterfaceType||'')+'</span></div>';
+        });
+        eb+='</div>';
+      }
+      eb+='</div>';
+    });
+    h+=sec('Virtual Machines',si.length,eb,true);
+  }
+  // ENIs
+  if(se.length){
+    let enb='';
+    se.forEach(e=>{
+      enb+='<div class="dp-row">';
+      enb+='<span class="i">'+e.NetworkInterfaceId+'</span>';
+      enb+='<div class="dp-props">';
+      enb+='<span class="k">Type</span><span class="v">'+(e.InterfaceType||'N/A')+'</span>';
+      enb+='<span class="k">Status</span><span class="v">'+(e.Status||'?')+'</span>';
+      if(e.PrivateIpAddress)enb+='<span class="k">Private IP</span><span class="v">'+e.PrivateIpAddress+'</span>';
+      if(e.Description)enb+='<span class="k">Desc</span><span class="v">'+e.Description+'</span>';
+      if(e.Attachment&&e.Attachment.InstanceId)enb+='<span class="k">Attached to</span><span class="v"><span class="i">'+e.Attachment.InstanceId+'</span></span>';
+      const eSgs=(e.Groups||[]);
+      if(eSgs.length)enb+='<span class="k">SGs</span><span class="v">'+eSgs.map(g=>g.GroupName||g.GroupId).join(', ')+'</span>';
+      enb+='</div>';
+      enb+='</div>';
+    });
+    h+=sec('NICs',se.length,enb,true);
+  }
+  // Load Balancers
+  if(sa.length){
+    let lb='';
+    sa.forEach(a=>{
+      lb+='<div class="dp-row">';
+      lb+='<span class="i">'+a.LoadBalancerName+'</span>';
+      lb+='<div class="dp-props">';
+      lb+='<span class="k">Type</span><span class="v">'+a.Type+'</span>';
+      lb+='<span class="k">Scheme</span><span class="v">'+a.Scheme+'</span>';
+      if(a.DNSName)lb+='<span class="k">DNS</span><span class="v">'+a.DNSName+'</span>';
+      if(a.LoadBalancerArn)lb+='<span class="k">ARN</span><span class="v" style="font-size:calc(8px * var(--txt-scale) * var(--dp-txt-scale))">'+a.LoadBalancerArn+'</span>';
+      lb+='</div>';
+      if(a.LoadBalancerArn){
+        const albTgs=(lk.tgByAlb||{})[a.LoadBalancerArn]||[];
+        if(albTgs.length){
+          lb+='<div class="dp-sub">';
+          lb+='<div class="dp-sub-title">Backend Pools <span class="dp-sub-count">'+albTgs.length+'</span></div>';
+          albTgs.forEach(tg=>{
+            lb+='<div class="dp-sub-item"><span class="i">'+(tg.TargetGroupName||tg.TargetGroupArn.split('/')[1]||'')+'</span>';
+            lb+=' <span class="k">'+tg.Protocol+':'+tg.Port+'</span> ['+tg.TargetType+']';
+            lb+=' HC:'+tg.HealthCheckPath;
+            const tCount=(tg.Targets||[]).length;
+            if(tCount)lb+=' <span class="p">'+tCount+' target'+(tCount>1?'s':'')+'</span>';
+            lb+='</div>';
+          });
+          lb+='</div>';
+        }
+        const albWafs=(lk.wafByAlb||{})[a.LoadBalancerArn]||[];
+        if(albWafs.length){
+          lb+='<div class="dp-sub">';
+          lb+='<div class="dp-sub-title" style="color:#f59e0b">WAF WebACLs <span class="dp-sub-count">'+albWafs.length+'</span></div>';
+          albWafs.forEach(w=>{
+            lb+='<div class="dp-sub-item"><span class="i" style="color:#f59e0b">'+w.Name+'</span>';
+            if(w.Description)lb+=' <span class="k">'+w.Description+'</span>';
+            const rCount=(w.Rules||[]).length;
+            if(rCount)lb+='<br><span class="k" style="margin-left:8px">Rules:</span> '+(w.Rules||[]).map(r=>r.Name).join(', ');
+            lb+='</div>';
+          });
+          lb+='</div>';
+        }
+        const albCfs=(lk.cfByAlb||{})[a.LoadBalancerArn]||[];
+        if(albCfs.length){
+          lb+='<div class="dp-sub">';
+          lb+='<div class="dp-sub-title" style="color:#8b5cf6">Front Door <span class="dp-sub-count">'+albCfs.length+'</span></div>';
+          albCfs.forEach(d=>{
+            lb+='<div class="dp-sub-item"><span class="i" style="color:#8b5cf6">'+d.DomainName+'</span>';
+            const aliases=(d.Aliases?.Items||[]);
+            if(aliases.length)lb+=' ['+aliases.join(', ')+']';
+            lb+='</div>';
+          });
+          lb+='</div>';
+        }
+      }
+      lb+='</div>';
+    });
+    h+=sec('Load Balancers',sa.length,lb,false);
+  }
+  // RDS Instances
+  const sr=(lk.rdsBySub||{})[sub.SubnetId]||[];
+  if(sr.length){
+    let rb='';
+    sr.forEach(db=>{
+      rb+='<div class="dp-row">';
+      rb+='<span class="i" style="color:#3b82f6">'+db.DBInstanceIdentifier+'</span>';
+      if(db.MultiAZ)rb+=' <span class="dp-badge" style="background:rgba(249,115,22,.15);color:var(--accent-orange)">Multi-AZ</span>';
+      rb+='<div class="dp-props">';
+      rb+='<span class="k">Engine</span><span class="v">'+db.Engine+'</span>';
+      rb+='<span class="k">Class</span><span class="v">'+db.DBInstanceClass+'</span>';
+      rb+='<span class="k">Status</span><span class="v">'+db.DBInstanceStatus+'</span>';
+      if(db.Endpoint)rb+='<span class="k">Endpoint</span><span class="v">'+db.Endpoint.Address+':'+db.Endpoint.Port+'</span>';
+      rb+='<span class="k">Storage</span><span class="v">'+db.AllocatedStorage+'GB'+(db.StorageEncrypted?' (encrypted)':'')+'</span>';
+      rb+='</div>';
+      rb+='</div>';
+    });
+    h+=sec('SQL Databases',sr.length,rb,false);
+  }
+  // ECS Services
+  const secs=(lk.ecsBySub||{})[sub.SubnetId]||[];
+  if(secs.length){
+    let eb='';
+    secs.forEach(svc=>{
+      eb+='<div class="dp-row">';
+      eb+='<span class="i" style="color:#f97316">'+svc.serviceName+'</span>';
+      const cluster=(svc.clusterArn||'').split('/').pop();
+      eb+='<div class="dp-props">';
+      eb+='<span class="k">Cluster</span><span class="v">'+cluster+'</span>';
+      eb+='<span class="k">Launch</span><span class="v">'+(svc.launchType||'?')+'</span>';
+      eb+='<span class="k">Tasks</span><span class="v">'+svc.runningCount+'/'+svc.desiredCount+' running</span>';
+      if(svc.cpu)eb+='<span class="k">CPU</span><span class="v">'+svc.cpu+'</span>';
+      if(svc.memory)eb+='<span class="k">Mem</span><span class="v">'+svc.memory+'MB</span>';
+      eb+='</div>';
+      eb+='</div>';
+    });
+    h+=sec('Container Instances',secs.length,eb,false);
+  }
+  // Lambda Functions
+  const slm=(lk.lambdaBySub||{})[sub.SubnetId]||[];
+  if(slm.length){
+    let lmb='';
+    slm.forEach(fn=>{
+      lmb+='<div class="dp-row">';
+      lmb+='<span class="i" style="color:#a855f7">'+fn.FunctionName+'</span>';
+      lmb+='<div class="dp-props">';
+      lmb+='<span class="k">Runtime</span><span class="v">'+fn.Runtime+'</span>';
+      lmb+='<span class="k">Mem</span><span class="v">'+fn.MemorySize+'MB</span>';
+      lmb+='<span class="k">Timeout</span><span class="v">'+fn.Timeout+'s</span>';
+      lmb+='</div>';
+      lmb+='</div>';
+    });
+    h+=sec('Function Apps',slm.length,lmb,false);
+  }
+  // Storage Accounts reachable from this subnet
+  if(storageLinks.length){
+    let stb='';
+    storageLinks.forEach(link=>{
+      const st=link.account||link;
+      const info=_storageInfo(st,{linksByStorageId:{[(_saId(st).toLowerCase()||_saName(st).toLowerCase())]:[link]}});
+      stb+='<div class="dp-row">';
+      stb+='<span class="i" style="color:'+info.color+'">'+esc(_saName(st))+'</span> <span class="dp-badge" style="background:'+info.bg+';color:'+info.color+'">'+esc(link.via)+'</span>';
+      stb+='<div class="dp-props">';
+      if(info.sku)stb+='<span class="k">SKU</span><span class="v">'+esc(info.sku)+'</span>';
+      stb+='<span class="k">Access</span><span class="v">'+esc(info.access)+'</span>';
+      if(info.tls)stb+='<span class="k">TLS</span><span class="v">'+esc(info.tls)+'</span>';
+      stb+='<span class="k">Services</span><span class="v">'+esc(info.services.join(', '))+'</span>';
+      if(link.detail)stb+='<span class="k">Link</span><span class="v">'+esc(link.detail)+'</span>';
+      stb+='</div></div>';
+    });
+    h+=sec('Storage Accounts',storageLinks.length,stb,false);
+  }
+  // Security Groups (interactive)
+  const vSgs=lk.nsgByVnet[vpcId]||[];
+  const subSgIds=new Set();
+  se.forEach(e=>(e.Groups||[]).forEach(g=>subSgIds.add(g.GroupId)));
+  const subSgs=vSgs.filter(sg=>subSgIds.has(sg.GroupId));
+  const displaySgs=subSgs.length?subSgs:vSgs;
+  if(displaySgs.length){
+    let sgb='';
+    displaySgs.forEach(sg=>{sgb+=_fwRenderSgInline(sg)});
+    if(subSgs.length&&vSgs.length>subSgs.length){
+      sgb+='<div class="dp-row"><span class="k">+ '+(vSgs.length-subSgs.length)+' more SGs in VNet (not attached to this subnet)</span></div>';
+    }
+    h+=sec('Security Groups',displaySgs.length,sgb,false);
+  }
+  // --- Split point: everything above goes to left column, compliance goes to right ---
+  var hLeft=h; h='';
+  // Compliance Findings for this subnet and its resources
+  const complianceFindings=AppRenderContext.createRenderContext().complianceFindings || [];
+  if(complianceFindings.length){
+    const subResIds=new Set([sub.SubnetId,vpcId]);
+    si.forEach(inst=>subResIds.add(inst.InstanceId));
+    (lk.rdsBySub[sub.SubnetId]||[]).forEach(db=>subResIds.add(db.DBInstanceIdentifier));
+    displaySgs.forEach(sg=>subResIds.add(sg.GroupId));
+    if(nc)subResIds.add(nc.NetworkAclId);
+    if(rt)subResIds.add(rt.RouteTableId);
+    sa.forEach(a=>subResIds.add(a.LoadBalancerName));
+    const subFindings=complianceFindings.filter(f=>!_isMuted(f)&&subResIds.has(f.resource));
+    if(subFindings.length){
+      let cfb='';
+      subFindings.sort((a,b)=>(_SEV_ORDER[a.severity]||9)-(_SEV_ORDER[b.severity]||9));
+      subFindings.forEach(f=>{
+        cfb+='<div class="dp-row" style="border-left:3px solid '+(f.severity==='CRITICAL'?'#ef4444':f.severity==='HIGH'?'#f97316':f.severity==='MEDIUM'?'#eab308':'#3b82f6')+';padding-left:8px">';
+        cfb+='<span class="sev-badge sev-'+f.severity+'" style="font-size:8px;padding:1px 4px">'+f.severity+'</span> ';
+        cfb+='<span style="color:var(--accent-cyan);font-size:10px">'+f.control+(f.ckv?' <span style="opacity:.5">('+f.ckv+')</span>':'')+'</span> ';
+        cfb+='<span style="color:var(--text-muted);font-size:9px">['+f.framework+']</span><br>';
+        cfb+='<span style="color:var(--text-secondary);font-size:10px">'+esc(f.message)+'</span><br>';
+        cfb+='<span style="color:var(--text-muted);font-size:9px;font-style:italic">'+esc(f.remediation)+'</span>';
+        cfb+='</div>';
+      });
+      h+=sec('Compliance Findings',subFindings.length,cfb,subFindings.some(f=>f.severity==='CRITICAL'||f.severity==='HIGH'));
+    }
+  }
+  var hRight=h; h='';
+  // === Related Resources section ===
+  const detailCtx=detailRuntimeContext();
+  if(detailCtx){
+    let relBody='';
+    // --- Network Flow Paths ---
+    const naclIn=nc?(nc.Entries||[]).filter(e=>!e.Egress).length:0;
+    const naclOut=nc?(nc.Entries||[]).filter(e=>e.Egress).length:0;
+    const sgCount=displaySgs?displaySgs.length:0;
+    const sgInRules=displaySgs?displaySgs.reduce((a,sg)=>a+(sg.IpPermissions||[]).length,0):0;
+    const sgOutRules=displaySgs?displaySgs.reduce((a,sg)=>a+(sg.IpPermissionsEgress||[]).length,0):0;
+    const rdsCount=(lk.rdsBySub[sub.SubnetId]||[]).length;
+    const ecsCount=(lk.ecsBySub[sub.SubnetId]||[]).length;
+    const lamCount=(lk.lambdaBySub[sub.SubnetId]||[]).length;
+    let resParts=[];
+    if(si.length) resParts.push(si.length+' EC2');
+    if(rdsCount) resParts.push(rdsCount+' RDS');
+    if(ecsCount) resParts.push(ecsCount+' ECS');
+    if(lamCount) resParts.push(lamCount+' Lambda');
+    if(sa.length) resParts.push(sa.length+' ALB');
+    const resLabel=resParts.length?resParts.join(' &middot; '):'no resources';
+
+    // Build ingress flow per gateway source
+    const gwTargets=[];
+    if(rt){
+      (rt.Routes||[]).forEach(r=>{
+        const gw=r.GatewayId||r.NatGatewayId||r.TransitGatewayId||r.VpcPeeringConnectionId||r.VpcEndpointId||'';
+        if(gw&&gw!=='local'){
+          const type=_isIgwRoute(gw)?'Internet':_isNatRoute(gw)?'NAT':_isVpnRoute(gw)?'VPN':gw.startsWith('tgw-')?'vWAN':gw.startsWith('pcx-')?'Peering':gw.startsWith('vpce-')?'Private Endpoint':gw==='VnetLocal'?'VNet Local':'GW';
+          if(!gwTargets.some(g=>g.id===gw)) gwTargets.push({id:gw,type:type,dest:r.DestinationCidrBlock||'',name:gn({Tags:((detailCtx.firewalls||[]).concat(detailCtx.natGateways||[]).find(x=>(x.InternetGatewayId||x.NatGatewayId||x.TransitGatewayId||'')===gw)||{}).Tags},gw)});
+        }
+      });
+    }
+
+    // Source labels and role descriptions for gateway types
+    const gwSource=(g)=>g.type==='IGW'?'Internet':g.type==='NAT'?'Internet (outbound)':g.type==='TGW'?'Other VNets / On-prem':g.type==='Peering'?'Peered VNet':g.type==='VGW'?'On-premises (VPN)':g.type==='VPCE'?'Azure Service':'External';
+    const gwRole=(t)=>t==='IGW'?'Edge gateway':t==='NAT'?'Network translation':t==='TGW'?'Transit hub':t==='Peering'?'Cross-VNet link':t==='VGW'?'VPN tunnel':t==='VPCE'?'Private link':'Gateway';
+    // Build hop pill with role descriptor
+    function _hop(n,lbl,det,role,attrs){
+      return '<span class="dp-flow-hop"'+(attrs||'')+'><span class="dp-flow-hopnum">'+n+'</span><div class="dp-flow-hopbody"><span class="dp-flow-hoplbl">'+lbl+'</span><span class="dp-flow-hopdet">'+det+'</span><span class="dp-flow-hoprole">'+role+'</span></div></span>';
+    }
+    // Compute NACL allow/deny breakdown
+    const naclAllowIn=nc?(nc.Entries||[]).filter(e=>!e.Egress&&e.RuleAction==='allow').length:0;
+    const naclDenyIn=naclIn-naclAllowIn;
+    const naclAllowOut=nc?(nc.Entries||[]).filter(e=>e.Egress&&e.RuleAction==='allow').length:0;
+    const naclDenyOut=naclOut-naclAllowOut;
+    // Compute common open ports from SG inbound rules
+    const openPorts=new Set();
+    if(displaySgs) displaySgs.forEach(sg=>(sg.IpPermissions||[]).forEach(p=>{
+      if(p.FromPort===p.ToPort&&p.FromPort>0) openPorts.add(p.FromPort);
+      else if(p.FromPort===-1) openPorts.add('all');
+    }));
+    const portStr=openPorts.size?[...openPorts].slice(0,5).join(', '):'none';
+    const rtRouteCount=rt?(rt.Routes||[]).length:0;
+
+    relBody+='<div class="dp-flow-paths">';
+    relBody+='<div class="dp-flow-label">INGRESS</div>';
+    if(gwTargets.length){
+      gwTargets.forEach((g,gi)=>{
+        relBody+='<div class="dp-flow-row">';
+        relBody+=_hop(1,gwSource(g),esc(g.dest),'Traffic origin');
+        relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+        relBody+='<span class="dp-flow-hop" data-rel-gw="'+esc(g.id)+'" data-rel-gwtype="'+esc(g.type)+'" style="border-color:'+gcv(g.type)+'"><span class="dp-flow-hopnum">2</span><div class="dp-flow-hopbody"><span class="dp-flow-hoplbl">'+g.type+'</span><span class="dp-flow-hopdet">'+esc(g.name)+'</span><span class="dp-flow-hoprole">'+gwRole(g.type)+'</span></div></span>';
+        relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+        relBody+=_hop(3,'Route Table',(rt?esc(gn(rt,rt.RouteTableId)):'none')+' &middot; '+rtRouteCount+' routes','Path selection','data-rel-scroll="Route Table"');
+        relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+        relBody+=_hop(4,'Subnet NSG',naclAllowIn+' allow &middot; '+naclDenyIn+' deny','Stateless filter','data-rel-scroll="NACLs"');
+        relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+        relBody+=_hop(5,'SGs',sgCount+' groups &middot; ports: '+portStr,'Stateful filter','data-rel-scroll="Security Groups"');
+        relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+        relBody+=_hop(6,'Resources',resLabel,'Destination','data-rel-scroll="Virtual Machines"');
+        relBody+='</div>';
+      });
+    } else {
+      relBody+='<div class="dp-flow-row">';
+      relBody+=_hop(1,'VPC Local',esc(sub.CidrBlock||''),'Traffic origin');
+      relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+      relBody+=_hop(2,'Route Table',(rt?esc(gn(rt,rt.RouteTableId)):'none')+' &middot; '+rtRouteCount+' routes','Path selection','data-rel-scroll="Route Table"');
+      relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+      relBody+=_hop(3,'Subnet NSG',naclAllowIn+' allow &middot; '+naclDenyIn+' deny','Stateless filter','data-rel-scroll="NACLs"');
+      relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+      relBody+=_hop(4,'SGs',sgCount+' groups &middot; ports: '+portStr,'Stateful filter','data-rel-scroll="Security Groups"');
+      relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+      relBody+=_hop(5,'Resources',resLabel,'Destination','data-rel-scroll="Virtual Machines"');
+      relBody+='</div>';
+    }
+
+    // Egress flow
+    relBody+='<div class="dp-flow-label" style="margin-top:8px">EGRESS</div>';
+    relBody+='<div class="dp-flow-row">';
+    relBody+=_hop(1,'Resources',resLabel,'Traffic origin','data-rel-scroll="Virtual Machines"');
+    relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+    relBody+=_hop(2,'SGs',sgOutRules+' outbound rules','Stateful filter','data-rel-scroll="Security Groups"');
+    relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+    relBody+=_hop(3,'Subnet NSG',naclAllowOut+' allow &middot; '+naclDenyOut+' deny','Stateless filter','data-rel-scroll="NACLs"');
+    relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+    relBody+=_hop(4,'Route Table',(rt?esc(gn(rt,rt.RouteTableId)):'none')+' &middot; '+rtRouteCount+' routes','Path selection','data-rel-scroll="Route Table"');
+    relBody+='<span class="dp-dep-arrow">&rarr;</span>';
+    if(gwTargets.length){
+      const gwLabels=gwTargets.map(g=>g.type).filter((v,i,a)=>a.indexOf(v)===i).join(' / ');
+      relBody+=_hop(5,gwLabels,gwTargets.map(g=>esc(g.dest)).join(', '),'Egress target');
+    } else {
+      relBody+=_hop(5,'VPC Local','local routing only','Egress target');
+    }
+    relBody+='</div>';
+    relBody+='</div>';
+
+    // --- VPC Sibling Subnets ---
+    const allSubs=(detailCtx.subnets||[]).filter(s=>s.VpcId===vpcId&&s.SubnetId!==sub.SubnetId);
+    if(allSubs.length){
+      // Group by AZ
+      const byAz={};
+      allSubs.forEach(s=>{const az=s.AvailabilityZone||'unknown';if(!byAz[az])byAz[az]=[];byAz[az].push(s)});
+      relBody+='<div class="dp-related-group"><div class="dp-related-title">VNet Subnets ('+allSubs.length+')</div>';
+      Object.keys(byAz).sort().forEach(az=>{
+        byAz[az].forEach(s=>{
+          const sIsPub=lk.pubSubs&&lk.pubSubs.has(s.SubnetId);
+          const sInst=(lk.instBySub[s.SubnetId]||[]).length;
+          const sEni=(lk.eniBySub[s.SubnetId]||[]).length;
+          const sAlb=(lk.albBySub[s.SubnetId]||[]).length;
+          const resCnt=sInst+sEni+sAlb;
+          relBody+='<div class="dp-related-item" data-rel-sub="'+esc(s.SubnetId)+'">';
+          relBody+='<span class="rel-name">'+esc(gn(s,s.SubnetId))+'</span>';
+          relBody+='<span class="rel-cidr">'+esc(s.CidrBlock||'')+'</span>';
+          relBody+='<span class="rel-badge '+(sIsPub?'pub':'prv')+'">'+(sIsPub?'PUB':'PRV')+'</span>';
+          if(resCnt) relBody+='<span class="rel-count">'+resCnt+' res</span>';
+          relBody+='<span class="rel-az">'+esc(az)+'</span>';
+          relBody+='</div>';
+        });
+      });
+      relBody+='</div>';
+    }
+
+    // --- Cross-Subnet Connections ---
+    const crossLinks=[];
+    // ALB targeting: find ALBs in other subnets targeting instances in this subnet
+    const myInstIds=new Set(si.map(i=>i.InstanceId));
+    const myAlbArns=new Set(sa.map(a=>a.LoadBalancerArn));
+    if(detailCtx.appGateways&&detailCtx.tgByAlb){
+      (detailCtx.appGateways||[]).filter(a=>a.VpcId===vpcId||((a.AvailabilityZones||[]).some(az=>az.SubnetId&&(detailCtx.subnets||[]).find(s=>s.SubnetId===az.SubnetId&&s.VpcId===vpcId)))).forEach(alb=>{
+        const tgs=detailCtx.tgByAlb[alb.LoadBalancerArn]||[];
+        const isMyAlb=myAlbArns.has(alb.LoadBalancerArn);
+        tgs.forEach(tg=>{
+          const targets=tg.Targets||[];
+          const hitsHere=targets.filter(t=>myInstIds.has(t.Id));
+          if(!isMyAlb&&hitsHere.length){
+            // External ALB targets our instances
+            const albSub=(alb.AvailabilityZones||[]).map(az=>az.SubnetId).filter(Boolean)[0]||'?';
+            crossLinks.push({type:'alb-in',label:alb.LoadBalancerName||'ALB',detail:'targets '+hitsHere.length+' instance'+(hitsHere.length>1?'s':'')+' here',subId:albSub,icon:'&#8592;'});
+          }
+          if(isMyAlb){
+            // Our ALB targets instances in other subnets
+            const extTargets=targets.filter(t=>!myInstIds.has(t.Id));
+            if(extTargets.length){
+              // Find which subnets the targets are in
+              const targetSubs=new Set();
+              extTargets.forEach(t=>{
+                for(const sid in lk.instBySub){
+                  if(sid!==sub.SubnetId&&(lk.instBySub[sid]||[]).some(i=>i.InstanceId===t.Id)) targetSubs.add(sid);
+                }
+              });
+              if(targetSubs.size) crossLinks.push({type:'alb-out',label:alb.LoadBalancerName||'ALB',detail:'targets '+extTargets.length+' instance'+(extTargets.length>1?'s':'')+' in '+targetSubs.size+' other subnet'+(targetSubs.size>1?'s':''),subId:null,icon:'&#8594;'});
+            }
+          }
+        });
+      });
+    }
+    // Shared SGs: find other subnets with ENIs sharing our SGs
+    const mySgIds=new Set();
+    se.forEach(e=>(e.Groups||[]).forEach(g=>mySgIds.add(g.GroupId)));
+    si.forEach(inst=>(inst.SecurityGroups||[]).forEach(g=>mySgIds.add(g.GroupId)));
+    if(mySgIds.size&&detailCtx.nics){
+      const sharedSubs={};
+      detailCtx.nics.forEach(e=>{
+        if(e.VpcId!==vpcId) return;
+        const eSub=e.SubnetId;
+        if(!eSub||eSub===sub.SubnetId) return;
+        const shared=(e.Groups||[]).filter(g=>mySgIds.has(g.GroupId));
+        if(shared.length){
+          if(!sharedSubs[eSub]) sharedSubs[eSub]={sgs:new Set(),count:0};
+          shared.forEach(g=>sharedSubs[eSub].sgs.add(g.GroupName||g.GroupId));
+          sharedSubs[eSub].count++;
+        }
+      });
+      Object.entries(sharedSubs).forEach(([sid,info])=>{
+        crossLinks.push({type:'sg',label:info.sgs.size+' shared SG'+(info.sgs.size>1?'s':''),detail:info.count+' NIC'+(info.count>1?'s':'')+' in '+sid.slice(0,16),subId:sid,icon:'&#8596;'});
+      });
+    }
+    // Peering / TGW routes
+    if(rt){
+      (rt.Routes||[]).forEach(r=>{
+        const pcx=r.VpcPeeringConnectionId;
+        const tgw=r.TransitGatewayId;
+        if(pcx){
+          const peer=(detailCtx.peerings||[]).find(p=>p.VpcPeeringConnectionId===pcx);
+          const peerVpc=peer?(peer.AccepterVpcInfo&&peer.AccepterVpcInfo.VpcId!==vpcId?peer.AccepterVpcInfo.VpcId:peer.RequesterVpcInfo&&peer.RequesterVpcInfo.VpcId!==vpcId?peer.RequesterVpcInfo.VpcId:'?'):'?';
+          crossLinks.push({type:'peering',label:'Peering '+pcx.slice(0,12),detail:'to VNet '+peerVpc.slice(0,16)+' via '+(r.DestinationCidrBlock||'?'),subId:null,icon:'&#8644;'});
+        }
+        if(tgw){
+          crossLinks.push({type:'tgw',label:'TGW '+tgw.slice(0,14),detail:'route to '+(r.DestinationCidrBlock||'?'),subId:null,icon:'&#8644;'});
+        }
+      });
+    }
+    if(crossLinks.length){
+      relBody+='<div class="dp-related-group"><div class="dp-related-title">Cross-Subnet Links ('+crossLinks.length+')</div>';
+      crossLinks.forEach(cl=>{
+        relBody+='<div class="dp-related-item'+(cl.subId?' data-rel-sub="'+esc(cl.subId)+'"':'')+'">';
+        relBody+='<span style="color:var(--text-muted);min-width:16px;text-align:center">'+cl.icon+'</span>';
+        relBody+='<span class="rel-name" style="color:'+(cl.type==='sg'?'var(--accent-orange)':cl.type.startsWith('alb')?'var(--accent-cyan)':'var(--accent-purple)')+'">'+esc(cl.label)+'</span>';
+        relBody+='<span style="color:var(--text-muted);font-size:calc(9px * var(--txt-scale) * var(--dp-txt-scale))">'+esc(cl.detail)+'</span>';
+        relBody+='</div>';
+      });
+      relBody+='</div>';
+    }
+
+    const totalRelated=allSubs.length+crossLinks.length;
+    if(totalRelated) h+=sec('Related Resources',totalRelated,relBody,true);
+  }
+
+  // Wrap sections in grid container (2-col grid in fullscreen)
+  var hFull=h;
+  h='<div class="dp-grid"><div class="dp-col-left">'+hLeft+'</div><div class="dp-col-right">'+hRight+'</div><div class="dp-col-full">'+hFull+'</div></div>';
+  document.getElementById('dpExpandAll').style.display='';
+  document.getElementById('dpCollapseAll').style.display='';
+  document.getElementById('dpTraceFrom').style.display='';
   dpBody.innerHTML=h;
   dp.classList.add('open');
-  _wireDpBackButton();
+  if(_fwDpBodyHandler) dpBody.removeEventListener('click', _fwDpBodyHandler);
+  _fwDpBodyHandler = function(ev){ _fwHandleAction(ev, sub, vpcId, lk); };
+  dpBody.addEventListener('click', _fwDpBodyHandler);
+  injectDesignToolbar(dpBody,{type:'subnet',data:sub});
   applyDpScale();
+  DetailTraceSelection.set({type:'subnet',id:sub.SubnetId});
+  dpBody.querySelectorAll('.dp-link').forEach(el=>{
+    el.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const gwId=el.dataset.gwid, gwType=el.dataset.gwtype;
+      const detailCtx=detailRuntimeContext();
+      if(!gwId||!detailCtx) return;
+      _navStack.push({fn:()=>{ openSubnetPanel(sub,vpcId,lk); MapViewport.zoomToResource(sub.SubnetId); }});
+      openGatewayPanel(gwId,gwType,detailGatewayLookup(detailCtx));
+      MapViewport.zoomToResource(gwId);
+      MapViewport.highlightGateway(gwId);
+    });
+  });
+  // Related Resources: click sibling subnet → navigate
+  dpBody.querySelectorAll('[data-rel-sub]').forEach(el=>{
+    el.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const targetSubId=el.dataset.relSub;
+      const detailCtx=detailRuntimeContext();
+      if(!targetSubId||!detailCtx) return;
+      const targetSub=(detailCtx.subnets||[]).find(s=>s.SubnetId===targetSubId);
+      if(!targetSub) return;
+      _navStack.push({fn:()=>{ openSubnetPanel(sub,vpcId,lk); MapViewport.zoomToResource(sub.SubnetId); }});
+      openSubnetPanel(targetSub,targetSub.VpcId,detailSubnetLookup(detailCtx));
+      MapViewport.zoomToResource(targetSubId);
+    });
+  });
+  // Related Resources: click gateway node → open gateway panel
+  dpBody.querySelectorAll('[data-rel-gw]').forEach(el=>{
+    el.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const gwId2=el.dataset.relGw, gwType2=el.dataset.relGwtype;
+      const detailCtx=detailRuntimeContext();
+      if(!gwId2||!detailCtx) return;
+      _navStack.push({fn:()=>{ openSubnetPanel(sub,vpcId,lk); MapViewport.zoomToResource(sub.SubnetId); }});
+      openGatewayPanel(gwId2,gwType2,detailGatewayLookup(detailCtx));
+      MapViewport.zoomToResource(gwId2);
+    });
+  });
+  // Related Resources: click dependency chain node → scroll to that section
+  dpBody.querySelectorAll('[data-rel-scroll]').forEach(el=>{
+    el.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const target=el.dataset.relScroll;
+      const secHdrs=dpBody.querySelectorAll('.dp-sec-title');
+      for(const hdr of secHdrs){
+        if(hdr.textContent.trim()===target){
+          const secEl=hdr.closest('.dp-section');
+          if(secEl){
+            const hdrEl=secEl.querySelector('.dp-sec-hdr');
+            if(hdrEl&&hdrEl.classList.contains('collapsed')) hdrEl.click();
+            secEl.scrollIntoView({behavior:'smooth',block:'start'});
+          }
+          break;
+        }
+      }
+    });
+  });
+  const backEl=document.getElementById('dpBack');
+  if(backEl){backEl.addEventListener('click',()=>{
+    const prev=_navStack.pop();
+    if(prev&&prev.fn) prev.fn();
+    else { dp.classList.remove('open'); }
+  })}
 }
 
-// === TIME-SERIES SNAPSHOTS ===
-const _SNAP_KEY='azureMapper_snapshots';
-const _MAX_SNAPSHOTS=30;
-let _snapshots=[];
-let _viewingHistory=false;
-let _currentSnapshot=null;// saved current state when viewing history
-// TODO: deduplicate: canonical snapshot/timeline logic is in timeline.js
-try{const s=localStorage.getItem(_SNAP_KEY);if(s)_snapshots=JSON.parse(s)}catch(e){_snapshots=[]}
-function _saveSnapshots(){try{localStorage.setItem(_SNAP_KEY,JSON.stringify(_snapshots))}catch(e){
-  // If storage full, trim oldest half
-  if(_snapshots.length>4){_snapshots=_snapshots.slice(Math.floor(_snapshots.length/2));try{localStorage.setItem(_SNAP_KEY,JSON.stringify(_snapshots))}catch(e2){}}
-}}
-function _computeChecksum(textareas){
-  let s='';Object.keys(textareas).sort().forEach(k=>s+=k+':'+String(textareas[k]).length+';');
-  let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h)+s.charCodeAt(i);h|=0}return h;
-}
-function takeSnapshot(label,auto){
-  const textareas={};
-  document.querySelectorAll('.ji').forEach(el=>{const v=el.value.trim();if(v)textareas[el.id]=v});
-  if(!Object.keys(textareas).length)return null;
-  const checksum=_computeChecksum(textareas);
-  // Skip if identical to last snapshot
-  if(_snapshots.length>0&&_snapshots[_snapshots.length-1].checksum===checksum)return null;
-  const snap={
-    id:'snap-'+Date.now(),
-    timestamp:new Date().toISOString(),
-    label:label||(auto?'Auto':'Manual'),
-    auto:!!auto,
-    checksum:checksum,
-    accountLabel:(document.getElementById('accountLabel')||{}).value||'',
-    layout:(document.getElementById('layoutMode')||{}).value||'grid',
-    textareas:textareas,
-    annotations:JSON.parse(JSON.stringify(_annotations||{}))
-  };
-  _snapshots.push(snap);
-  while(_snapshots.length>_MAX_SNAPSHOTS)_snapshots.shift();
-  _saveSnapshots();
-  _renderTimeline();
-  if(!auto)_showToast('Snapshot saved: '+(label||'Manual'));
-  return snap;
-}
-function _renderTimeline(){
-  const container=document.getElementById('timelineDots');if(!container)return;
-  container.innerHTML='';
-  if(!_snapshots.length){document.getElementById('timelineLabel').textContent='No snapshots';return}
-  document.getElementById('timelineLabel').textContent=_snapshots.length+' snap'+((_snapshots.length!==1)?'s':'');
-  const w=container.clientWidth||400;
-  if(_snapshots.length===1){
-    _addTimelineDot(container,_snapshots[0],w/2,0);
-    return;
+// Gateway detail panel - shows info for IGW, TGW, NAT, VGW, PCX, VPCE
+function openGatewayPanel(gwId,gwType,lk){
+  const dp=document.getElementById('detailPanel');
+  const dpTitle=document.getElementById('dpTitle');
+  const dpSub=document.getElementById('dpSub');
+  const dpBody=document.getElementById('dpBody');
+  const nm=esc(lk.gwNames[gwId]||gwId);
+  const col=gcv(gwType);
+  function sec(title,count,bodyHtml,startOpen){
+    return '<div class="dp-section"><div class="dp-sec-hdr'+(startOpen?'':' collapsed')+'" onclick="this.classList.toggle(\'collapsed\');this.nextElementSibling.classList.toggle(\'hidden\')"><span class="dp-sec-title">'+title+'</span><span><span class="dp-sec-count">'+count+'</span><span class="dp-sec-arr">&#9660;</span></span></div><div class="dp-sec-body'+(startOpen?'':' hidden')+'">'+bodyHtml+'</div></div>';
   }
-  const t0=new Date(_snapshots[0].timestamp).getTime();
-  const t1=new Date(_snapshots[_snapshots.length-1].timestamp).getTime();
-  const span=t1-t0||1;
-  _snapshots.forEach((snap,i)=>{
-    const t=new Date(snap.timestamp).getTime();
-    const x=((t-t0)/span)*(w-20)+10;
-    _addTimelineDot(container,snap,x,i);
-  });
-}
-function _addTimelineDot(container,snap,x,idx){
-  const dot=document.createElement('div');
-  dot.className='timeline-dot'+(snap.auto?' auto':'');
-  dot.style.left=x+'px';
-  const d=new Date(snap.timestamp);
-  const timeStr=d.toLocaleDateString()+' '+d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-  dot.innerHTML='<div class="timeline-tooltip">'+esc(snap.label)+' - '+timeStr+'</div>';
-  dot.addEventListener('click',()=>_viewSnapshot(idx));
-  dot.addEventListener('contextmenu',function(ev){ev.preventDefault();if(typeof _compareWithSnapshot==='function')_compareWithSnapshot(snap)});
-  dot.title='Click: view | Right-click: compare with current';
-  container.appendChild(dot);
-}
-function _viewSnapshot(idx){
-  const snap=_snapshots[idx];if(!snap)return;
-  if(!_viewingHistory){
-    // Save current state
-    _currentSnapshot={};
-    document.querySelectorAll('.ji').forEach(el=>{_currentSnapshot[el.id]=el.value});
-    _currentSnapshot._accountLabel=(document.getElementById('accountLabel')||{}).value||'';
-    _currentSnapshot._layout=(document.getElementById('layoutMode')||{}).value||'grid';
-    _currentSnapshot._annotations=JSON.parse(JSON.stringify(_annotations||{}));
+  dpTitle.innerHTML='<span id="dpBack" style="cursor:pointer;color:var(--accent-blue);font-size:calc(10px * var(--txt-scale) * var(--dp-txt-scale));font-family:Segoe UI,system-ui,sans-serif;margin-right:8px" title="Back">&lt; Back</span><span style="color:'+col+'">'+gwType+'</span>: '+esc(nm);
+  dpSub.innerHTML='<span class="copyable" data-copy="'+esc(gwId)+'">'+esc(gwId)+'</span>';
+  let h='';
+
+  // General info
+  let gi='<div class="dp-kv"><span class="k">Type</span><span class="v">'+esc(gwType)+'</span></div>';
+  gi+='<div class="dp-kv"><span class="k">ID</span><span class="v">'+esc(gwId)+'</span></div>';
+  if(nm&&nm!==gwId) gi+='<div class="dp-kv"><span class="k">Name</span><span class="v">'+esc(nm)+'</span></div>';
+
+  // Type-specific info
+  if(gwType==='IGW'){
+    const igw=(lk.igws||[]).find(g=>g.InternetGatewayId===gwId);
+    if(igw){
+      const att=igw.Attachments||[];
+      att.forEach(a=>{
+        const vn=lk.vpcs?lk.vpcs.find(v=>v.VpcId===a.VpcId):null;
+        gi+='<div class="dp-kv"><span class="k">VPC</span><span class="v">'+(vn?gn(vn,a.VpcId):a.VpcId)+'</span></div>';
+        gi+='<div class="dp-kv"><span class="k">State</span><span class="v"><span class="dp-badge pub">'+(a.State||'attached')+'</span></span></div>';
+      });
+      // Tags
+      const tags=(igw.Tags||[]).filter(t=>t.Key!=='Name');
+      if(tags.length){
+        gi+='<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">';
+        tags.forEach(t=>{gi+='<div class="dp-kv"><span class="k">'+esc(t.Key)+'</span><span class="v">'+esc(t.Value)+'</span></div>'});
+        gi+='</div>';
+      }
+    }
+  } else if(gwType==='NAT'){
+    const nat=(lk.nats||[]).find(n=>n.NatGatewayId===gwId);
+    if(nat){
+      gi+='<div class="dp-kv"><span class="k">State</span><span class="v"><span class="dp-badge '+(nat.State==='available'?'pub':'prv')+'">'+(nat.State||'N/A')+'</span></span></div>';
+      if(nat.SubnetId) gi+='<div class="dp-kv"><span class="k">Subnet</span><span class="v">'+nat.SubnetId+'</span></div>';
+      if(nat.VpcId){
+        const vn=lk.vpcs?lk.vpcs.find(v=>v.VpcId===nat.VpcId):null;
+        gi+='<div class="dp-kv"><span class="k">VPC</span><span class="v">'+(vn?gn(vn,nat.VpcId):nat.VpcId)+'</span></div>';
+      }
+      if(nat.ConnectivityType) gi+='<div class="dp-kv"><span class="k">Connectivity</span><span class="v">'+nat.ConnectivityType+'</span></div>';
+      const eips=(nat.NatGatewayAddresses||[]);
+      eips.forEach((a,i)=>{
+        if(a.PublicIp) gi+='<div class="dp-kv"><span class="k">Public IP'+(eips.length>1?' '+(i+1):'')+'</span><span class="v">'+a.PublicIp+'</span></div>';
+        if(a.PrivateIp) gi+='<div class="dp-kv"><span class="k">Private IP'+(eips.length>1?' '+(i+1):'')+'</span><span class="v">'+a.PrivateIp+'</span></div>';
+        if(a.AllocationId) gi+='<div class="dp-kv"><span class="k">EIP Alloc</span><span class="v">'+a.AllocationId+'</span></div>';
+      });
+      const tags=(nat.Tags||[]).filter(t=>t.Key!=='Name');
+      if(tags.length){
+        gi+='<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">';
+        tags.forEach(t=>{gi+='<div class="dp-kv"><span class="k">'+esc(t.Key)+'</span><span class="v">'+esc(t.Value)+'</span></div>'});
+        gi+='</div>';
+      }
+    }
+  } else if(gwType==='VGW'){
+    // Show VPN connections for this VGW
+    const gwVpns=(lk.vpns||[]).filter(v=>v.VpnGatewayId===gwId);
+    if(gwVpns.length){
+      gi+='<div class="dp-kv"><span class="k">VPN Connections</span><span class="v">'+gwVpns.length+'</span></div>';
+    }
+  } else if(gwType==='VPCE'){
+    const vpce=(lk.vpces||[]).find(v=>v.VpcEndpointId===gwId);
+    if(vpce){
+      if(vpce.VpcEndpointType) gi+='<div class="dp-kv"><span class="k">Endpoint Type</span><span class="v">'+vpce.VpcEndpointType+'</span></div>';
+      if(vpce.ServiceName) gi+='<div class="dp-kv"><span class="k">Service</span><span class="v">'+esc(vpce.ServiceName)+'</span></div>';
+      if(vpce.State) gi+='<div class="dp-kv"><span class="k">State</span><span class="v"><span class="dp-badge pub">'+vpce.State+'</span></span></div>';
+      if(vpce.VpcId){
+        const vn=lk.vpcs?lk.vpcs.find(v=>v.VpcId===vpce.VpcId):null;
+        gi+='<div class="dp-kv"><span class="k">VPC</span><span class="v">'+(vn?gn(vn,vpce.VpcId):vpce.VpcId)+'</span></div>';
+      }
+    }
+  } else if(gwType==='PCX'){
+    const pcx=(lk.peerings||[]).find(p=>p.VpcPeeringConnectionId===gwId);
+    if(pcx){
+      if(pcx.Status) gi+='<div class="dp-kv"><span class="k">Status</span><span class="v"><span class="dp-badge pub">'+(pcx.Status.Code||pcx.Status)+'</span></span></div>';
+      const req=pcx.RequesterVpcInfo;
+      if(req){
+        const vn=lk.vpcs?lk.vpcs.find(v=>v.VpcId===req.VpcId):null;
+        gi+='<div class="dp-kv"><span class="k">Requester VPC</span><span class="v">'+(vn?gn(vn,req.VpcId):req.VpcId||'N/A')+'</span></div>';
+        if(req.CidrBlock) gi+='<div class="dp-kv"><span class="k">Requester CIDR</span><span class="v">'+req.CidrBlock+'</span></div>';
+      }
+      const acc=pcx.AccepterVpcInfo;
+      if(acc){
+        const vn=lk.vpcs?lk.vpcs.find(v=>v.VpcId===acc.VpcId):null;
+        gi+='<div class="dp-kv"><span class="k">Accepter VPC</span><span class="v">'+(vn?gn(vn,acc.VpcId):acc.VpcId||'N/A')+'</span></div>';
+        if(acc.CidrBlock) gi+='<div class="dp-kv"><span class="k">Accepter CIDR</span><span class="v">'+acc.CidrBlock+'</span></div>';
+      }
+    }
+  } else if(gwType==='PE'){
+    const peList=lk.vpces||lk.privateEndpoints||[];
+    const pe=peList.find(p=>p.id===gwId);
+    if(pe){
+      const props=pe.properties||pe._azure?.properties||{};
+      const conn=props.privateLinkServiceConnections?.[0];
+      const connProps=conn?.properties||{};
+      const targetId=connProps.privateLinkServiceId||'';
+      const groupIds=(connProps.groupIds||[]).join(', ');
+      const state=connProps.privateLinkServiceConnectionState?.status||'Unknown';
+      const stateDesc=connProps.privateLinkServiceConnectionState?.description||'';
+      const stCol=state==='Approved'?'#10b981':state==='Pending'?'#f59e0b':'#ef4444';
+      const stBg=state==='Approved'?'pub':state==='Pending'?'warn':'prv';
+      const subnetId=props.subnet?.id||'';
+      const vnetId=subnetId?subnetId.split('/subnets/')[0]:'';
+      const dnsConfigs=props.customDnsConfigs||[];
+      const fqdns=dnsConfigs.map(d=>d.fqdn).filter(Boolean);
+      const ips=dnsConfigs.flatMap(d=>d.ipAddresses||[]);
+      const nicIds=(props.networkInterfaces||[]).map(n=>n.id);
+      const networkPolicies=props.subnet?.properties?.privateEndpointNetworkPolicies||'';
+
+      gi+='<div class="dp-kv"><span class="k">Connection State</span><span class="v"><span class="dp-badge '+stBg+'" style="background:'+stCol+'22;color:'+stCol+';border:1px solid '+stCol+'44">'+esc(state)+'</span></span></div>';
+      if(stateDesc) gi+='<div class="dp-kv"><span class="k">State Description</span><span class="v">'+esc(stateDesc)+'</span></div>';
+      if(targetId){
+        const targetName=targetId.split('/').pop();
+        gi+='<div class="dp-kv"><span class="k">Target Service</span><span class="v copyable" data-copy="'+esc(targetId)+'">'+esc(targetName)+'</span></div>';
+        gi+='<div class="dp-kv"><span class="k">Target Resource ID</span><span class="v copyable" data-copy="'+esc(targetId)+'" style="font-size:0.85em;word-break:break-all">'+esc(targetId)+'</span></div>';
+      }
+      if(groupIds) gi+='<div class="dp-kv"><span class="k">Group IDs</span><span class="v">'+esc(groupIds)+'</span></div>';
+      ips.forEach((ip,i)=>{gi+='<div class="dp-kv"><span class="k">Private IP'+(ips.length>1?' '+(i+1):'')+'</span><span class="v">'+esc(ip)+'</span></div>'});
+      fqdns.forEach(f=>{gi+='<div class="dp-kv"><span class="k">FQDN</span><span class="v copyable" data-copy="'+esc(f)+'">'+esc(f)+'</span></div>'});
+      if(subnetId){
+        const subName=subnetId.split('/').pop();
+        gi+='<div class="dp-kv"><span class="k">Subnet</span><span class="v">'+esc(subName)+'</span></div>';
+      }
+      if(vnetId){
+        const vnetName=vnetId.split('/').pop();
+        gi+='<div class="dp-kv"><span class="k">VNet</span><span class="v">'+esc(vnetName)+'</span></div>';
+      }
+      nicIds.forEach(n=>{gi+='<div class="dp-kv"><span class="k">NIC</span><span class="v copyable" data-copy="'+esc(n)+'">'+esc(n.split('/').pop())+'</span></div>'});
+      if(networkPolicies) gi+='<div class="dp-kv"><span class="k">Network Policies</span><span class="v">'+esc(networkPolicies)+'</span></div>';
+      if(pe.location) gi+='<div class="dp-kv"><span class="k">Location</span><span class="v">'+esc(pe.location)+'</span></div>';
+      // Tags
+      const tags=pe.tags||{};
+      const tagEntries=Object.entries(tags).filter(([k])=>k!=='Name'&&k!=='name');
+      if(tagEntries.length){
+        gi+='<div style="margin-top:6px;border-top:1px solid var(--border);padding-top:6px">';
+        tagEntries.forEach(([k,v])=>{gi+='<div class="dp-kv"><span class="k">'+esc(k)+'</span><span class="v">'+esc(v)+'</span></div>'});
+        gi+='</div>';
+      }
+    }
   }
-  _viewingHistory=true;
-  // Load snapshot data
-  document.querySelectorAll('.ji').forEach(el=>{el.value='';el.className='ji'});
-  Object.entries(snap.textareas||{}).forEach(([id,val])=>{
-    const el=document.getElementById(id);
-    if(el){el.value=val;try{JSON.parse(val);el.className='ji valid'}catch(e){el.className='ji invalid'}}
+  h+=sec('Details','',gi,true);
+
+  // TGW Attachments section (for TGW type)
+  if(gwType==='TGW'){
+    const atts=(lk.tgwAttachments||[]).filter(a=>a.TransitGatewayId===gwId);
+    if(atts.length){
+      let ab='';
+      atts.forEach(a=>{
+        const rid=a.ResourceId||'N/A';
+        const vn=(a.ResourceType==='vpc'&&lk.vpcs)?lk.vpcs.find(v=>v.VpcId===rid):null;
+        const rName=vn?gn(vn,rid):rid;
+        const isVpc=a.ResourceType==='vpc'&&rid.startsWith('vpc-');
+        ab+='<div class="dp-row'+(isVpc?' tgw-att-link':'')+'"'+(isVpc?' data-act="vpc" data-id="'+rid+'" style="cursor:pointer"':'')+'><span class="p" style="color:var(--accent-cyan)">'+esc(rName)+'</span>';
+        ab+=' <span style="color:var(--text-muted);font-size:0.85em">'+a.ResourceType+'</span>';
+        ab+=' <span class="dp-badge pub">'+(a.State||'available')+'</span>';
+        if(a.Association?.TransitGatewayRouteTableId) ab+='<br><span style="color:var(--text-muted);font-size:0.85em">RT: '+a.Association.TransitGatewayRouteTableId+'</span>';
+        ab+='</div>';
+      });
+      h+=sec('TGW Attachments',atts.length,ab,true);
+    }
+  }
+
+  // Route tables referencing this gateway
+  const refRts=(lk.rts||[]).filter(rt=>(rt.Routes||[]).some(r=>
+    r.GatewayId===gwId||r.NatGatewayId===gwId||r.TransitGatewayId===gwId||r.VpcPeeringConnectionId===gwId
+  ));
+  if(refRts.length){
+    let rb='';
+    refRts.forEach(rt=>{
+      const rtName=gn(rt,rt.RouteTableId);
+      rb+='<div style="margin-bottom:8px;padding:6px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:4px">';
+      rb+='<div style="font-weight:bold;color:var(--accent-cyan);margin-bottom:4px">'+esc(rtName)+'</div>';
+      rb+='<div style="color:var(--text-muted);font-size:0.85em;margin-bottom:4px">'+rt.RouteTableId+'</div>';
+      (rt.Routes||[]).forEach(r=>{
+        const dest=r.DestinationCidrBlock||r.DestinationPrefixListId||'?';
+        const tgt=r.GatewayId||r.NatGatewayId||r.TransitGatewayId||r.VpcPeeringConnectionId||'local';
+        const isThis=(tgt===gwId);
+        if(isThis)rb+='<div class="dp-row">'+dest+' <span class="p">-></span> <span class="p" style="color:var(--accent-cyan);font-weight:bold">'+gwType+' (this)</span></div>';
+        else rb+='<div class="dp-row">'+dest+' <span class="p">-></span> '+routeTgtHtml(tgt)+'</div>';
+      });
+      rb+='</div>';
+    });
+    h+=sec('Route Tables',refRts.length+' tables',rb,false);
+  }
+
+  // VPN connections (for VGW)
+  if(gwType==='VGW'){
+    const gwVpns=(lk.vpns||[]).filter(v=>v.VpnGatewayId===gwId);
+    if(gwVpns.length){
+      let vb='';
+      gwVpns.forEach(v=>{
+        vb+='<div style="margin-bottom:8px;padding:6px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:4px">';
+        vb+='<div style="font-weight:bold;color:var(--accent-red)">'+gn(v,v.VpnConnectionId)+'</div>';
+        vb+='<div class="dp-kv"><span class="k">ID</span><span class="v">'+v.VpnConnectionId+'</span></div>';
+        vb+='<div class="dp-kv"><span class="k">State</span><span class="v"><span class="dp-badge '+(v.State==='available'?'pub':'prv')+'">'+v.State+'</span></span></div>';
+        if(v.CustomerGatewayId) vb+='<div class="dp-kv"><span class="k">Customer GW</span><span class="v">'+v.CustomerGatewayId+'</span></div>';
+        if(v.Type) vb+='<div class="dp-kv"><span class="k">Type</span><span class="v">'+v.Type+'</span></div>';
+        vb+='</div>';
+      });
+      h+=sec('VPN Connections',gwVpns.length,vb,true);
+    }
+  }
+
+  // Connected subnets (subnets whose route tables point to this gateway)
+  const connSubs=[];
+  (lk.subnets||[]).forEach(s=>{
+    const rt=lk.subRT[s.SubnetId];
+    if(!rt)return;
+    const hasRoute=(rt.Routes||[]).some(r=>r.GatewayId===gwId||r.NatGatewayId===gwId||r.TransitGatewayId===gwId||r.VpcPeeringConnectionId===gwId);
+    if(hasRoute) connSubs.push(s);
   });
-  if(snap.accountLabel){const al=document.getElementById('accountLabel');if(al)al.value=snap.accountLabel}
-  if(snap.annotations)_annotations=JSON.parse(JSON.stringify(snap.annotations));
-  renderMap();
-  // Show history banner
-  const d=new Date(snap.timestamp);
-  document.getElementById('historyLabel').textContent='VIEWING: '+snap.label+' - '+d.toLocaleDateString()+' '+d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
-  document.getElementById('historyBanner').style.display='flex';
-  // Highlight active dot
-  document.querySelectorAll('.timeline-dot').forEach((d,i)=>d.classList.toggle('active',i===idx));
-  // Disable inputs
-  document.querySelectorAll('.ji').forEach(el=>el.readOnly=true);
-}
-function _returnToCurrent(){
-  if(!_viewingHistory||!_currentSnapshot)return;
-  _viewingHistory=false;
-  document.querySelectorAll('.ji').forEach(el=>{
-    el.value=_currentSnapshot[el.id]||'';
-    el.readOnly=false;
-    if(el.value.trim()){try{JSON.parse(el.value);el.className='ji valid'}catch(e){el.className='ji invalid'}}else{el.className='ji'}
+  if(connSubs.length){
+    let sb='';
+    connSubs.forEach(s=>{
+      const isPub=lk.pubSubs.has(s.SubnetId);
+      const vn=lk.vpcs?lk.vpcs.find(v=>v.VpcId===s.VpcId):null;
+      sb+='<div class="dp-row" data-act="sub" data-id="'+s.SubnetId+'" style="cursor:pointer">'+gn(s,s.SubnetId)+' <span class="dp-badge '+(isPub?'pub':'prv')+'">'+(isPub?'PUB':'PRV')+'</span>';
+      sb+=' <span style="color:var(--text-muted);font-size:0.85em">'+s.CidrBlock+'</span>';
+      if(vn) sb+=' <span style="color:var(--text-muted);font-size:0.85em">| '+(gn(vn,vn.VpcId))+'</span>';
+      sb+='</div>';
+    });
+    h+=sec('Connected Subnets',connSubs.length,sb,false);
+  }
+
+  document.getElementById('dpExpandAll').style.display='';
+  document.getElementById('dpCollapseAll').style.display='';
+  document.getElementById('dpTraceFrom').style.display='none';
+  DetailTraceSelection.clear();
+  dpBody.innerHTML=h;
+  dp.classList.add('open');
+  injectDesignToolbar(dpBody,{type:'gateway',gwType:gwType,data:gwId});
+  applyDpScale();
+  dpBody.querySelectorAll('.dp-row[data-act]').forEach(el=>{
+    el.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const act=el.dataset.act,id=el.dataset.id;if(!act||!id)return;
+      MapViewport.zoomToResource(id);
+      setTimeout(()=>{
+        MapViewport.flashResource(id);
+        const detailCtx=detailRuntimeContext();
+        if(act==='sub'&&detailCtx){
+          const sub=(detailCtx.subnets||[]).find(s=>s.SubnetId===id);
+          if(sub){
+            _navStack.push({fn:()=>{ openGatewayPanel(gwId,gwType,lk); MapViewport.zoomToResource(gwId); MapViewport.highlightGateway(gwId); }});
+            openSubnetPanel(sub,sub.VpcId,detailSubnetLookup(detailCtx));
+          }
+        }
+      },300);
+    });
   });
-  if(_currentSnapshot._accountLabel){const al=document.getElementById('accountLabel');if(al)al.value=_currentSnapshot._accountLabel}
-  if(_currentSnapshot._annotations)_annotations=JSON.parse(JSON.stringify(_currentSnapshot._annotations));
-  document.getElementById('historyBanner').style.display='none';
-  document.querySelectorAll('.timeline-dot').forEach(d=>d.classList.remove('active'));
-  _currentSnapshot=null;
-  renderMap();
+  dpBody.querySelectorAll('.dp-link').forEach(el=>{
+    el.addEventListener('click',(e)=>{
+      e.stopPropagation();
+      const nGwId=el.dataset.gwid, nGwType=el.dataset.gwtype;
+      const detailCtx=detailRuntimeContext();
+      if(!nGwId||!detailCtx) return;
+      _navStack.push({fn:()=>{ openGatewayPanel(gwId,gwType,lk); MapViewport.zoomToResource(gwId); MapViewport.highlightGateway(gwId); }});
+      openGatewayPanel(nGwId,nGwType,detailGatewayLookup(detailCtx));
+      MapViewport.zoomToResource(nGwId);
+      MapViewport.highlightGateway(nGwId);
+    });
+  });
+  document.getElementById('dpBack')?.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const prev=_navStack.pop();
+    if(prev&&prev.fn) prev.fn();
+    else dp.classList.remove('open');
+  });
 }
-function _restoreSnapshot(){
-  if(!_viewingHistory)return;
-  _viewingHistory=false;
-  _currentSnapshot=null;
-  document.getElementById('historyBanner').style.display='none';
-  document.querySelectorAll('.ji').forEach(el=>el.readOnly=false);
-  document.querySelectorAll('.timeline-dot').forEach(d=>d.classList.remove('active'));
-  _showToast('Snapshot restored as current state');
-  renderMap();
+
+// Shared resource tree builder - creates hierarchical resource list with children
+function resTooltipHtml(res,subId,subRT){
+  const titleType=res.fullType||res.type;
+  let h='<div class="tt-title" style="color:'+res.col+'">'+esc(titleType)+': '+esc(res.name)+'</div>';
+  if(res.rid) h+='<div class="tt-sub">'+esc(res.rid)+'</div>';
+  h+='<div class="tt-sec">';
+  if(res.ip) h+='<div class="tt-r">IP: <span class="i">'+esc(res.ip)+'</span></div>';
+  if(res.state&&res.type==='PE'){
+    const stCol=res.stateDot||'#10b981';
+    h+='<div class="tt-r">State: <span style="color:'+stCol+'">'+esc(res.state)+'</span></div>';
+  } else if(res.state) h+='<div class="tt-r">State: <span class="'+(res.state==='running'?'a':'d')+'">'+esc(res.state)+'</span></div>';
+  if(res.itype) h+='<div class="tt-r">Type: <span class="i">'+esc(res.itype)+'</span></div>';
+  if(res.lbType) h+='<div class="tt-r">LB Type: <span class="i">'+esc(res.lbType)+'</span></div>';
+  if(res.sgIds) h+='<div class="tt-r">SGs: <span class="s">'+esc(res.sgIds)+'</span></div>';
+  if(res.extra) h+='<div class="tt-r"><span class="i">'+esc(res.extra)+'</span></div>';
+  h+='</div>';
+  if((res.children||[]).length){
+    h+='<div class="tt-sec"><div class="tt-sh">Nested ('+res.children.length+')</div>';
+    res.children.forEach(ch=>{
+      h+='<div class="tt-r"><span style="color:'+ch.col+'">'+esc(ch.type)+'</span> '+esc(ch.name)+(ch.detail?' <span class="i">'+esc(ch.detail)+'</span>':'')+'</div>';
+    });
+    h+='</div>';
+  }
+  const rt=subRT?subRT[subId]:null;
+  if(rt){
+    h+='<div class="tt-sec"><div class="tt-sh">Route Table</div>';
+    (rt.Routes||[]).slice(0,6).forEach(r=>{
+      const dest=esc(r.DestinationCidrBlock||r.DestinationPrefixListId||'?');
+      const tgt=esc(r.GatewayId||r.NatGatewayId||r.TransitGatewayId||r.VpcPeeringConnectionId||'local');
+      h+='<div class="tt-r">'+dest+' <span class="p">-></span> <span class="p">'+tgt+'</span></div>';
+    });
+    if((rt.Routes||[]).length>6) h+='<div class="tt-r">+'+(rt.Routes.length-6)+' more</div>';
+    h+='</div>';
+  }
+  return h;
 }
-function openTimeline(){document.getElementById('timelineBar').classList.add('open');_renderTimeline()}
-function closeTimeline(){document.getElementById('timelineBar').classList.remove('open')}
-// Auto-snapshot on render (with 2-min minimum interval)
-let _lastAutoSnap=0;
-const _origRenderMap=typeof renderMap==='function'?null:null;// renderMap defined elsewhere, hook via event
-// Hook: take auto-snapshot after successful render
-// We add this at the end of the stats bar rendering
+// #endregion UI UTILITIES & DETAIL PANELS
+

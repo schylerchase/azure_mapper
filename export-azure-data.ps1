@@ -7,7 +7,7 @@
     Supports parallel execution, retry on throttling, and all cloud environments.
     Outputs individual JSON files into a timestamped directory.
 .PARAMETER Subscription
-    Azure subscription name or ID (required)
+    Azure subscription name or ID (default: current subscription)
 .PARAMETER ResourceGroup
     Filter exports to a single resource group
 .PARAMETER Location
@@ -22,6 +22,10 @@
     Enable Azure Lighthouse delegated access mode
 .PARAMETER MaxParallel
     Maximum parallel az CLI calls (default: 8)
+.PARAMETER AllLocations
+    Export each populated location to its own subfolder
+.PARAMETER Subscriptions
+    Export multiple subscription names or IDs
 .EXAMPLE
     ./export-azure-data.ps1 -Subscription "My Sub"
     ./export-azure-data.ps1 -s "sub-id" -g "my-rg" -l eastus
@@ -30,13 +34,16 @@
 #>
 [CmdletBinding()]
 param(
-    [Alias("s")][Parameter(Mandatory)][string]$Subscription,
+    [Alias("s")][string]$Subscription,
     [Alias("g")][string]$ResourceGroup,
-    [Alias("l")][string]$Location,
+    [Alias("l", "r")][string]$Location,
     [Alias("c")][string]$Cloud,
     [Alias("t")][string]$TenantId,
     [Alias("o")][string]$OutputDir,
     [switch]$Lighthouse,
+    [switch]$AllLocations,
+    [string[]]$Subscriptions,
+    [switch]$SkipGlobal,
     [int]$MaxParallel = 8
 )
 
@@ -84,6 +91,35 @@ $loginCheck = az account show --only-show-errors 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Not logged in. Run 'az login' first.$(if ($TenantId) { " For tenant access: az login --tenant $TenantId" })"
     exit 1
+}
+
+if (-not $Subscription -and -not $Subscriptions) {
+    $Subscription = (az account show --query id -o tsv --only-show-errors | Out-String).Trim()
+}
+if ($Subscriptions -or $AllLocations) {
+    if (-not $OutputDir) { $OutputDir = "./azure-export-multi-$(Get-Date -Format 'yyyyMMdd-HHmmss')" }
+    $subList = if ($Subscriptions) { @($Subscriptions | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ }) } else { @($Subscription) }
+    foreach ($sub in $subList) {
+        $subOut = Join-Path $OutputDir ($sub -replace '[^\w\-\.]', '-')
+        $child = @{ Subscription=$sub; OutputDir=$subOut; MaxParallel=$MaxParallel }
+        if ($ResourceGroup) { $child.ResourceGroup=$ResourceGroup }
+        if ($AllLocations) {
+            $locations = @(az resource list --subscription $sub --query "[?location!='global'].location" -o tsv --only-show-errors | Where-Object { $_ } | Sort-Object -Unique)
+            $first = $true
+            foreach ($loc in $locations) {
+                $child.Location=$loc
+                $child.OutputDir=Join-Path $subOut $loc
+                $child.SkipGlobal=-not $first
+                & $PSCommandPath @child
+                $first=$false
+            }
+            if ($first) { & $PSCommandPath @child }
+        } else {
+            if ($Location) { $child.Location=$Location }
+            & $PSCommandPath @child
+        }
+    }
+    return
 }
 
 Write-Host "  Setting subscription to: $Subscription"
@@ -176,19 +212,19 @@ $exports = @(
     @{ Label="App Gateways";             File="app-gateways.json";         Cmd=@("network","application-gateway","list");               UseRg=$true  },
     @{ Label="Load Balancers";           File="load-balancers.json";       Cmd=@("network","lb","list");                                UseRg=$true  },
     # == Connectivity ==
-    @{ Label="VPN Connections";          File="vpn-connections.json";      Cmd=@("resource","list","--resource-type","Microsoft.Network/connections"); UseRg=$false },
+    @{ Label="VPN Connections";          File="vpn-connections.json";      Cmd=@("resource","list","--resource-type","Microsoft.Network/connections"); UseRg=$true },
     @{ Label="vWANs";                    File="vwans.json";                Cmd=@("network","vwan","list");                              UseRg=$true  },
     @{ Label="Virtual Hubs";             File="vhubs.json";                Cmd=@("network","vhub","list");                              UseRg=$true  },
-    @{ Label="VNet Gateways";            File="vnet-gateways.json";        Cmd=@("resource","list","--resource-type","Microsoft.Network/virtualNetworkGateways"); UseRg=$false },
+    @{ Label="VNet Gateways";            File="vnet-gateways.json";        Cmd=@("resource","list","--resource-type","Microsoft.Network/virtualNetworkGateways"); UseRg=$true },
     @{ Label="Express Route Circuits";   File="express-routes.json";       Cmd=@("network","express-route","list");                     UseRg=$true  },
     # == Storage ==
-    @{ Label="Disks";                    File="disks.json";                Cmd=@("resource","list","--resource-type","Microsoft.Compute/disks"); UseRg=$false },
+    @{ Label="Disks";                    File="disks.json";                Cmd=@("resource","list","--resource-type","Microsoft.Compute/disks"); UseRg=$true },
     @{ Label="Snapshots";                File="snapshots.json";            Cmd=@("snapshot","list");                                    UseRg=$true  },
     @{ Label="Storage Accounts";         File="storage-accounts.json";     Cmd=@("storage","account","list");                           UseRg=$true  },
     @{ Label="NetApp Files";             File="netapp-accounts.json";      Cmd=@("netappfiles","account","list");                       UseRg=$true  },
     # == DNS ==
-    @{ Label="DNS Zones";                File="dns-zones.json";            Cmd=@("resource","list","--resource-type","Microsoft.Network/dnsZones"); UseRg=$false },
-    @{ Label="Private DNS Zones";        File="private-dns-zones.json";    Cmd=@("resource","list","--resource-type","Microsoft.Network/privateDnsZones"); UseRg=$false },
+    @{ Label="DNS Zones";                File="dns-zones.json";            Cmd=@("resource","list","--resource-type","Microsoft.Network/dnsZones"); UseRg=$true },
+    @{ Label="Private DNS Zones";        File="private-dns-zones.json";    Cmd=@("resource","list","--resource-type","Microsoft.Network/privateDnsZones"); UseRg=$true },
     # == Security & Edge ==
     @{ Label="Front Doors";              File="front-doors.json";          Cmd=@("network","front-door","list");                        UseRg=$true  },
     @{ Label="WAF Policies";             File="waf-policies.json";         Cmd=@("network","application-gateway","waf-policy","list");  UseRg=$true  },
@@ -210,7 +246,7 @@ $exports = @(
     @{ Label="Data Factories";           File="data-factories.json";       Cmd=@("datafactory","list");                                 UseRg=$true  },
     @{ Label="IoT Hubs";                 File="iot-hubs.json";             Cmd=@("iot","hub","list");                                   UseRg=$true  },
     # == Observability ==
-    @{ Label="Application Insights";     File="app-insights.json";         Cmd=@("resource","list","--resource-type","Microsoft.Insights/components"); UseRg=$false },
+    @{ Label="Application Insights";     File="app-insights.json";         Cmd=@("resource","list","--resource-type","Microsoft.Insights/components"); UseRg=$true },
     @{ Label="Log Analytics Workspaces"; File="log-analytics.json";        Cmd=@("monitor","log-analytics","workspace","list");         UseRg=$true  },
     @{ Label="Monitor Action Groups";    File="action-groups.json";        Cmd=@("monitor","action-group","list");                      UseRg=$true  },
     @{ Label="Monitor Metric Alerts";    File="metric-alerts.json";        Cmd=@("monitor","metrics","alert","list");                   UseRg=$true  },
@@ -227,7 +263,7 @@ $exports = @(
     # == Infrastructure ==
     @{ Label="Resource Groups";          File="resource-groups.json";      Cmd=@("group","list");                                       UseRg=$false },
     @{ Label="Network Watchers";         File="network-watchers.json";     Cmd=@("network","watcher","list");                           UseRg=$false },
-    @{ Label="Azure Arc Machines";       File="arc-machines.json";         Cmd=@("resource","list","--resource-type","Microsoft.HybridCompute/machines"); UseRg=$false },
+    @{ Label="Azure Arc Machines";       File="arc-machines.json";         Cmd=@("resource","list","--resource-type","Microsoft.HybridCompute/machines"); UseRg=$true },
     @{ Label="Recovery Services Vaults"; File="recovery-vaults.json";      Cmd=@("backup","vault","list");                              UseRg=$true  },
     @{ Label="Managed Applications";     File="managed-apps.json";         Cmd=@("managedapp","list");                                  UseRg=$true  },
     @{ Label="Azure Maps";               File="maps-accounts.json";        Cmd=@("maps","account","list");                              UseRg=$true  }
@@ -244,6 +280,7 @@ $results = $exports | ForEach-Object -ThrottleLimit $MaxParallel -Parallel {
     $subFlags  = $using:commonFlags
     $rgFlags   = $using:commonRgFlags
     $locFilter = $using:Location
+    $skipGlobal = $using:SkipGlobal
     $maxRetry  = 3
 
     $flags = if ($export.UseRg) { $rgFlags } else { $subFlags }
@@ -292,8 +329,11 @@ $results = $exports | ForEach-Object -ThrottleLimit $MaxParallel -Parallel {
             }
 
             # Apply location filter if specified
-            if ($locFilter -and $items.Count -gt 0) {
-                $items = @($items | Where-Object { $_.location -and $_.location -ieq $locFilter })
+            if (($locFilter -or $skipGlobal) -and $items.Count -gt 0) {
+                $items = @($items | Where-Object {
+                    if (-not $_.location -or $_.location -ieq 'global') { -not $skipGlobal }
+                    else { -not $locFilter -or $_.location -ieq $locFilter }
+                })
             }
 
             if ($items.Count -eq 0) {

@@ -26,27 +26,6 @@ export function showToast(msg, duration = 3000) {
 }
 
 /**
- * Close all dashboard panels except optionally one
- * @param {string} except - Dashboard ID to keep open
- */
-export function closeAllDashboards(except) {
-  const ids = ['udash', 'diffDash', 'notesPanel'];
-  ids.forEach(function(id) {
-    if (id === except) return;
-    const el = document.getElementById(id);
-    if (el && el.classList.contains('open')) {
-      el.classList.remove('open');
-    }
-  });
-  // Reset unified dashboard tab if closing it
-  if (except !== 'udash' && typeof window.setUdashTab === 'function') {
-    window.setUdashTab(null);
-  } else if (except !== 'udash' && window._udashTab !== undefined) {
-    window._udashTab = null; // Fallback until setUdashTab is wired
-  }
-}
-
-/**
  * Toggle a CSS class on an element
  * @param {string|HTMLElement} el - Element ID or element
  * @param {string} className - Class name to toggle

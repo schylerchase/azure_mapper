@@ -106,6 +106,29 @@ test.describe('Flow Mode', () => {
     }
   });
 
+  test('flow trace renders the detail panel owner controls', async ({ page }) => {
+    const subnetCount = await page.evaluate(() =>
+      document.querySelectorAll('.subnet-node').length
+    );
+    test.skip(subnetCount < 2, 'demo map needs at least two subnets for a visible flow trace');
+
+    const errors = await captureErrors(page, async () => {
+      await page.evaluate(() => enterFlowMode());
+      await page.evaluate(() => {
+        const nodes = document.querySelectorAll('.subnet-node');
+        nodes[0].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        nodes[1].dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      });
+      await page.locator('#detailPanel.open .flow-panel').waitFor({ state: 'visible', timeout: 5000 });
+    });
+
+    expect(errors).toEqual([]);
+    await expect(page.locator('#dpTitle')).toHaveText('Traffic Flow Trace');
+    await expect(page.locator('#detailPanel.open .flow-panel')).toContainText('Hop-by-Hop Trace');
+    await expect(page.locator('#flowRetraceBtn')).toBeVisible();
+    await expect(page.locator('.flow-port-btn')).toHaveCount(7);
+  });
+
   test('no console errors during full flow lifecycle', async ({ page }) => {
     const errors = await captureErrors(page, async () => {
       await page.evaluate(() => enterFlowMode());

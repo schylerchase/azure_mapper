@@ -197,6 +197,11 @@ describe('matchFile', () => {
     assert.equal(matchFile('route-tables.json', content), 'in_udrs');
   });
 
+  it('returns in_synapse for Synapse workspace export filenames', () => {
+    const content = '[{"id":"/subscriptions/x/resourceGroups/rg/providers/Microsoft.Synapse/workspaces/syn1","type":"Microsoft.Synapse/workspaces","name":"syn1"}]';
+    assert.equal(matchFile('synapse-workspaces.json', content), 'in_synapse');
+  });
+
   it('returns in_vnets via content fallback for unknown filename with addressSpace key', () => {
     const content = '{"addressSpace":{"addressPrefixes":["10.0.0.0/8"]},"name":"hub"}';
     assert.equal(matchFile('UNKNOWN.json', content), 'in_vnets');
@@ -206,7 +211,7 @@ describe('matchFile', () => {
     assert.equal(matchFile('random.json', '{"foo":"bar"}'), null);
   });
 
-  it('fileMap has exactly 69 entries', () => {
-    assert.equal(fileMap.length, 69);
+  it('fileMap has exactly 70 entries', () => {
+    assert.equal(fileMap.length, 70);
   });
 });

@@ -1,9 +1,37 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   _DIFF_KEYS, _DIFF_VOLATILE, _DIFF_STRUCTURAL,
-  normalizeResource, normalizeNSG, classifyChange, _fieldDiff, computeDiff
+  _DIFF_TEXTAREA_IDS,
+  normalizeResource, normalizeNSG, classifyChange, _fieldDiff, computeDiff,
+  _buildCtxFromTextareas
 } from '../../src/modules/diff-engine.js';
+
+const diffEngineSource = readFileSync('src/modules/diff-engine.js', 'utf8');
+
+describe('module boundary', () => {
+  it('stays pure and does not pull in browser/runtime dashboard wiring', () => {
+    const forbidden = [
+      'document.',
+      'window.',
+      '_rlCtx',
+      '_mapG',
+      '_showToast',
+      'downloadBlob',
+      'openUnifiedDash',
+      '_UDASH_TABS'
+    ];
+
+    for (const token of forbidden) {
+      assert.equal(
+        diffEngineSource.includes(token),
+        false,
+        `diff-engine.js should not contain runtime bridge token ${token}`
+      );
+    }
+  });
+});
 
 describe('constants', () => {
   it('_DIFF_KEYS has expected Azure resource types', () => {
@@ -26,6 +54,15 @@ describe('constants', () => {
     assert.ok(_DIFF_STRUCTURAL.has('addressPrefix'));
     assert.ok(_DIFF_STRUCTURAL.has('location'));
     assert.ok(_DIFF_STRUCTURAL.has('priority'));
+  });
+  it('_DIFF_TEXTAREA_IDS uses active sidebar IDs for diff reconstruction', () => {
+    assert.equal(_DIFF_TEXTAREA_IDS.privateEndpoints[0], 'in_pvteps');
+    assert.equal(_DIFF_TEXTAREA_IDS.appGateways[0], 'in_albs');
+    assert.equal(_DIFF_TEXTAREA_IDS.functionApps[0], 'in_funcapps');
+    assert.equal(_DIFF_TEXTAREA_IDS.redisCaches[0], 'in_elasticache');
+    assert.equal(_DIFF_TEXTAREA_IDS.peerings[0], 'in_peer');
+    assert.equal(_DIFF_TEXTAREA_IDS.firewalls[0], 'in_azfws');
+    assert.equal(_DIFF_TEXTAREA_IDS.loadBalancers[0], 'in_tgs');
   });
 });
 
@@ -218,5 +255,49 @@ describe('computeDiff', () => {
     assert.equal(r.total.modified, 1);
     // "name" is classified as metadata — no structural change
     assert.equal(r.modified[0].hasStructural, false);
+  });
+});
+
+describe('_buildCtxFromTextareas', () => {
+  it('reconstructs diff context from active Azure Mapper textarea IDs', () => {
+    const textareas = {
+      in_pvteps: JSON.stringify([{ id: 'pe-1' }]),
+      in_albs: JSON.stringify({ value: [{ id: 'agw-1' }] }),
+      in_funcapps: JSON.stringify([{ id: 'fn-1' }]),
+      in_elasticache: JSON.stringify([{ id: 'redis-1' }]),
+      in_peer: JSON.stringify([{ id: 'peer-1' }]),
+      in_azfws: JSON.stringify([{ id: 'fw-1' }]),
+      in_tgs: JSON.stringify([{ id: 'lb-1' }]),
+    };
+
+    const ctx = _buildCtxFromTextareas(textareas);
+
+    assert.equal(ctx.privateEndpoints[0].id, 'pe-1');
+    assert.equal(ctx.appGateways[0].id, 'agw-1');
+    assert.equal(ctx.functionApps[0].id, 'fn-1');
+    assert.equal(ctx.redisCaches[0].id, 'redis-1');
+    assert.equal(ctx.peerings[0].id, 'peer-1');
+    assert.equal(ctx.firewalls[0].id, 'fw-1');
+    assert.equal(ctx.loadBalancers[0].id, 'lb-1');
+  });
+
+  it('keeps backward compatibility with old saved snapshot textarea aliases', () => {
+    const ctx = _buildCtxFromTextareas({
+      in_privateendpoints: JSON.stringify([{ id: 'old-pe-1' }]),
+      in_agws: JSON.stringify([{ id: 'old-agw-1' }]),
+      in_functions: JSON.stringify([{ id: 'old-fn-1' }]),
+      in_redis: JSON.stringify([{ id: 'old-redis-1' }]),
+      in_peerings: JSON.stringify([{ id: 'old-peer-1' }]),
+      in_firewalls: JSON.stringify([{ id: 'old-fw-1' }]),
+      in_lbs: JSON.stringify([{ id: 'old-lb-1' }]),
+    });
+
+    assert.equal(ctx.privateEndpoints[0].id, 'old-pe-1');
+    assert.equal(ctx.appGateways[0].id, 'old-agw-1');
+    assert.equal(ctx.functionApps[0].id, 'old-fn-1');
+    assert.equal(ctx.redisCaches[0].id, 'old-redis-1');
+    assert.equal(ctx.peerings[0].id, 'old-peer-1');
+    assert.equal(ctx.firewalls[0].id, 'old-fw-1');
+    assert.equal(ctx.loadBalancers[0].id, 'old-lb-1');
   });
 });

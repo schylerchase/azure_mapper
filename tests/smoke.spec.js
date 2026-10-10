@@ -31,10 +31,31 @@ test.describe('App Load & Demo Data', () => {
 
   test('toolbar dock buttons are visible', async ({ page }) => {
     await loadDemo(page);
-    const buttons = ['#compDashBtn', '#budrBtn', '#inventoryBtn', '#reportsBtn', '#flowBtn'];
+    const buttons = ['#compDashBtn', '#budrBtn', '#inventoryBtn', '#reportsBtn', '#flowBtn', '#notesBtn', '#timelineBtn'];
     for (const sel of buttons) {
       await expect(page.locator(sel)).toBeVisible();
     }
+  });
+
+  test('notes and timeline panels open from the dock without errors', async ({ page }) => {
+    await loadDemo(page);
+
+    const errors = await captureErrors(page, async () => {
+      await page.locator('#notesBtn').click();
+      await expect(page.locator('#notesPanel')).toHaveClass(/open/);
+      await page.locator('#notesPanelClose').click();
+      await expect(page.locator('#notesPanel')).not.toHaveClass(/open/);
+
+      await page.locator('#timelineBtn').click();
+      await expect(page.locator('#timelineBar')).toHaveClass(/open/);
+    });
+
+    expect(errors).toEqual([]);
+  });
+
+  test('database inputs include Synapse workspace import', async ({ page }) => {
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#in_synapse')).toBeAttached();
   });
 
   test('VPC groups render with distinct bounding boxes', async ({ page }) => {

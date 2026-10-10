@@ -1,10 +1,9 @@
-// Export Utilities: VSDX helpers, download, layout calculations
+// Export Utilities: VSDX helpers and layout calculations
 // PNG/SVG export (DOM-dependent) remains inline in index.html.
 // Lucid/Landing-Zone export (deeply coupled to DOM data) remains inline.
 
 import { esc, gn, sid, clsGw } from './utils.js';
 import { gwNames } from './state.js';
-import { showToast } from './dom-helpers.js';
 
 // === Constants: VSDX layout sizing ===
 export const PX = 96;
@@ -375,48 +374,6 @@ export function resolveColor(cssVar) {
 }
 
 /**
- * Download a Blob as a file.
- * In Electron, delegates to the native export dialog.
- * In browsers, creates a temporary anchor element for programmatic download.
- * @param {Blob} blob - The file content
- * @param {string} name - Suggested filename
- */
-export function downloadBlob(blob, name) {
-  const isElectron = typeof window !== 'undefined' && !!window.electronAPI;
-  if (isElectron) {
-    const ext = (name.match(/\.([^.]+)$/) || [])[1] || '*';
-    const filters = [
-      { name: ext.toUpperCase() + ' Files', extensions: [ext] },
-      { name: 'All Files', extensions: ['*'] }
-    ];
-    if (blob.type && blob.type.startsWith('text')) {
-      blob.text().then(text => {
-        window.electronAPI.exportFile(text, name, filters)
-          .then(p => { if (p) showToast('Exported: ' + p.split('/').pop()); })
-          .catch(e => console.error('Export failed:', e));
-      });
-    } else {
-      blob.arrayBuffer().then(ab => {
-        window.electronAPI.exportFile(new Uint8Array(ab), name, filters)
-          .then(p => { if (p) showToast('Exported: ' + p.split('/').pop()); })
-          .catch(e => console.error('Export failed:', e));
-      });
-    }
-    return;
-  }
-  // Browser download via temporary anchor element
-  const a = document.createElement('a');
-  const objUrl = URL.createObjectURL(blob);
-  a.href = objUrl;
-  a.download = name;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(function () { URL.revokeObjectURL(objUrl); }, 1000);
-}
-
-/**
  * Compute subnet heights based on their display text
  * @param {Array} subnets - Array of subnet objects
  * @param {Object} ctx - Context for buildSubText
@@ -451,28 +408,3 @@ export function computePageDimensions(totalWidth, busStartY, busLaneIdx, busLane
   return { pgWpx, pgHpx, pgW, pgH };
 }
 
-// === Window Bridge ===
-if (typeof window !== 'undefined') {
-  // Expose functions that are called from inline code in index.html
-  window.downloadBlob = downloadBlob;
-  window.resolveColor = resolveColor;
-  window._sanitizeName = sanitizeName;
-
-  // VSDX helpers: lazy-init to avoid setup cost when VSDX export is unused
-  let _vsdxCache = null;
-  Object.defineProperty(window, '_vsdx', {
-    get() {
-      if (!_vsdxCache) _vsdxCache = {
-        resetShapeState, getShapes, getPolyEdges, getIdMap, setIdMapEntry,
-        xmlEsc, uid, addRect, addPolyEdge, buildSubText, buildShape,
-        buildPolyConnector, buildVsdxXml, computeSubnetHeights,
-        computePageDimensions, gwStyles,
-        PX, SUB_W, SUB_H_MIN, SUB_GAP, VNET_PAD, VNET_HDR,
-        GW_INSIDE_W, GW_INSIDE_H, GW_INSIDE_GAP, GW_ROW_H,
-        COL_GAP, LINE_H, TOP_MARGIN, toIn
-      };
-      return _vsdxCache;
-    },
-    configurable: true
-  });
-}
