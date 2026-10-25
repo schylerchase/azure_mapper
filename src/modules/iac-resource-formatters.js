@@ -148,6 +148,16 @@ export function _iacExportBlock(data, format) {
     if (!attachedOs && !image?.id && !image?.publisher) missing.push('an OS image');
     if (missing.length) warnings.push('VM "' + (vm.name || vm.id) + '" needs ' + missing.join(' and ') + ' before IaC export. Configure its VM data and generate again.');
   });
+  if (format === 'terraform') {
+    (data.nics || []).forEach(nic => {
+      ((nic.properties || nic).ipConfigurations || []).forEach(ip => {
+        const version = (ip.properties || ip).privateIPAddressVersion;
+        if (version != null && version !== '' && !['IPv4', 'IPv6'].includes(version)) {
+          warnings.push('NIC "' + (nic.name || nic.id) + '" IP address version must be IPv4 or IPv6 before Terraform export.');
+        }
+      });
+    });
+  }
   const keys = ['vnets', 'nsgs', 'subnetNsgs', 'udrs', 'natGateways', 'vms', 'nics', 'disks', 'peerings', 'firewalls', 'bastions'];
   const resources = keys.flatMap(key => data[key] || []).concat(_natPublicIps(data));
   if (format === 'terraform') {

@@ -437,7 +437,7 @@ export function generateTerraform(data, options) {
       lines.push('  ip_configuration {');
       lines.push('    name                          = "' + _hclEsc(ipc.name || 'ipconfig' + idx) + '"');
       const ipcProps = ipc.properties || ipc;
-      lines.push('    private_ip_address_version    = "' + (ipcProps.privateIPAddressVersion || 'IPv4') + '"');
+      lines.push('    private_ip_address_version    = "' + _hclEsc(ipcProps.privateIPAddressVersion || 'IPv4') + '"');
       if (ipConfigs.length > 1 || typeof ipcProps.primary === 'boolean') lines.push('    primary                       = ' + (typeof ipcProps.primary === 'boolean' ? ipcProps.primary : idx === 0));
       const subId = ipcProps.subnet?.id;
       if (subId) {
