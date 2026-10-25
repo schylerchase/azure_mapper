@@ -1008,9 +1008,10 @@ function _generateCLI(ch){
     const type=designGatewayType(params.GatewayType);
     if(type==='AZFW'){
       const name=params.Name||'new-firewall';
-      cmds.push(`az network public-ip create --name ${name}-pip --resource-group ${rg} --sku Standard`);
-      cmds.push(`az network firewall create --name ${name} --resource-group ${rg} --location $LOCATION --sku AZFW_VNet --tier Standard`);
-      cmds.push(`az network firewall ip-config create --name ${name}-ipconfig --firewall-name ${name} --resource-group ${rg} --public-ip-address ${name}-pip --vnet-name $VNET_NAME`);
+      const rgArg=params.resourceGroup?quote(params.resourceGroup):'$RESOURCE_GROUP';
+      cmds.push(`az network public-ip create --name ${quote(name+'-pip')} --resource-group ${rgArg} --sku Standard`);
+      cmds.push(`az network firewall create --name ${quote(name)} --resource-group ${rgArg} --location $LOCATION --sku AZFW_VNet --tier Standard`);
+      cmds.push(`az network firewall ip-config create --name ${quote(name+'-ipconfig')} --firewall-name ${quote(name)} --resource-group ${rgArg} --public-ip-address ${quote(name+'-pip')} --vnet-name $VNET_NAME`);
     }
     if(type==='NAT'){
       const subnet=String(params.SubnetId||'').match(/^\/subscriptions\/([^/]+)\/resourceGroups\/([^/]+)\/providers\/Microsoft.Network\/virtualNetworks\/([^/]+)\/subnets\/([^/]+)$/i);
