@@ -141,6 +141,16 @@ export function _iacExportBlock(data, format) {
     if (attachedOs && !props.storageProfile?.osDisk?.managedDisk?.id) {
       warnings.push('VM "' + (vm.name || vm.id) + '" needs the managed OS disk ID before exporting an attached OS disk. Configure its VM data and generate again.');
     }
+    if (format === 'bicep') {
+      (props.storageProfile?.dataDisks || []).forEach((disk, index) => {
+        if (!Number.isSafeInteger(disk.lun) || disk.lun < 0) {
+          warnings.push('VM "' + (vm.name || vm.id) + '" data disk ' + (index + 1) + ' needs a non-negative safe integer lun before Bicep export.');
+        }
+        if (disk.diskSizeGB != null && (!Number.isSafeInteger(disk.diskSizeGB) || disk.diskSizeGB <= 0)) {
+          warnings.push('VM "' + (vm.name || vm.id) + '" data disk ' + (index + 1) + ' needs a positive safe integer diskSizeGB before Bicep export.');
+        }
+      });
+    }
     if (!vm._designCreated && !String(vm.id || '').startsWith('vm-design-')) return;
     const missing = [];
     if (!props.networkProfile?.networkInterfaces?.length) missing.push('a network interface');
