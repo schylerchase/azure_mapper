@@ -1052,7 +1052,7 @@ function _generateCLI(ch){
     if(t==='SQL')cmds.push(`az sql server delete --name $SQL_SERVER --resource-group ${rg} --yes`);
     if(t==='FunctionApp')cmds.push(`az functionapp delete --name $FUNC_NAME --resource-group ${rg}`);
     if(t==='Redis')cmds.push(`az redis delete --name $REDIS_NAME --resource-group ${rg} --yes`);
-    if(t==='Synapse')cmds.push(`az synapse workspace delete --name $SYNAPSE_NAME --resource-group ${rg} --yes`);
+    if(t==='Synapse')cmds.push(`az synapse workspace delete --name $SYNAPSE_NAME --resource-group ${params.resourceGroup?quote(params.resourceGroup):'$RESOURCE_GROUP'} --yes`);
     if(t==='Container')cmds.push(`az container delete --name $CONTAINER_NAME --resource-group ${rg} --yes`);
     if(t==='Subnet')cmds.push(`az network vnet subnet delete --name $SUBNET_NAME --resource-group ${rg} --vnet-name $VNET_NAME`);
     if(t==='AZFW')cmds.push(`az network firewall delete --name $FW_NAME --resource-group ${rg}`);
