@@ -134,6 +134,18 @@ export function _iacExportBlock(data, format) {
   const warnings = [];
   (data.vms || []).forEach(vm => {
     const props = vm.properties || vm;
+    if (format === 'terraform') {
+      (props.storageProfile?.dataDisks || []).forEach(disk => {
+        if (!disk.managedDisk?.id) return;
+        if (!Number.isSafeInteger(disk.lun) || disk.lun < 0) {
+          warnings.push('VM "' + (vm.name || vm.id) + '" data-disk LUN must be a nonnegative integer before Terraform export.');
+        }
+        const caching = disk.caching;
+        if (caching != null && caching !== '' && !['None', 'ReadOnly', 'ReadWrite'].includes(caching)) {
+          warnings.push('VM "' + (vm.name || vm.id) + '" data-disk caching must be None, ReadOnly or ReadWrite before Terraform export.');
+        }
+      });
+    }
     const attachedOs = String(props.storageProfile?.osDisk?.createOption || '').toLowerCase() === 'attach';
     if (attachedOs && format === 'terraform') {
       warnings.push('VM "' + (vm.name || vm.id) + '" attaches an existing OS disk, which the Terraform VM resource used by this exporter does not support. Export ARM/Bicep or exclude this VM from the Terraform export.');

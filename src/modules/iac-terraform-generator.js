@@ -564,7 +564,7 @@ export function generateTerraform(data, options) {
       lines.push('  managed_disk_id    = ' + _tfRef(disk.managedDisk.id.toLowerCase(), 'id'));
       lines.push('  virtual_machine_id = ' + _tfRef((vm.id || '').toLowerCase(), 'id'));
       lines.push('  lun                = ' + disk.lun);
-      lines.push('  caching            = "' + (disk.caching || 'None') + '"');
+      lines.push('  caching            = "' + _hclEsc(disk.caching || 'None') + '"');
       lines.push('}');
       lines.push('');
     });
