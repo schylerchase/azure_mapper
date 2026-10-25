@@ -8,6 +8,7 @@ const {
     buildScanArgs,
     parseOutputDir,
     resolveOutputDir,
+    scanPaths,
     validateTextPayload
 } = require('./main-utils');
 const pkg = require('./package.json');
@@ -35,7 +36,7 @@ function readJsonFolder(folder) {
     let totalBytes = 0;
     const data = {};
     for (const file of files) {
-        if (!file.endsWith('.json')) continue;
+        if (!file.endsWith('.json') || file === '_export-log.json') continue;
         const fullPath = path.join(folder, file);
         const stat = fs.statSync(fullPath);
         if (!stat.isFile()) continue;
@@ -201,6 +202,13 @@ async function importExportFolder() {
 }
 
 // IPC handlers
+ipcMain.handle('file:read-export-script', async (_event, name) => {
+    if (!['export-azure-data.sh', 'export-azure-data.ps1'].includes(name)) {
+        throw new Error('Invalid export script name');
+    }
+    return fs.readFileSync(path.join(__dirname, name), 'utf8');
+});
+
 ipcMain.handle('azure:check-cli', async () => {
     return new Promise((resolve) => {
         // shell: true needed on Windows to resolve az.cmd; no user input in this call
@@ -219,7 +227,8 @@ ipcMain.handle('azure:scan', async (event, payload = {}) => {
         mainWindow?.webContents.send('scan:error', error);
         return fail(error);
     }
-    const scriptPath = path.join(__dirname, 'export-azure-data.sh');
+    const { scriptPath, cwd } = scanPaths({ isPackaged: app.isPackaged,
+        resourcesPath: process.resourcesPath, appDir: __dirname, userDataDir: app.getPath('userData') });
     if (!fs.existsSync(scriptPath)) {
         const error = 'export-azure-data.sh not found';
         mainWindow?.webContents.send('scan:error', error);
@@ -229,6 +238,7 @@ ipcMain.handle('azure:scan', async (event, payload = {}) => {
     let args;
     try {
         args = buildScanArgs(scriptPath, subscription, resourceGroup);
+        fs.mkdirSync(cwd, { recursive: true });
     } catch (err) {
         mainWindow?.webContents.send('scan:error', err.message);
         return fail(err.message);
@@ -236,7 +246,7 @@ ipcMain.handle('azure:scan', async (event, payload = {}) => {
 
     return new Promise((resolve) => {
         // No shell: true -- args are passed directly to bash, preventing shell injection
-        const proc = spawn('bash', args, { cwd: __dirname });
+        const proc = spawn('bash', args, { cwd });
         currentScanProc = proc;
         let stdout = '', stderr = '';
         proc.stdout.on('data', d => {
@@ -251,7 +261,7 @@ ipcMain.handle('azure:scan', async (event, payload = {}) => {
                 let files = null;
                 if (outDir) {
                     try {
-                        const resolvedOutDir = resolveOutputDir(__dirname, outDir);
+                        const resolvedOutDir = resolveOutputDir(cwd, outDir);
                         files = readJsonFolder(resolvedOutDir);
                     } catch (err) {
                         const payload = { code, outDir, error: `Scan completed, but output import failed: ${err.message}` };
@@ -311,11 +321,11 @@ ipcMain.handle('file:save', async (event, payload = {}) => {
     }
 });
 
-ipcMain.handle('dialog:saveAs', async () => {
+ipcMain.handle('dialog:saveAs', async (event, name) => {
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
         title: 'Save Azure Map Project',
         filters: [{ name: 'Azure Map', extensions: ['azuremap'] }],
-        defaultPath: 'network-map.azuremap'
+        defaultPath: typeof name === 'string' && name.endsWith('.azuremap') ? path.basename(name) : 'network-map.azuremap'
     });
     return { canceled, filePath };
 });

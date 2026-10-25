@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded',_initThemeBtn);
 <!-- OPTIMIZED: Bundled locally to eliminate CDN dependency (was cdnjs.cloudflare.com) -->
 <script src="libs/d3.custom.min.js"></script>
 <script src="libs/jszip.min.js"></script>
-<script src="dist/app.bundle.js?v=969770b3"></script>
+<script src="dist/app.bundle.js?v=5e8b00c2"></script>
 <link rel="stylesheet" href="src/styles/main.css?v=5">
 </head>
 <body>
@@ -50,7 +50,7 @@ document.addEventListener('DOMContentLoaded',_initThemeBtn);
       <select id="cloudEnvSelector" style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:4px;color:var(--text-primary);font-family:'Segoe UI',system-ui,sans-serif;font-size:10px;padding:4px 6px">
         <option value="commercial">Azure Commercial</option>
         <option value="gcc">Azure GCC</option>
-        <option value="gcchigh">Azure GCC High</option>
+        <option value="gcc-high">Azure GCC High</option>
         <option value="dod">Azure DoD</option>
       </select>
     </div>
@@ -338,6 +338,7 @@ document.addEventListener('DOMContentLoaded',_initThemeBtn);
       <h3>Annotations</h3>
       <div style="display:flex;gap:6px;align-items:center">
         <span id="noteCount" style="font-size:10px;color:var(--text-muted);font-family:'Segoe UI',system-ui,sans-serif"></span>
+        <button id="notesAddBtn" type="button" style="background:none;border:1px solid var(--accent-orange);color:var(--accent-orange);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'Segoe UI',system-ui,sans-serif">Add Note</button>
         <button id="notesPanelClose" style="background:none;border:1px solid var(--border);color:var(--text-muted);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-family:'Segoe UI',system-ui,sans-serif">Close [Esc]</button>
       </div>
     </div>
@@ -574,7 +575,7 @@ document.addEventListener('DOMContentLoaded',_initThemeBtn);
   </div>
 </div>
 <!-- #endregion HTML MAIN CONTENT -->
-<script src="dist/app-core.js?v=83a231a9"></script>
+<script src="dist/app-core.js?v=653b51a0"></script>
 <script>
 if(location.protocol==='https:'&&location.hostname!=='localhost'){
   ['/_vercel/insights/script.js','/_vercel/speed-insights/script.js'].forEach(function(src){

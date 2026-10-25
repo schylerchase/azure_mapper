@@ -1,5 +1,5 @@
 // Shared application state: ONLY cross-cutting variables used by 5+ regions.
-// All domain-specific state lives in its owning module (design-mode.js, flow-tracing.js, etc.)
+// Domain-specific state lives in its owning module (design-mode-runtime.js, flow-tracing.js, etc.)
 
 // Core resource context: the parsed Azure data object passed to every renderer.
 // Field names mirror Azure resource categories collected from ARM / REST APIs.

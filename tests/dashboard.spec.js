@@ -9,6 +9,7 @@ test.describe('Dashboard Tabs', () => {
   const tabs = [
     { id: 'compliance', button: '#compDashBtn', expects: 'finding' },
     { id: 'budr', button: '#budrBtn', expects: 'tier' },
+    { id: 'firewall', button: '#firewallBtn', expects: 'firewall' },
     { id: 'inventory', button: '#inventoryBtn', expects: 'resource' },
     { id: 'classification', button: '#govBtn', expects: 'rule' },
     { id: 'reports', button: '#reportsBtn', expects: 'report' },
@@ -55,6 +56,37 @@ test.describe('Dashboard Tabs', () => {
     const combined = toolbar + body;
     // Demo generates ~6000 findings — should see numbers
     expect(combined).toMatch(/\d+/);
+  });
+
+  test('compliance CSV export uses the download adapter', async ({ page }) => {
+    await openDashTab(page, 'compliance');
+
+    await page.evaluate(() => {
+      window.__testSavedComplianceBlob = null;
+      window.AppDownloads.saveBlob = function(blob, name) {
+        window.__testSavedComplianceBlob = {
+          name,
+          size: blob.size,
+          type: blob.type,
+        };
+      };
+    });
+
+    const errors = await captureErrors(page, async () => {
+      await page.locator('#compExportBtn').click();
+      await expect(page.locator('#compExportModal')).toHaveClass(/open/);
+      await page.selectOption('#compExpFormat', 'csv');
+      await expect(page.locator('#compExpDownload')).toBeEnabled();
+      await page.locator('#compExpDownload').click();
+    });
+
+    expect(errors).toEqual([]);
+
+    const savedBlob = await page.evaluate(() => window.__testSavedComplianceBlob);
+    expect(savedBlob).not.toBeNull();
+    expect(savedBlob.name).toBe('compliance-report.csv');
+    expect(savedBlob.type).toBe('text/csv');
+    expect(savedBlob.size).toBeGreaterThan(100);
   });
 
   test('inventory tab renders resource table', async ({ page }) => {

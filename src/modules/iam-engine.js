@@ -65,6 +65,13 @@ function _subFromScope(scope) {
   return m ? m[1] : '';
 }
 
+function _assignmentIdentity(assignment) {
+  const props=assignment.properties||assignment;
+  const scope=props.scope||assignment.scope||'';
+  return {resourceId:assignment.id||'',assignmentId:assignment.id||'',scope,
+    principalId:props.principalId||'',_subscriptionId:_subFromScope(scope||assignment.id||'')};
+}
+
 // ---------------------------------------------------------------------------
 // Permission classification
 // ---------------------------------------------------------------------------
@@ -188,6 +195,7 @@ export function analyzeRoleAssignments(assignments, definitions) {
       findings.push({
         severity: 'HIGH',
         control: 'RBAC-6',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: props.principalDisplayName || props.principalId || '',
@@ -207,6 +215,7 @@ export function analyzeRoleAssignments(assignments, definitions) {
         findings.push({
           severity: 'HIGH',
           control: 'RBAC-7',
+          ..._assignmentIdentity(a),
           framework: 'RBAC',
           resource: props.principalId || '',
           resourceName: props.principalDisplayName || props.principalId || '',
@@ -225,6 +234,7 @@ export function analyzeRoleAssignments(assignments, definitions) {
         findings.push({
           severity: 'HIGH',
           control: 'RBAC-8',
+          resourceId:def.id||'',
           framework: 'RBAC',
           resource: def.id || '',
           resourceName: def.properties?.roleName || def.name || '',
@@ -259,6 +269,14 @@ export function analyzeRoleAssignments(assignments, definitions) {
     }
   });
 
+  findings.forEach(f=>{
+    if(f._subscriptionId)return;
+    const directSubscription=_subFromScope(f.resource||'');
+    if(directSubscription){f._subscriptionId=directSubscription;return;}
+    const subscriptions=new Set(assignments.filter(a=>(a.properties||a).principalId===f.resource)
+      .map(a=>_subFromScope((a.properties||a).scope||a.scope||a.id||'')).filter(Boolean));
+    if(subscriptions.size===1)f._subscriptionId=[...subscriptions][0];
+  });
   return findings;
 }
 
@@ -282,6 +300,7 @@ export function findOverPrivileged(assignments, definitions) {
       findings.push({
         severity: 'CRITICAL',
         control: 'RBAC-1',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: principalName,
@@ -295,6 +314,7 @@ export function findOverPrivileged(assignments, definitions) {
       findings.push({
         severity: 'HIGH',
         control: 'RBAC-1',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: principalName,
@@ -309,6 +329,7 @@ export function findOverPrivileged(assignments, definitions) {
       findings.push({
         severity: 'HIGH',
         control: 'RBAC-1',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: principalName,
@@ -335,6 +356,7 @@ export function findOrphanedAssignments(assignments) {
       findings.push({
         severity: 'MEDIUM',
         control: 'RBAC-2',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || a.id || '',
         resourceName: props.principalId || 'Unknown Principal',
@@ -372,6 +394,7 @@ export function countOwnersPerScope(assignments) {
       findings.push({
         severity: 'MEDIUM',
         control: 'RBAC-3',
+        resourceId:scope,
         framework: 'RBAC',
         resource: scope,
         resourceName: scope.split('/').pop() || scope,
@@ -402,6 +425,7 @@ export function findGuestPrivileges(assignments, definitions) {
       findings.push({
         severity: 'HIGH',
         control: 'RBAC-4',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: principalName,
@@ -422,6 +446,7 @@ export function findGuestPrivileges(assignments, definitions) {
         findings.push({
           severity: 'MEDIUM',
           control: 'RBAC-4',
+          ..._assignmentIdentity(a),
           framework: 'RBAC',
           resource: props.principalId || '',
           resourceName: principalName,
@@ -455,6 +480,7 @@ export function findServicePrincipalRisks(assignments, definitions) {
       findings.push({
         severity: 'CRITICAL',
         control: 'RBAC-5',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: principalName,
@@ -465,6 +491,7 @@ export function findServicePrincipalRisks(assignments, definitions) {
       findings.push({
         severity: 'HIGH',
         control: 'RBAC-5',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: principalName,
@@ -479,6 +506,7 @@ export function findServicePrincipalRisks(assignments, definitions) {
       findings.push({
         severity: 'HIGH',
         control: 'RBAC-5',
+        ..._assignmentIdentity(a),
         framework: 'RBAC',
         resource: props.principalId || '',
         resourceName: principalName,
@@ -503,8 +531,9 @@ function parseRBACData(raw) {
     customRoles: []
   };
 
-  if (raw.roleAssignments) data.roleAssignments = Array.isArray(raw.roleAssignments) ? raw.roleAssignments : (raw.roleAssignments.value || []);
-  if (raw.value && !raw.roleAssignments) data.roleAssignments = raw.value;
+  if (Array.isArray(raw)) data.roleAssignments = raw;
+  else if (raw.roleAssignments) data.roleAssignments = Array.isArray(raw.roleAssignments) ? raw.roleAssignments : (raw.roleAssignments.value || []);
+  else if (Array.isArray(raw.value)) data.roleAssignments = raw.value;
   if (raw.roleDefinitions) data.roleDefinitions = Array.isArray(raw.roleDefinitions) ? raw.roleDefinitions : (raw.roleDefinitions.value || []);
 
   // Separate custom roles
@@ -515,6 +544,28 @@ function parseRBACData(raw) {
 
   // Run analysis
   data.findings = analyzeRoleAssignments(data.roleAssignments, data.roleDefinitions);
+  data.principals = data.roleAssignments.map(a => {
+    const props=a.properties||a;
+    const scope=props.scope||a.scope||'';
+    const roleName=props.roleDefinitionName||_resolveRoleName(props.roleDefinitionId,data.roleDefinitions);
+    const definition=_findDefinition(props.roleDefinitionId,data.roleDefinitions);
+    return {
+      id:a.id||'', principalId:props.principalId||'',
+      name:props.principalDisplayName||props.principalName||props.principalId||'Unknown principal',
+      principalType:props.principalType||'Unknown', scope, roleName,
+      subscriptionId:_subFromScope(scope||a.id||''),
+      isAdmin:HIGH_PRIVILEGE_ROLES.includes(roleName)||_isWildcardRole(definition),
+      hasWildcard:_isWildcardRole(definition), assignment:a
+    };
+  });
+  // A principal may have grants in several subscriptions. Only join unambiguous
+  // scopes here; never assign a principal finding to the first subscription.
+  data.findings.forEach(f=>{
+    if(f._subscriptionId)return;
+    const assignments=data.principals.filter(p=>p.principalId===f.resource||p.id===f.resource);
+    const subscriptions=new Set(assignments.map(p=>p.subscriptionId).filter(Boolean));
+    if(subscriptions.size===1)f._subscriptionId=[...subscriptions][0];
+  });
 
   return data;
 }

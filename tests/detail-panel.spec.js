@@ -69,6 +69,85 @@ test.describe('Detail Panel (Subnet)', () => {
     expect(title1).not.toEqual(title2);
   });
 
+  test('search result opens detail panel through resource navigation owner', async ({ page }) => {
+    const target = await page.evaluate(() => {
+      const ctx = typeof _rlCtx !== 'undefined' ? _rlCtx : window._rlCtx;
+      const subnet = (ctx && ctx.subnets || [])[0];
+      if (!subnet) return null;
+      const id = subnet.id || subnet.SubnetId;
+      return {
+        id,
+        query: subnet.name || subnet.SubnetId || (id || '').split('/').pop(),
+      };
+    });
+    expect(target).not.toBeNull();
+
+    const errors = await captureErrors(page, async () => {
+      await page.evaluate(() => SearchPanel.open());
+      await page.locator('#searchInput').fill(target.query);
+      await page.locator('#searchResults > div').first().waitFor({ state: 'visible', timeout: 5000 });
+      await page.locator('#searchResults > div').first().click();
+      await page.locator('#detailPanel.open').waitFor({ state: 'visible', timeout: 5000 });
+    });
+
+    expect(errors).toEqual([]);
+    await expect(page.locator('#searchOverlay')).toBeHidden();
+    await expect(page.locator('#detailPanel')).toHaveClass(/open/);
+  });
+
+  test('map viewport resolves selector-hostile resource ids by resource id', async ({ page }) => {
+    const result = await page.evaluate(() => {
+      const nav = AppRenderContext.createRenderContext();
+      const mapG = nav.mapG;
+      if (!mapG || !mapG.node) return { zoomed: false, flashed: false };
+
+      const id = 'subnet-"quoted"\\west]';
+      const node = mapG.append('g')
+        .attr('class', 'subnet-node test-selector-hostile')
+        .attr('data-subnet-id', id);
+      node.append('rect')
+        .attr('x', 25)
+        .attr('y', 25)
+        .attr('width', 40)
+        .attr('height', 30)
+        .attr('stroke', '#000');
+
+      try {
+        const zoomed = MapViewport.zoomToResource(id, { duration: 0, highlight: false });
+        const flashed = MapViewport.flashResource(id);
+        return {
+          zoomed: !!(zoomed && zoomed.element && zoomed.element.getAttribute('data-subnet-id') === id),
+          flashed
+        };
+      } finally {
+        node.remove();
+      }
+    });
+
+    expect(result).toEqual({ zoomed: true, flashed: true });
+  });
+
+  test('resource list go-to uses the map viewport resource interface', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__zoomedResources = [];
+      const originalZoomToResource = MapViewport.zoomToResource.bind(MapViewport);
+      MapViewport.zoomToResource = function(id, options) {
+        window.__zoomedResources.push(String(id));
+        return originalZoomToResource(id, options);
+      };
+      openResourceList('Subnets');
+    });
+
+    const navButton = page.locator('.dp-nav-btn[data-nav]').first();
+    await navButton.waitFor({ state: 'visible', timeout: 5000 });
+    const navId = await navButton.getAttribute('data-nav-id');
+    expect(navId).toBeTruthy();
+
+    await navButton.click();
+
+    await expect.poll(() => page.evaluate(() => window.__zoomedResources || [])).toContain(navId);
+  });
+
   test('section collapse/expand toggles without crashing', async ({ page }) => {
     await clickSubnet(page, 0);
     const headerCount = await page.locator('.dp-sec-hdr').count();

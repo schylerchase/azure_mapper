@@ -207,7 +207,7 @@ export function addressMatch(ruleAddress, queryAddress, vnetPrefixes) {
   }
 
   // Exact IP match
-  return addr === ip;
+  return addr.includes(':') ? ipInCIDR(ip, addr + '/128') : addr === ip;
 }
 
 // ---------------------------------------------------------------------------
@@ -249,13 +249,19 @@ function collectPorts(rule, fieldSingle, fieldArray) {
 /**
  * Test whether a single NSG rule matches the given traffic parameters.
  */
-function ruleMatches(rule, direction, protocol, srcAddr, srcPort, dstAddr, dstPort, vnetPrefixes) {
+function ruleMatches(rule, direction, protocol, srcAddr, srcPort, dstAddr, dstPort, vnetPrefixes, opts) {
+  rule = rule.properties || rule;
   // Direction filter
   const ruleDir = (rule.direction || '').toLowerCase();
   if (ruleDir !== direction.toLowerCase()) return false;
 
   // Protocol
   if (!protocolMatch(rule.protocol, protocol)) return false;
+
+  for (const side of ['source', 'destination']) {
+    const groups = rule[side + 'ApplicationSecurityGroups'] || [];
+    if (groups.length && !groups.some(group => ((opts && opts[side + 'AsgIds']) || []).includes(group.id))) return false;
+  }
 
   // Source addresses
   const srcAddrs = collectAddresses(rule, 'sourceAddressPrefix', 'sourceAddressPrefixes');
@@ -308,14 +314,17 @@ function _getCachedRules(nsg, direction) {
   const dirKey = direction.toLowerCase() === 'inbound' ? 'in' : 'out';
   // WeakMap keys must be objects: skip cache for null/undefined/primitive NSG
   if (nsg && typeof nsg === 'object') {
+    const properties = nsg.properties || nsg;
+    const customRules = properties.securityRules || [];
+    const defaults = properties.defaultSecurityRules && properties.defaultSecurityRules.length ? properties.defaultSecurityRules : (dirKey === 'in' ? DEFAULT_INBOUND_RULES : DEFAULT_OUTBOUND_RULES);
+    const fingerprint = JSON.stringify([customRules, defaults]);
     let cached = _nsgRuleCache.get(nsg);
-    if (cached && cached[dirKey]) return cached[dirKey];
-    const customRules = nsg.securityRules || [];
-    const defaults = dirKey === 'in' ? DEFAULT_INBOUND_RULES : DEFAULT_OUTBOUND_RULES;
-    const allRules = [...customRules, ...defaults];
+    if (cached && cached[dirKey] && cached[dirKey + 'Fingerprint'] === fingerprint) return cached[dirKey];
+    const allRules = [...customRules, ...defaults].map(rule => rule.properties || rule);
     allRules.sort((a, b) => a.priority - b.priority);
     if (!cached) { cached = {}; _nsgRuleCache.set(nsg, cached); }
     cached[dirKey] = allRules;
+    cached[dirKey + 'Fingerprint'] = fingerprint;
     return allRules;
   }
   // Null/missing NSG: return sorted defaults (uncached, rare path)
@@ -345,22 +354,35 @@ export function evaluateNsgRules(nsg, direction, protocol, srcAddr, srcPort, dst
 
   // Use cached merged+sorted rules (avoids re-sorting on every call)
   const allRules = _getCachedRules(nsg, direction);
-
-  for (const rule of allRules) {
-    if (ruleMatches(rule, direction, protocol, srcAddr, srcPort, dstAddr, dstPort, vnetPrefixes)) {
-      return {
-        action: rule.access,
-        rule,
-        priority: rule.priority,
-      };
+  function evaluateSourcePort(sourcePort) {
+    for (const rule of allRules) {
+      if (ruleMatches(rule, direction, protocol, srcAddr, sourcePort, dstAddr, dstPort, vnetPrefixes, opts)) {
+        return { action: rule.access, rule, priority: rule.priority };
+      }
     }
+    const fallback = direction.toLowerCase() === 'inbound' ? DEFAULT_INBOUND_RULES[2] : DEFAULT_OUTBOUND_RULES[2];
+    return { action: 'Deny', rule: fallback, priority: 65500 };
   }
 
-  // Should never reach here because DenyAll defaults exist, but safety net
-  const fallback = direction.toLowerCase() === 'inbound'
-    ? DEFAULT_INBOUND_RULES[2]
-    : DEFAULT_OUTBOUND_RULES[2];
-  return { action: 'Deny', rule: fallback, priority: 65500 };
+  // An unspecified source port represents every possible port. Evaluate each
+  // interval where the ordered policy can change instead of skipping ranges.
+  if (srcPort === '*' || srcPort === undefined || srcPort === null) {
+    const boundaries = new Set([0]);
+    for (const rule of allRules) {
+      for (const range of collectPorts(rule, 'sourcePortRange', 'sourcePortRanges')) {
+        for (const token of range.split(',')) {
+          const { low, high } = parsePortToken(token);
+          if (Number.isInteger(low) && low >= 0 && low <= 65535) boundaries.add(low);
+          if (Number.isInteger(high) && high >= 0 && high < 65535) boundaries.add(high + 1);
+        }
+      }
+    }
+    const results = [...boundaries].sort((a, b) => a - b).map(evaluateSourcePort);
+    const denied = results.find(result => result.action === 'Deny');
+    return { ...(denied || results[0]), sourcePortRequired: !!denied && results.some(result => result.action === 'Allow') };
+  }
+
+  return evaluateSourcePort(srcPort);
 }
 
 // ---------------------------------------------------------------------------
@@ -626,4 +648,23 @@ export function classifySubnet(subnet, routeTable) {
     classification: 'private',
     reason: 'No route to Internet found (nextHopType: ' + result.nextHopType + ')',
   };
+}
+
+/** Whether a VM has an explicit public IP, NAT gateway, or public LB outbound path. */
+export function hasExplicitOutbound(ctx, source) {
+  if (source.hasPublicIp) return true;
+  const sameId = (a, b) => !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
+  const subnet = (ctx.subnets || []).find(s => sameId(s.id || s.SubnetId, source.subnetId));
+  if (subnet && (subnet.properties || subnet).natGateway?.id) return true;
+  if ((ctx.natGateways || ctx.nats || []).some(n => sameId(n.SubnetId, source.subnetId) || ((n.properties || n).subnets || []).some(s => sameId(s.id, source.subnetId)))) return true;
+  const nic = (ctx.nics || ctx.enis || []).find(n => sameId(n.id || n.NetworkInterfaceId, source.nicId));
+  const poolIds = new Set(((nic?.properties || nic)?.ipConfigurations || []).flatMap(c => ((c.properties || c).loadBalancerBackendAddressPools || []).map(p => String(p.id).toLowerCase())));
+  return (ctx.tgs || []).some(lb => {
+    const p = lb.properties || lb;
+    const pools = (p.backendAddressPools || []).filter(pool => poolIds.has(String(pool.id).toLowerCase()) || ((pool.properties || pool).backendIPConfigurations || []).some(c => source.nicId && String(c.id).toLowerCase().startsWith(String(source.nicId).toLowerCase() + '/')) || ((pool.properties || pool).loadBalancerBackendAddresses || []).some(a => (a.properties || a).ipAddress === source.ip));
+    const frontends = new Set((p.frontendIPConfigurations || []).filter(f => (f.properties || f).publicIPAddress?.id).map(f => String(f.id).toLowerCase()));
+    if (!pools.length || !frontends.size) return false;
+    if (String(lb.sku?.name).toLowerCase() === 'basic') return true;
+    return (p.outboundRules || []).some(r => { const rule = r.properties || r; return pools.some(pool => sameId(pool.id, rule.backendAddressPool?.id)) && (rule.frontendIPConfigurations || []).some(f => frontends.has(String(f.id).toLowerCase())); });
+  });
 }

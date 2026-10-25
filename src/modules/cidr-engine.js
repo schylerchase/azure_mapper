@@ -61,7 +61,40 @@ export const cidrOverlap = (a, b) => {
   return ((smaller.network & bigger.mask) >>> 0) === bigger.network;
 };
 
+function ipv6ToInt(ip) {
+  if (typeof ip !== 'string' || !ip.includes(':')) return null;
+  let address = ip;
+  if (address.includes('.')) {
+    const colon = address.lastIndexOf(':');
+    const ipv4 = ipToInt(address.slice(colon + 1));
+    if (ipv4 === null) return null;
+    address = address.slice(0, colon + 1) + (ipv4 >>> 16).toString(16) + ':' + (ipv4 & 65535).toString(16);
+  }
+  const halves = address.split('::');
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(':') : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(':') : [];
+  const words = left.concat(right);
+  if (words.some(word => !/^[0-9a-f]{1,4}$/i.test(word))) return null;
+  if (halves.length === 1 ? words.length !== 8 : words.length >= 8) return null;
+  const expanded = halves.length === 2 ? left.concat(Array(8 - words.length).fill('0'), right) : left;
+  return expanded.reduce((value, word) => (value << 16n) | BigInt(parseInt(word, 16)), 0n);
+}
+
 export const ipInCIDR = (ip, cidr) => {
+  if (typeof cidr !== 'string' || typeof ip !== 'string') return false;
+  if (ip.includes(':') || cidr.includes(':')) {
+    const parts = cidr.trim().split('/');
+    if (parts.length !== 2 || !/^(0|[1-9][0-9]*)$/.test(parts[1])) return false;
+    const prefix = Number(parts[1]);
+    if (prefix > 128) return false;
+    const address = ipv6ToInt(ip.trim());
+    const network = ipv6ToInt(parts[0]);
+    if (address === null || network === null) return false;
+    const shift = BigInt(128 - prefix);
+    if ((network >> shift) << shift !== network) return false;
+    return address >> shift === network >> shift;
+  }
   const n = ipToInt(ip);
   const p = parseCIDR(cidr);
   if (n === null || !p) return false;
