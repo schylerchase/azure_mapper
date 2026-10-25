@@ -180,6 +180,14 @@ export function _iacExportBlock(data, format) {
       });
     });
   }
+  if (format === 'bicep') {
+    (data.disks || []).forEach(disk => {
+      const image = (disk.properties || disk).creationData?.imageReference;
+      if (image?.id && image.lun != null && (!Number.isSafeInteger(image.lun) || image.lun < 0)) {
+        warnings.push('Managed disk "' + (disk.name || disk.id) + '" needs a non-negative safe integer creationData.imageReference.lun before Bicep export.');
+      }
+    });
+  }
   const keys = ['vnets', 'nsgs', 'subnetNsgs', 'udrs', 'natGateways', 'vms', 'nics', 'disks', 'peerings', 'firewalls', 'bastions'];
   const resources = keys.flatMap(key => data[key] || []).concat(_natPublicIps(data));
   if (format === 'terraform') {
